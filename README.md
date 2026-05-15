@@ -33,21 +33,28 @@ HF/TapTap = 自带 upvotes/排名分数
 ## 快速开始
 
 ```bash
-# 1. 环境
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+# 1. 一键安装
+make install
 
-# 2. 配置
-cp config.example.yaml config.yaml
-# 编辑 config.yaml，填入你的企业微信机器人 webhook URL
+# 2. 配置 webhook
+cp .env.example .env
+# 编辑 .env 填入你的 webhook，或在 shell 中 export:
+export PUSHER_WECOM_WEBHOOK="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY_HERE"
+# 也可以保留 config.example.yaml -> config.yaml 的配置方式
 
-# 3. 测试
-python main.py --period morning --dry-run
+# 3. 验证
+make test
+make dry-run
 
 # 4. 推送
-python main.py --period morning
+make run-morning
 ```
+
+> **注意：**
+> - `.env.example` 只是模板，程序不会自动加载 `.env` 文件。需要通过 `export` 或 launchd/cron 注入环境变量。
+> - `--dry-run` 不要求 webhook 配置。
+> - `make clean` 不会删除 `data/`（运行状态）。
+> - `make clean-data` 才会清空 `data/`（pushed_urls、日报、日志）。
 
 ## 定时自动运行 (macOS launchd)
 
@@ -89,22 +96,28 @@ launchctl load ~/Library/LaunchAgents/com.lanser.clawnews.evening.plist
 Claw_news/
 ├── main.py                  # 入口：--period morning|evening [--dry-run]
 ├── config.example.yaml      # 配置模板（复制为 config.yaml 填入 key）
-├── requirements.txt
+├── pyproject.toml           # 项目元数据与依赖
+├── Makefile                 # 统一命令入口
+├── .env.example             # 环境变量模板
+├── requirements.txt         # 运行时依赖参考
 ├── collectors/
 │   ├── base.py              # HotItem 数据模型 + time_modifier
 │   ├── rss_sources.py       # RSS 多源采集（量子位/少数派/IT之家/游研社）
 │   ├── huggingface.py       # HuggingFace Daily Papers + 摘要翻译
 │   ├── taptap.py            # TapTap 下载榜爬虫
-│   └── ithome.py            # IT之家爬虫（已废弃，切到 RSS）
+│   └── utils.py             # safe_collect 公共辅助
 ├── aggregator/
 │   └── merger.py            # 三维评分 + 关键词保底竞争
 ├── pusher/
 │   └── wecom.py             # 企业微信机器人推送 + 格式化
-├── tests/                   # 48 个 pytest 测试
+├── infra/
+│   ├── config/
+│   │   └── settings.py      # 配置集中加载与校验
+│   └── storage/
+│       └── state_store.py   # 原子化状态持久化
+├── tests/                   # pytest 测试
+├── .github/workflows/
+│   └── ci.yml               # CI：install → lint → test
 ├── docs/                    # 设计文档 + launchd plist
 └── data/                    # 运行时数据（gitignored）
-    ├── YYYY-MM-DD/          # 每日推送记录（保留 3 天）
-    │   ├── morning.json
-    │   └── evening.json
-    └── pushed_urls.json     # 上次推送 URL（用于 [续]/[新] 标记）
 ```
