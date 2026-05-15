@@ -8,12 +8,16 @@ collectors:
 rss_feeds:
   - url: "https://www.qbitai.com/feed"
     category: "ai"
+    source: "qbitai"
   - url: "https://sspai.com/feed"
     category: "device"
+    source: "sspai"
   - url: "https://www.ithome.com/rss/"
     category: "device"
+    source: "ithome"
   - url: "https://www.yystv.cn/rss/feed"
     category: "game"
+    source: "yystv"
 
 keywords:
   ai: ["AI", "大模型", "GPT", "LLM", "机器学习", "深度学习", "人工智能", "神经网络", "训练", "Agent", "模型", "算法"]
