@@ -103,3 +103,10 @@ pusher:
     settings = Settings.load(config_path)
     with pytest.raises(ValueError, match="wecom webhook"):
         settings.validate_for_run(dry_run=False)
+
+
+def test_load_raises_when_config_yaml_missing(tmp_path: Path):
+    """config.yaml 缺失时必须抛出明确错误"""
+    config_path = tmp_path / "nonexistent.yaml"
+    with pytest.raises(ValueError, match="config file not found"):
+        Settings.load(config_path)

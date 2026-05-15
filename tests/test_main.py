@@ -96,3 +96,54 @@ async def test_successful_categories_committed_even_if_later_one_fails(tmp_path:
     assert "https://a.com/1" in saved
     assert "https://g.com/1" in saved
     assert "https://d.com/1" not in saved
+
+
+@pytest.mark.asyncio
+async def test_run_push_sequence_returns_failure_summary(tmp_path: Path):
+    """部分失败时返回的汇总包含正确的 success/failed 列表"""
+    from infra.storage.state_store import StateStore
+    from main import run_push_sequence
+
+    grouped = {
+        "ai": [HotItem("AI", "https://a.com/1", "", "qbitai", "ai", 5.0)],
+        "game": [HotItem("Game", "https://g.com/1", "", "yystv", "game", 5.0)],
+        "device": [HotItem("Device", "https://d.com/1", "", "ithome", "device", 5.0)],
+    }
+    store = StateStore(tmp_path)
+
+    summary = await run_push_sequence(
+        grouped=grouped,
+        period="morning",
+        pushed_urls=store.load_pushed_urls(),
+        state_store=store,
+        pusher=RaisingStubPusher(fail_category="device"),
+    )
+
+    assert summary["success_categories"] == ["ai", "game"]
+    assert summary["failed_categories"] == ["device"]
+    assert "https://a.com/1" in summary["pushed_urls"]
+    assert "https://g.com/1" in summary["pushed_urls"]
+    assert "https://d.com/1" not in summary["pushed_urls"]
+
+
+@pytest.mark.asyncio
+async def test_run_push_sequence_all_success(tmp_path: Path):
+    """全成功时返回空 failed 列表"""
+    from infra.storage.state_store import StateStore
+    from main import run_push_sequence
+
+    grouped = {
+        "ai": [HotItem("AI", "https://a.com/1", "", "qbitai", "ai", 5.0)],
+    }
+    store = StateStore(tmp_path)
+
+    summary = await run_push_sequence(
+        grouped=grouped,
+        period="morning",
+        pushed_urls=store.load_pushed_urls(),
+        state_store=store,
+        pusher=StubPusher(),
+    )
+
+    assert summary["success_categories"] == ["ai"]
+    assert summary["failed_categories"] == []

@@ -80,6 +80,9 @@ async def collect_all(settings: Settings):
 
 async def run_push_sequence(grouped, period, pushed_urls, state_store, pusher):
     current_urls = set(pushed_urls)
+    success_categories: list[str] = []
+    failed_categories: list[str] = []
+
     for category in ("ai", "game", "device"):
         cat_items = grouped.get(category, [])
         if not cat_items:
@@ -94,6 +97,7 @@ async def run_push_sequence(grouped, period, pushed_urls, state_store, pusher):
             )
         except Exception as exc:
             logger.error("push failed for category=%s: %s", category, exc)
+            failed_categories.append(category)
             continue
 
         if result.success:
@@ -112,6 +116,7 @@ async def run_push_sequence(grouped, period, pushed_urls, state_store, pusher):
                     for item in cat_items
                 ],
             )
+            success_categories.append(category)
         else:
             logger.error(
                 "push failed for category=%s errcode=%s errmsg=%s",
@@ -119,7 +124,13 @@ async def run_push_sequence(grouped, period, pushed_urls, state_store, pusher):
                 result.errcode,
                 result.errmsg,
             )
-    return current_urls
+            failed_categories.append(category)
+
+    return {
+        "pushed_urls": current_urls,
+        "success_categories": success_categories,
+        "failed_categories": failed_categories,
+    }
 
 
 async def main(period: str = "morning", dry_run: bool = False):
@@ -173,7 +184,7 @@ async def main(period: str = "morning", dry_run: bool = False):
             sys.exit(1)
         logger.info("Step 3: 推送中")
         pusher = WeComPusher(webhook_url)
-        await run_push_sequence(
+        summary = await run_push_sequence(
             grouped=grouped,
             period=period,
             pushed_urls=pushed_urls,
@@ -181,7 +192,22 @@ async def main(period: str = "morning", dry_run: bool = False):
             pusher=pusher,
         )
         cleanup_old_digests()
-        logger.info("推送完成")
+
+        failed = summary["failed_categories"]
+        success = summary["success_categories"]
+
+        if not success and failed:
+            logger.error("推送全部失败 (%s)", ", ".join(failed))
+            sys.exit(1)
+        elif failed:
+            logger.error(
+                "部分推送失败 — 成功: %s, 失败: %s",
+                ", ".join(success) if success else "(无)",
+                ", ".join(failed),
+            )
+            sys.exit(1)
+        else:
+            logger.info("推送完成")
 
 
 if __name__ == "__main__":

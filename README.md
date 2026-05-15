@@ -36,12 +36,13 @@ HF/TapTap = 自带 upvotes/排名分数
 # 1. 一键安装
 make install
 
-# 2. 配置 webhook（二选一）
-#    方式 A: 环境变量（推荐）
-export PUSHER_WECOM_WEBHOOK="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY_HERE"
-#    方式 B: YAML 配置
+# 2. 配置 webhook
+#    首先必须有 config.yaml（从模板复制）:
 cp config.example.yaml config.yaml
-# 编辑 config.yaml 填入 webhook
+#    然后配置 webhook（二选一）:
+#    方式 A: 环境变量（推荐，覆盖 YAML 中的 webhook）
+export PUSHER_WECOM_WEBHOOK="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY_HERE"
+#    方式 B: 直接在 config.yaml 中填写 webhook
 
 # 3. 验证
 make test
