@@ -36,21 +36,7 @@ class MockCollector:
         return self._items
 
 
-# --- safe_collect 逻辑（与 main.py 行为一致） ---
-
-async def safe_collect(name, collector):
-    import logging
-    import traceback
-    logger = logging.getLogger(__name__)
-
-    try:
-        items = await collector.collect()
-        logger.info("%s: %d items", name, len(items))
-        return items
-    except Exception:
-        logger.error("%s 采集失败:", name)
-        logger.error(traceback.format_exc())
-        return []
+from collectors.utils import safe_collect
 
 
 class TestSafeCollect:

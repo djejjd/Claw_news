@@ -9,7 +9,6 @@ Usage:
 import asyncio
 import logging
 import sys
-import traceback
 from pathlib import Path
 import shutil
 from datetime import date, timedelta
@@ -20,6 +19,7 @@ from infra.storage.state_store import StateStore
 from collectors.rss_sources import RssCollector
 from collectors.huggingface import HfDailyPapersCollector
 from collectors.taptap import TapTapCollector
+from collectors.utils import safe_collect
 from aggregator.merger import Merger
 from pusher.wecom import WeComPusher, format_message
 
@@ -47,16 +47,6 @@ def cleanup_old_digests():
 
 async def collect_all(settings: Settings):
     sources = settings.collector_sources
-
-    async def safe_collect(name, collector):
-        try:
-            items = await collector.collect()
-            logger.info("%s: %d items", name, len(items))
-            return items
-        except Exception:
-            logger.error("%s 采集失败:", name)
-            logger.error(traceback.format_exc())
-            return []
 
     tasks = {}
     if sources.rss:
