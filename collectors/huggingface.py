@@ -24,12 +24,13 @@ class HfDailyPapersCollector:
                 await client.aclose()
 
         max_votes = max((p.get("upvotes", 0) for p in papers), default=1)
+        papers.sort(key=lambda p: p.get("upvotes", 0), reverse=True)
         items = [self._parse_paper(p, max_votes) for p in papers[:10]]
         return items
 
     def _parse_paper(self, paper: dict, max_votes: int | None = None) -> HotItem:
         title = paper.get("title", "")
-        paper_id = paper.get("paper", {}).get("id", "")
+        paper_id = (paper.get("paper") or {}).get("id", "")
         upvotes = paper.get("upvotes", 0)
         summary = paper.get("summary", "")
 
