@@ -70,7 +70,7 @@ def format_message(
                 summary = strip_html(item.summary).replace("\n", " ").strip()[:120]
                 lines.append(f"> {summary}")
 
-            # Source label
+            # Source label + region
             source_label = item.source
             if item.source == "huggingface":
                 source_label = "HuggingFace"
@@ -84,7 +84,9 @@ def format_message(
                 source_label = "少数派"
             elif item.source == "taptap":
                 source_label = "TapTap"
-            lines.append(f"   — {source_label}")
+
+            region = "国外" if item.source == "huggingface" else "国内"
+            lines.append(f"   — {source_label} · {region}")
 
             if i < len(items):
                 lines.append("")

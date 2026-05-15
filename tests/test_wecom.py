@@ -62,6 +62,16 @@ class TestFormatMessage:
         assert CATEGORY_LABELS["game"] == "游戏热点"
         assert CATEGORY_LABELS["device"] == "数码硬件"
 
+    def test_domestic_source_has_region_label(self):
+        item = make_item("t", "https://x.com/t", "s", source="qbitai", category="ai", score=5.0)
+        msg = format_message([item], "ai")
+        assert "— 量子位 · 国内" in msg
+
+    def test_foreign_source_has_region_label(self):
+        item = make_item("t", "https://x.com/t", "s", source="huggingface", category="ai", score=5.0)
+        msg = format_message([item], "ai")
+        assert "— HuggingFace · 国外" in msg
+
 
 class TestWeComPusher:
     @pytest.mark.asyncio
