@@ -1,3 +1,4 @@
+import httpx
 import pytest
 from collectors.taptap import TapTapCollector, TAPTAP_HOT_URL
 
@@ -44,9 +45,9 @@ def test_parse_html_empty():
 
 @pytest.mark.asyncio
 async def test_collect_mocked(httpx_mock):
-    """Mock HTTP response, verify full collect flow"""
+    """Mock HTTP with injected httpx client"""
     httpx_mock.add_response(url=TAPTAP_HOT_URL, html=SAMPLE_HTML)
-    collector = TapTapCollector()
+    collector = TapTapCollector(client=httpx.AsyncClient())
     items = await collector.collect()
     assert len(items) == 3
     assert all(item.category == "game" for item in items)

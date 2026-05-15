@@ -2,11 +2,11 @@ from datetime import date
 from pathlib import Path
 from typing import List
 
-import httpx
 import yaml
 from bs4 import BeautifulSoup
+from curl_cffi import requests as curl_requests
 
-from collectors.base import HotItem, normalize_rank_score, BROWSER_HEADERS
+from collectors.base import HotItem, normalize_rank_score
 
 TAPTAP_HOT_URL = "https://www.taptap.cn/top/download"
 
@@ -15,24 +15,25 @@ TAPTAP_FETCH_COUNT = _cfg.get("collectors", {}).get("fetch_count", 10)
 
 
 class TapTapCollector:
-    """TapTap hot list crawler. Parses hot page HTML, extracts game names and links."""
+    """TapTap 下载榜爬虫，使用 curl_cffi 模拟 Chrome TLS 指纹过 WAF"""
 
-    def __init__(self, client: httpx.AsyncClient | None = None):
+    def __init__(self, client=None):
         self._client = client
 
     async def collect(self) -> List[HotItem]:
-        client = self._client or httpx.AsyncClient(
-            headers={**BROWSER_HEADERS, "Referer": "https://www.taptap.cn/"},
-            follow_redirects=True,
-        )
-        try:
-            resp = await client.get(TAPTAP_HOT_URL, timeout=30.0)
+        if self._client is not None:
+            resp = await self._client.get(TAPTAP_HOT_URL, timeout=30.0)
             resp.raise_for_status()
-            items = self._parse_html(resp.text)
-        finally:
-            if self._client is None:
-                await client.aclose()
-        return items
+            html = resp.text
+        else:
+            session = curl_requests.AsyncSession(impersonate="chrome131")
+            try:
+                resp = await session.get(TAPTAP_HOT_URL, timeout=30.0)
+                resp.raise_for_status()
+                html = resp.text
+            finally:
+                await session.close()
+        return self._parse_html(html)
 
     def _parse_html(self, html: str) -> List[HotItem]:
         soup = BeautifulSoup(html, "html.parser")
