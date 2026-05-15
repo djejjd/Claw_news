@@ -94,11 +94,11 @@ Step 3 — 最终排序:
 ```
 🤖 AI 热点 | 05/16 早报
 ━━━━━━━━━━━━━━━━━━━
-1. [EN] [LLaMA 4 发布](https://...)
+1. [续] [EN] [LLaMA 4 发布](https://...)
    Meta 发布最新开源大模型，性能超越...
    — HuggingFace
 
-2. [华为云 Agentic AI 新布局](https://...)
+2. [新] [华为云 Agentic AI 新布局](https://...)
    华为云创想者大会主题论坛议程公布
    — 量子位
 
@@ -107,6 +107,8 @@ Step 3 — 最终排序:
 ```
 
 改进点：
+- `[续]` — 上一条推送出现过（比对 pushed_urls.json）
+- `[新]` — 首次出现
 - HF 英文条目标题前加 `[EN]`
 - 每条目补来源标注 `— 来源名`
 - 摘要 HTML 标签已清理
@@ -122,7 +124,8 @@ Step 3 — 最终排序:
 | `collectors/huggingface.py` | 改 | fetch_count=10 |
 | `collectors/taptap.py` | 改 | fetch_count=10 |
 | `aggregator/merger.py` | 改 | 多维评分 + 关键词保底竞争 |
-| `pusher/wecom.py` | 改 | HTML去标签, [EN]标记, 来源标注 |
+| `pusher/wecom.py` | 改 | HTML去标签, [EN]/[续]/[新] 标记, 来源标注 |
+| `data/pushed_urls.json` | 新建 | 记录最近推送的 URL，用于 [续]/[新] 判断 |
 
 ## 8. 配置项
 
