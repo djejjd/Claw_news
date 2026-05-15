@@ -38,6 +38,9 @@ class TapTapCollector:
             if href and not href.startswith("http"):
                 href = f"https://www.taptap.cn{href}"
 
+            if not title or not href:
+                continue
+
             items.append(HotItem(
                 title=title,
                 url=href,
