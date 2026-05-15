@@ -19,9 +19,9 @@ FEED_CONFIGS: List[dict] = [
     {"url": "https://www.yystv.cn/rss/feed", "category": "game", "source": "yystv"},
 ]
 
-_cfg = yaml.safe_load(open(Path(__file__).parent.parent / "config.yaml"))
-KEYWORDS: dict = _cfg.get("keywords", {})
-FETCH_COUNT: int = _cfg.get("collectors", {}).get("fetch_count", 10)
+
+def _load_config():
+    return yaml.safe_load(open(Path(__file__).parent.parent / "config.yaml"))
 
 
 def strip_html(text: str) -> str:
@@ -43,6 +43,9 @@ def extract_pub_date(published_parsed) -> str:
 class RssCollector:
     def __init__(self, feed_configs: List[dict] | None = None):
         self.feeds = feed_configs or FEED_CONFIGS
+        cfg = _load_config()
+        self._keywords: dict = cfg.get("keywords", {})
+        self._fetch_count: int = cfg.get("collectors", {}).get("fetch_count", 10)
 
     async def collect(self) -> List["HotItem"]:
         import logging
@@ -51,7 +54,7 @@ class RssCollector:
         for feed in self.feeds:
             try:
                 parsed = feedparser.parse(feed["url"])
-                for entry in parsed.entries[:FETCH_COUNT]:
+                for entry in parsed.entries[:self._fetch_count]:
                     items.append(self._parse_entry(entry, feed))
             except Exception as e:
                 logger.warning("RSS feed %s failed: %s", feed["url"], e)
@@ -65,7 +68,7 @@ class RssCollector:
         pub_date = extract_pub_date(entry.get("published_parsed"))
         cat = feed["category"]
         source_name = feed.get("source", cat)
-        kw_hit = check_keyword_hit(title, summary, cat, KEYWORDS)
+        kw_hit = check_keyword_hit(title, summary, cat, self._keywords)
 
         return HotItem(
             title=title, url=url, summary=summary,

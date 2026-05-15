@@ -11,8 +11,9 @@ from collectors.base import HotItem
 
 HF_API_URL = "https://huggingface.co/api/daily_papers"
 
-_cfg = yaml.safe_load(open(Path(__file__).parent.parent / "config.yaml"))
-HF_FETCH_COUNT = _cfg.get("collectors", {}).get("fetch_count", 10)
+
+def _load_config():
+    return yaml.safe_load(open(Path(__file__).parent.parent / "config.yaml"))
 
 _translate_semaphore = asyncio.Semaphore(3)
 
@@ -53,7 +54,8 @@ class HfDailyPapersCollector:
 
         max_votes = max((p.get("upvotes", 0) for p in papers), default=1)
         papers.sort(key=lambda p: p.get("upvotes", 0), reverse=True)
-        items = [self._parse_paper(p, max_votes) for p in papers[:HF_FETCH_COUNT]]
+        fetch_count = _load_config().get("collectors", {}).get("fetch_count", 10)
+        items = [self._parse_paper(p, max_votes) for p in papers[:fetch_count]]
 
         # 并发翻译所有摘要
         translations = await asyncio.gather(

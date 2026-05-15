@@ -10,8 +10,9 @@ from collectors.base import HotItem, normalize_rank_score
 
 TAPTAP_HOT_URL = "https://www.taptap.cn/top/download"
 
-_cfg = yaml.safe_load(open(Path(__file__).parent.parent / "config.yaml"))
-TAPTAP_FETCH_COUNT = _cfg.get("collectors", {}).get("fetch_count", 10)
+
+def _load_config():
+    return yaml.safe_load(open(Path(__file__).parent.parent / "config.yaml"))
 
 
 class TapTapCollector:
@@ -39,7 +40,8 @@ class TapTapCollector:
         soup = BeautifulSoup(html, "html.parser")
         cells = soup.select(".game-list-cell")
         items = []
-        for i, cell in enumerate(cells[:TAPTAP_FETCH_COUNT]):
+        fetch_count = _load_config().get("collectors", {}).get("fetch_count", 10)
+        for i, cell in enumerate(cells[:fetch_count]):
             title_el = cell.select_one('[class*="title"]')
             title = title_el.get_text(strip=True) if title_el else ""
             app_link = cell.select_one('a[href*="/app/"]')
@@ -56,7 +58,7 @@ class TapTapCollector:
                 summary="",
                 source="taptap",
                 category="game",
-                source_score=normalize_rank_score(i + 1, total=min(len(cells), TAPTAP_FETCH_COUNT)),
+                source_score=normalize_rank_score(i + 1, total=min(len(cells), fetch_count)),
                 pub_date=date.today().isoformat(),
             ))
         return items
