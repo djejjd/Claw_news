@@ -7,15 +7,15 @@ Usage:
 """
 
 import asyncio
-import json
 import logging
 import sys
 import traceback
 from pathlib import Path
 import shutil
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from infra.config.settings import Settings
+from infra.storage.state_store import StateStore
 
 from collectors.rss_sources import RssCollector
 from collectors.huggingface import HfDailyPapersCollector
@@ -25,49 +25,7 @@ from pusher.wecom import WeComPusher, format_message
 
 logger = logging.getLogger(__name__)
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
-PUSHED_URLS_PATH = Path(__file__).parent / "data" / "pushed_urls.json"
-
-
-def load_pushed_urls() -> set:
-    if not PUSHED_URLS_PATH.exists():
-        return set()
-    try:
-        with open(PUSHED_URLS_PATH) as f:
-            return set(json.load(f))
-    except (json.JSONDecodeError, OSError):
-        return set()
-
-
-def save_pushed_urls(urls: set):
-    PUSHED_URLS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(PUSHED_URLS_PATH, "w") as f:
-        json.dump(list(urls), f)
-
-
 DATA_DIR = Path(__file__).parent / "data"
-
-
-def save_daily_digest(grouped: dict, period: str):
-    """保存当日推送内容到 data/YYYY-MM-DD/{period}.json"""
-    today = date.today().isoformat()
-    day_dir = DATA_DIR / today
-    day_dir.mkdir(parents=True, exist_ok=True)
-
-    record = {
-        "period": period,
-        "date": today,
-        "pushed_at": datetime.now().isoformat(),
-    }
-    for cat, items in grouped.items():
-        record[cat] = [
-            {"title": i.title, "url": i.url, "summary": i.summary,
-             "source": i.source, "score": i.source_score}
-            for i in items
-        ]
-
-    with open(day_dir / f"{period}.json", "w", encoding="utf-8") as f:
-        json.dump(record, f, ensure_ascii=False, indent=2)
-    logger.info("已保存到 %s/%s.json", today, period)
 
 
 def cleanup_old_digests():
@@ -150,7 +108,8 @@ async def main(period: str = "morning", dry_run: bool = False):
     for cat, items in grouped.items():
         logger.info("%s: %d items after merge", cat, len(items))
 
-    pushed_urls = load_pushed_urls()
+    state_store = StateStore(DATA_DIR)
+    pushed_urls = state_store.load_pushed_urls()
 
     if dry_run:
         logger.info("Step 3: Dry-run 输出")
@@ -166,8 +125,18 @@ async def main(period: str = "morning", dry_run: bool = False):
         pusher = WeComPusher(webhook_url)
         await pusher.push(grouped, period=period, pushed_urls=pushed_urls)
         new_urls = {i.url for cat_items in grouped.values() for i in cat_items}
-        save_pushed_urls(new_urls)
-        save_daily_digest(grouped, period)
+        state_store.merge_pushed_urls(new_urls)
+        # Write daily digest per category
+        for cat, items in grouped.items():
+            if items:
+                state_store.write_daily_digest_category(
+                    period=period,
+                    category=cat,
+                    items=[{
+                        "title": i.title, "url": i.url, "summary": i.summary,
+                        "source": i.source, "score": i.source_score
+                    } for i in items],
+                )
         cleanup_old_digests()
         logger.info("推送完成")
 
