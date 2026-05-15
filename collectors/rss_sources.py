@@ -4,7 +4,7 @@ from typing import List
 
 import feedparser
 
-from collectors.base import HotItem, Category
+from collectors.base import HotItem
 
 # Each feed: url + category
 FEED_CONFIGS: List[dict] = [
@@ -21,12 +21,17 @@ class RssCollector:
         self.feeds = feed_configs or FEED_CONFIGS
 
     async def collect(self) -> List["HotItem"]:
+        import logging
+        logger = logging.getLogger(__name__)
         items = []
         for feed in self.feeds:
-            parsed = feedparser.parse(feed["url"])
-            entries = parsed.entries[:10]
-            for entry in entries:
-                items.append(self._parse_entry(entry, feed))
+            try:
+                parsed = feedparser.parse(feed["url"])
+                entries = parsed.entries[:10]
+                for entry in entries:
+                    items.append(self._parse_entry(entry, feed))
+            except Exception as e:
+                logger.warning("RSS feed %s failed: %s", feed["url"], e)
         return items
 
     def _parse_entry(self, entry: dict, feed: dict) -> "HotItem":
