@@ -32,7 +32,7 @@ def time_decay_bonus(ts: float, now: float | None = None) -> float:
         return 1.0
     if age_hours <= 72:
         return 0.0
-    return -((age_hours - 72) // 12)
+    return -float((age_hours - 72) // 12)
 
 
 def normalize_rank_score(rank: int, total: int = 10) -> float:
