@@ -7,7 +7,10 @@ from typing import List
 import feedparser
 import yaml
 
-from collectors.base import HotItem
+from collectors.base import HotItem, BROWSER_HEADERS
+
+# 设置 feedparser 的 User-Agent，防止被 RSS 源拦截
+feedparser.USER_AGENT = BROWSER_HEADERS["User-Agent"]
 
 FEED_CONFIGS: List[dict] = [
     {"url": "https://www.qbitai.com/feed", "category": "ai", "source": "qbitai"},

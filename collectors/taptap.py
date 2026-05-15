@@ -6,7 +6,7 @@ import httpx
 import yaml
 from bs4 import BeautifulSoup
 
-from collectors.base import HotItem, normalize_rank_score
+from collectors.base import HotItem, normalize_rank_score, BROWSER_HEADERS
 
 TAPTAP_HOT_URL = "https://www.taptap.cn/top/download"
 
@@ -22,12 +22,7 @@ class TapTapCollector:
 
     async def collect(self) -> List[HotItem]:
         client = self._client or httpx.AsyncClient(
-            headers={
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-                "Referer": "https://www.taptap.cn/",
-            },
+            headers={**BROWSER_HEADERS, "Referer": "https://www.taptap.cn/"},
             follow_redirects=True,
         )
         try:

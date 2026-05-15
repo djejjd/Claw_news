@@ -54,6 +54,13 @@ def time_decay_bonus(ts: float, now: float | None = None) -> float:
     return -float((age_hours - 72) // 12)
 
 
+BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+}
+
+
 def normalize_rank_score(rank: int, total: int = 10) -> float:
     """Convert rank to 0-10 score: 1st = 10, proportional decrease"""
     if total <= 1:

@@ -7,7 +7,7 @@ import httpx
 import yaml
 from deep_translator import GoogleTranslator
 
-from collectors.base import HotItem
+from collectors.base import HotItem, BROWSER_HEADERS
 
 HF_API_URL = "https://huggingface.co/api/daily_papers"
 
@@ -38,7 +38,7 @@ class HfDailyPapersCollector:
         self._client = client
 
     async def collect(self) -> List[HotItem]:
-        client = self._client or httpx.AsyncClient()
+        client = self._client or httpx.AsyncClient(headers=BROWSER_HEADERS, follow_redirects=True)
         try:
             resp = await client.get(HF_API_URL, timeout=30.0)
             resp.raise_for_status()
