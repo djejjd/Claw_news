@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Literal
 import time
 
@@ -14,11 +15,29 @@ class HotItem:
     category: Category
     source_score: float  # 0.0-10.0, derived from source popularity/rank
     timestamp: float = field(default_factory=time.time)
+    keyword_hit: bool = False  # 是否命中分类关键词
+    pub_date: str = ""         # yyyy-mm-dd 发布日期
 
     @property
     def final_score(self) -> float:
         """Combined score = source heat score + time decay bonus"""
         return self.source_score + time_decay_bonus(self.timestamp)
+
+
+def time_modifier(pub_date: str, period: str = "morning") -> float:
+    """morning: today+yesterday=0, older=-2.0. evening: today=0, yesterday=-1.0, older=-2.0"""
+    if not pub_date:
+        return 0
+    try:
+        diff = (date.today() - date.fromisoformat(pub_date)).days
+        if period == "morning":
+            return 0.0 if diff <= 1 else -2.0
+        else:
+            if diff == 0: return 0.0
+            if diff == 1: return -1.0
+            return -2.0
+    except ValueError:
+        return 0
 
 
 def time_decay_bonus(ts: float, now: float | None = None) -> float:
