@@ -1,8 +1,6 @@
 from datetime import date
-from pathlib import Path
 from typing import List
 
-import yaml
 from bs4 import BeautifulSoup
 from curl_cffi import requests as curl_requests
 
@@ -11,14 +9,11 @@ from collectors.base import HotItem, normalize_rank_score
 TAPTAP_HOT_URL = "https://www.taptap.cn/top/download"
 
 
-def _load_config():
-    return yaml.safe_load(open(Path(__file__).parent.parent / "config.yaml"))
-
-
 class TapTapCollector:
     """TapTap 下载榜爬虫，使用 curl_cffi 模拟 Chrome TLS 指纹过 WAF"""
 
-    def __init__(self, client=None):
+    def __init__(self, fetch_count: int = 10, client=None):
+        self._fetch_count = fetch_count
         self._client = client
 
     async def collect(self) -> List[HotItem]:
@@ -40,8 +35,7 @@ class TapTapCollector:
         soup = BeautifulSoup(html, "html.parser")
         cells = soup.select(".game-list-cell")
         items = []
-        fetch_count = _load_config().get("collectors", {}).get("fetch_count", 10)
-        for i, cell in enumerate(cells[:fetch_count]):
+        for i, cell in enumerate(cells[:self._fetch_count]):
             title_el = cell.select_one('[class*="title"]')
             title = title_el.get_text(strip=True) if title_el else ""
             app_link = cell.select_one('a[href*="/app/"]')
@@ -58,7 +52,7 @@ class TapTapCollector:
                 summary="",
                 source="taptap",
                 category="game",
-                source_score=normalize_rank_score(i + 1, total=min(len(cells), fetch_count)),
+                source_score=normalize_rank_score(i + 1, total=min(len(cells), self._fetch_count)),
                 pub_date=date.today().isoformat(),
             ))
         return items

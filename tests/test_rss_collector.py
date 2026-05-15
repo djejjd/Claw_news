@@ -33,7 +33,7 @@ def test_extract_pub_date():
 
 
 def test_parse_entry_full():
-    collector = RssCollector()
+    collector = RssCollector(keywords={"ai": ["GPT", "大模型"]})
     entry = {
         "title": "GPT-5 发布",
         "link": "https://x.com/1",

@@ -1,19 +1,13 @@
 import asyncio
 from datetime import date
-from pathlib import Path
 from typing import List
 
-import yaml
 from curl_cffi import requests as curl_requests
 from deep_translator import GoogleTranslator
 
 from collectors.base import HotItem
 
 HF_API_URL = "https://huggingface.co/api/daily_papers"
-
-
-def _load_config():
-    return yaml.safe_load(open(Path(__file__).parent.parent / "config.yaml"))
 
 _translate_semaphore = asyncio.Semaphore(3)
 
@@ -35,7 +29,8 @@ async def _translate_to_chinese(text: str) -> str:
 class HfDailyPapersCollector:
     """HuggingFace Daily Papers API collector. Uses curl_cffi for TLS fingerprint."""
 
-    def __init__(self, client=None):
+    def __init__(self, fetch_count: int = 10, client=None):
+        self._fetch_count = fetch_count
         self._client = client
 
     async def collect(self) -> List[HotItem]:
@@ -54,8 +49,7 @@ class HfDailyPapersCollector:
 
         max_votes = max((p.get("upvotes", 0) for p in papers), default=1)
         papers.sort(key=lambda p: p.get("upvotes", 0), reverse=True)
-        fetch_count = _load_config().get("collectors", {}).get("fetch_count", 10)
-        items = [self._parse_paper(p, max_votes) for p in papers[:fetch_count]]
+        items = [self._parse_paper(p, max_votes) for p in papers[:self._fetch_count]]
 
         # 并发翻译所有摘要
         translations = await asyncio.gather(

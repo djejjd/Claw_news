@@ -1,11 +1,9 @@
 import re
 import time
 from calendar import timegm
-from pathlib import Path
 from typing import List
 
 import feedparser
-import yaml
 
 from collectors.base import HotItem, BROWSER_HEADERS
 
@@ -18,10 +16,6 @@ FEED_CONFIGS: List[dict] = [
     {"url": "https://www.ithome.com/rss/", "category": "device", "source": "ithome"},
     {"url": "https://www.yystv.cn/rss/feed", "category": "game", "source": "yystv"},
 ]
-
-
-def _load_config():
-    return yaml.safe_load(open(Path(__file__).parent.parent / "config.yaml"))
 
 
 def strip_html(text: str) -> str:
@@ -41,11 +35,10 @@ def extract_pub_date(published_parsed) -> str:
 
 
 class RssCollector:
-    def __init__(self, feed_configs: List[dict] | None = None):
+    def __init__(self, feed_configs: List[dict] | None = None, keywords: dict | None = None, fetch_count: int = 10):
         self.feeds = feed_configs or FEED_CONFIGS
-        cfg = _load_config()
-        self._keywords: dict = cfg.get("keywords", {})
-        self._fetch_count: int = cfg.get("collectors", {}).get("fetch_count", 10)
+        self._keywords = keywords or {}
+        self._fetch_count = fetch_count
 
     async def collect(self) -> List["HotItem"]:
         import logging

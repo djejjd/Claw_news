@@ -15,7 +15,7 @@ from pathlib import Path
 import shutil
 from datetime import date, datetime, timedelta
 
-import yaml
+from infra.config.settings import Settings
 
 from collectors.rss_sources import RssCollector
 from collectors.huggingface import HfDailyPapersCollector
@@ -26,11 +26,6 @@ from pusher.wecom import WeComPusher, format_message
 logger = logging.getLogger(__name__)
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
 PUSHED_URLS_PATH = Path(__file__).parent / "data" / "pushed_urls.json"
-
-
-def load_config():
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
 
 
 def load_pushed_urls() -> set:
@@ -92,8 +87,8 @@ def cleanup_old_digests():
             pass  # 非日期目录，跳过
 
 
-async def collect_all(config: dict):
-    sources = config.get("collectors", {}).get("sources", {})
+async def collect_all(settings: Settings):
+    sources = settings.collector_sources
 
     async def safe_collect(name, collector):
         try:
@@ -106,12 +101,21 @@ async def collect_all(config: dict):
             return []
 
     tasks = {}
-    if sources.get("rss", True):
-        tasks["rss"] = safe_collect("rss", RssCollector())
-    if sources.get("huggingface", True):
-        tasks["huggingface"] = safe_collect("huggingface", HfDailyPapersCollector())
-    if sources.get("taptap", True):
-        tasks["taptap"] = safe_collect("taptap", TapTapCollector())
+    if sources.rss:
+        tasks["rss"] = safe_collect(
+            "rss",
+            RssCollector(keywords=settings.keywords, fetch_count=settings.fetch_count),
+        )
+    if sources.huggingface:
+        tasks["huggingface"] = safe_collect(
+            "huggingface",
+            HfDailyPapersCollector(fetch_count=settings.fetch_count),
+        )
+    if sources.taptap:
+        tasks["taptap"] = safe_collect(
+            "taptap",
+            TapTapCollector(fetch_count=settings.fetch_count),
+        )
 
     results = await asyncio.gather(*tasks.values())
     all_items = []
@@ -131,12 +135,13 @@ async def main(period: str = "morning", dry_run: bool = False):
             logging.FileHandler(today_dir / "daily.log", encoding="utf-8"),
         ],
     )
-    config = load_config()
-    top_n = config.get("collectors", {}).get("top_n", 5)
-    webhook_url = config.get("pusher", {}).get("wecom_webhook", "")
+    settings = Settings.load(CONFIG_PATH)
+    settings.validate_for_run(dry_run=dry_run)
+    top_n = settings.top_n
+    webhook_url = settings.wecom_webhook
 
     logger.info("Step 1: 采集数据 (%s)", period)
-    all_items = await collect_all(config)
+    all_items = await collect_all(settings)
     logger.info("采集到 %d 条", len(all_items))
 
     logger.info("Step 2: 合并排序")
