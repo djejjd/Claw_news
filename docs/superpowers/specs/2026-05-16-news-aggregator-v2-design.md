@@ -147,9 +147,9 @@ collectors/enrichers/
 
 每个提取器暴露 `async def extract(url: str) -> dict`，返回原始指标字典。提取失败抛异常，由 Enricher 捕获处理。
 
-### 4.7 关键词命中加权
+### 4.7 关键词标记（不参与评分）
 
-富化步骤 2。在标题和摘要中匹配对应分类的关键词，命中则加权。
+富化步骤 2。在标题和摘要中匹配对应分类的关键词，标记是否命中。关键词**不参与 source_score 计算**，仅影响后续竞争选品逻辑。
 
 **关键词库**：
 
@@ -193,11 +193,10 @@ keywords:
 
 **匹配规则**：
 - 对 `item.title + item.summary` 做小写匹配
-- 命中对应分类下任意 1 个关键词 → `source_score += 1.0`
-- 最多加 1.0（不叠加）
-- source_score 上限为 11.0
+- 命中对应分类下任意 1 个关键词 → 标记 `item.keyword_hit = True`
+- 未命中 → `item.keyword_hit = False`
 
-> HF 条目（英文）也参与关键词加权，如果标题/摘要包含 "AI", "GPT", "LLM" 等可命中。
+> `HotItem` 新增字段：`keyword_hit: bool = False`
 
 ## 5. 聚合层设计（更新）
 
@@ -207,29 +206,43 @@ keywords:
 
 ### 5.2 竞争规则
 
-每个分类 2 个源，各产 10 条，合并 20 条 → 输出 5 条：
+```
+每个分类 20 条 = 源A 10条 + 源B 10条
+
+Step 1 — 关键词保底（每源各 1 条）：
+  源A 中筛选 keyword_hit=True 的条目 → 取 final_score 最高 1 条
+  源A 中无命中 → 取源A全部剩余中 final_score 最高 1 条（兜底）
+  源B 同理
+  → 共 2 条，标记为「保底槽」
+
+Step 2 — 全量竞争（剩余 3 条）：
+  去除已入选的 2 条，剩余 18 条按 final_score 降序 → 取前 3 条
+  → 这 3 条不区分来源，自由竞争
+
+Step 3 — 最终排序：
+  5 条按 final_score 降序排列展示
+```
 
 ```
-前 3 条：全量 20 条按 final_score 自由竞争，取最高 3 条
-后 2 条：每源各保底 1 条，取该源剩余条目中 final_score 最高者
-```
+示例（AI：HF 10条 + 量子位 10条）：
 
-示例（AI 分类：HF 10条 + 量子位 10条）：
+  量子位命中：3条（score 8.5, 7.2, 4.1）
+  HF 命中：   5条（score 9.8, 9.1, 8.0, 7.5, 6.3）
 
-```
-Step 1:  20条按 final_score 降序 → 取 top 3（可能是 HF:2 + 量子位:1）
-Step 2:  HF 剩余 → 取最高 1 条保底
-Step 3:  量子位剩余 → 取最高 1 条保底
-Result:  5 条，每源至少 1 条，最多 4 条
+  Step 1: 量子位保底 = 8.5, HF 保底 = 9.8
+  Step 2: 剩余 18 条竞争 → 取 top 3
+  Step 3: 最终 5 条: [9.8(HF保底), 9.1(HF竞争), 8.5(量子位保底), 8.0(HF竞争), 7.5(HF竞争)]
+  → 至少保证量子位出 1 条，其余按真实热度竞争
 ```
 
 ### 5.3 评分公式
 
 ```
-final_score = source_score（热度归一化 0-10 + 关键词加权最多+1） + time_decay_bonus（时效分）
+final_score = source_score（热度归一化 0-10） + time_decay_bonus（时效分）
 ```
 
-- 已有热度数据的源（HF、TapTap）：source_score 来源于采集阶段
+- 评分不涉及关键词权重，关键词仅作用于 Step 1 筛选
+- HF/TapTap：source_score 来源于采集阶段
 - RSS 源：source_score 来源于富化阶段
 - 富化失败：source_score 回退为 5.0
 
