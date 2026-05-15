@@ -3,11 +3,11 @@ from datetime import date
 from pathlib import Path
 from typing import List
 
-import httpx
 import yaml
+from curl_cffi import requests as curl_requests
 from deep_translator import GoogleTranslator
 
-from collectors.base import HotItem, BROWSER_HEADERS
+from collectors.base import HotItem
 
 HF_API_URL = "https://huggingface.co/api/daily_papers"
 
@@ -32,20 +32,24 @@ async def _translate_to_chinese(text: str) -> str:
 
 
 class HfDailyPapersCollector:
-    """HuggingFace Daily Papers API collector. Sorted by community votes, takes top N."""
+    """HuggingFace Daily Papers API collector. Uses curl_cffi for TLS fingerprint."""
 
-    def __init__(self, client: httpx.AsyncClient | None = None):
+    def __init__(self, client=None):
         self._client = client
 
     async def collect(self) -> List[HotItem]:
-        client = self._client or httpx.AsyncClient(headers=BROWSER_HEADERS, follow_redirects=True)
-        try:
-            resp = await client.get(HF_API_URL, timeout=30.0)
+        if self._client is not None:
+            resp = await self._client.get(HF_API_URL, timeout=30.0)
             resp.raise_for_status()
             papers = resp.json()
-        finally:
-            if self._client is None:
-                await client.aclose()
+        else:
+            session = curl_requests.AsyncSession(impersonate="chrome131")
+            try:
+                resp = await session.get(HF_API_URL, timeout=30.0)
+                resp.raise_for_status()
+                papers = resp.json()
+            finally:
+                await session.close()
 
         max_votes = max((p.get("upvotes", 0) for p in papers), default=1)
         papers.sort(key=lambda p: p.get("upvotes", 0), reverse=True)

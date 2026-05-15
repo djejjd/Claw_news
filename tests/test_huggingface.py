@@ -1,3 +1,4 @@
+import httpx
 import pytest
 from collectors.huggingface import HfDailyPapersCollector, HF_API_URL
 
@@ -46,14 +47,14 @@ def test_normalize_upvotes_max():
 
 @pytest.mark.asyncio
 async def test_collect_returns_list(httpx_mock):
-    """API returns HotItem list on success"""
+    """Mock API with injected httpx client"""
     mock_papers = [
         {"title": f"Paper {i}", "paper": {"id": f"id{i}"}, "upvotes": 100 - i * 10}
         for i in range(5)
     ]
     httpx_mock.add_response(url=HF_API_URL, json=mock_papers)
 
-    collector = HfDailyPapersCollector()
+    collector = HfDailyPapersCollector(client=httpx.AsyncClient())
     items = await collector.collect()
     assert len(items) == 5
     assert all(item.category == "ai" for item in items)

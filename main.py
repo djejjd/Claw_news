@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import sys
+import traceback
 from pathlib import Path
 import shutil
 from datetime import date, datetime, timedelta
@@ -25,6 +26,7 @@ from pusher.wecom import WeComPusher, format_message
 logger = logging.getLogger(__name__)
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
 PUSHED_URLS_PATH = Path(__file__).parent / "data" / "pushed_urls.json"
+LOG_PATH = Path(__file__).parent / "data" / "daily.log"
 
 
 def load_config():
@@ -99,8 +101,9 @@ async def collect_all(config: dict):
             items = await collector.collect()
             logger.info("%s: %d items", name, len(items))
             return items
-        except Exception as e:
-            logger.warning("%s failed: %s", name, e)
+        except Exception:
+            logger.error("%s 采集失败:", name)
+            logger.error(traceback.format_exc())
             return []
 
     tasks = {}
@@ -119,9 +122,14 @@ async def collect_all(config: dict):
 
 
 async def main(period: str = "morning", dry_run: bool = False):
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s: %(message)s",
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(LOG_PATH, encoding="utf-8"),
+        ],
     )
     config = load_config()
     top_n = config.get("collectors", {}).get("top_n", 5)
