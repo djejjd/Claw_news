@@ -9,9 +9,12 @@ Usage:
 import asyncio
 import logging
 import sys
+import uuid
 from pathlib import Path
 import shutil
 from datetime import date, timedelta
+
+import portalocker
 
 from infra.config.settings import Settings
 from infra.storage.state_store import StateStore
@@ -72,12 +75,53 @@ async def collect_all(settings: Settings):
     return all_items
 
 
+async def run_push_sequence(grouped, period, pushed_urls, state_store, pusher):
+    current_urls = set(pushed_urls)
+    for category in ("ai", "game", "device"):
+        cat_items = grouped.get(category, [])
+        if not cat_items:
+            continue
+
+        result = await pusher.push_category(
+            category=category,
+            items=cat_items,
+            period=period,
+            pushed_urls=current_urls,
+        )
+
+        if result.success:
+            current_urls = state_store.merge_pushed_urls(set(result.urls))
+            state_store.write_daily_digest_category(
+                period=period,
+                category=category,
+                items=[
+                    {
+                        "title": item.title,
+                        "url": item.url,
+                        "summary": item.summary,
+                        "source": item.source,
+                        "score": item.source_score,
+                    }
+                    for item in cat_items
+                ],
+            )
+        else:
+            logger.error(
+                "push failed for category=%s errcode=%s errmsg=%s",
+                result.category,
+                result.errcode,
+                result.errmsg,
+            )
+    return current_urls
+
+
 async def main(period: str = "morning", dry_run: bool = False):
+    run_id = uuid.uuid4().hex[:8]
     today_dir = DATA_DIR / date.today().isoformat()
     today_dir.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s %(levelname)s: %(message)s",
+        format=f"%(asctime)s %(levelname)s [{run_id}]: %(message)s",
         handlers=[
             logging.StreamHandler(),
             logging.FileHandler(today_dir / "daily.log", encoding="utf-8"),
@@ -87,6 +131,15 @@ async def main(period: str = "morning", dry_run: bool = False):
     settings.validate_for_run(dry_run=dry_run)
     top_n = settings.top_n
     webhook_url = settings.wecom_webhook
+
+    lock_path = DATA_DIR / ".task.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_fd = open(lock_path, "w", encoding="utf-8")
+    try:
+        portalocker.lock(lock_fd, portalocker.LOCK_EX | portalocker.LOCK_NB)
+    except portalocker.LockException:
+        logger.warning("已有任务实例运行中，退出")
+        sys.exit(0)
 
     logger.info("Step 1: 采集数据 (%s)", period)
     all_items = await collect_all(settings)
@@ -113,20 +166,13 @@ async def main(period: str = "morning", dry_run: bool = False):
             sys.exit(1)
         logger.info("Step 3: 推送中")
         pusher = WeComPusher(webhook_url)
-        await pusher.push(grouped, period=period, pushed_urls=pushed_urls)
-        new_urls = {i.url for cat_items in grouped.values() for i in cat_items}
-        state_store.merge_pushed_urls(new_urls)
-        # Write daily digest per category
-        for cat, items in grouped.items():
-            if items:
-                state_store.write_daily_digest_category(
-                    period=period,
-                    category=cat,
-                    items=[{
-                        "title": i.title, "url": i.url, "summary": i.summary,
-                        "source": i.source, "score": i.source_score
-                    } for i in items],
-                )
+        await run_push_sequence(
+            grouped=grouped,
+            period=period,
+            pushed_urls=pushed_urls,
+            state_store=state_store,
+            pusher=pusher,
+        )
         cleanup_old_digests()
         logger.info("推送完成")
 
