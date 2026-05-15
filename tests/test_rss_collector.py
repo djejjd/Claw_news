@@ -1,4 +1,10 @@
-from collectors.rss_sources import RssCollector, FEED_CONFIGS, strip_html, check_keyword_hit, extract_pub_date
+from collectors.rss_sources import (
+    FEED_CONFIGS,
+    RssCollector,
+    check_keyword_hit,
+    extract_pub_date,
+    strip_html,
+)
 
 
 def test_feed_configs_has_4_feeds():
@@ -42,7 +48,7 @@ def test_parse_entry_full():
     }
     feed = {"url": "https://qbitai.com/feed", "category": "ai", "source": "qbitai"}
     item = collector._parse_entry(entry, feed)
-    assert item.keyword_hit == True
+    assert item.keyword_hit
     assert item.pub_date == "2026-05-15"
     assert "<" not in item.summary
     assert "GPT-5" in item.title
@@ -52,8 +58,10 @@ def test_parse_entry_full():
 
 def test_parse_entry_missing():
     collector = RssCollector()
-    item = collector._parse_entry({"title": "X"}, {"url": "rss", "category": "game", "source": "yystv"})
+    item = collector._parse_entry(
+        {"title": "X"}, {"url": "rss", "category": "game", "source": "yystv"}
+    )
     assert item.url == ""
-    assert item.keyword_hit == False
+    assert not item.keyword_hit
     assert item.pub_date == ""
     assert item.source == "yystv"

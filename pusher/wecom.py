@@ -1,11 +1,11 @@
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List
+from typing import List
 
 import httpx
 
-from collectors.base import HotItem, Category
+from collectors.base import Category, HotItem
 
 CATEGORY_LABELS = {
     "ai": "AI 热点",

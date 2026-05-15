@@ -1,7 +1,15 @@
 import time
+
 import pytest
-from pusher.wecom import WeComPusher, format_message, strip_html, CATEGORY_LABELS, CATEGORY_EMOJI, PushResult, WeComError
+
 from collectors.base import HotItem
+from pusher.wecom import (
+    CATEGORY_LABELS,
+    WeComError,
+    WeComPusher,
+    format_message,
+    strip_html,
+)
 
 
 def make_item(title, url, summary, source, category, score, **kwargs):
@@ -28,7 +36,9 @@ class TestFormatMessage:
         assert "晚报" in msg
 
     def test_en_marker(self):
-        item = make_item("Paper", "https://x.com/1", "s", source="huggingface", category="ai", score=5.0)
+        item = make_item(
+            "Paper", "https://x.com/1", "s", source="huggingface", category="ai", score=5.0
+        )
         msg = format_message([item], "ai")
         assert "[EN]" in msg
 
@@ -48,7 +58,9 @@ class TestFormatMessage:
         assert "— 量子位" in msg
 
     def test_hf_source_label(self):
-        item = make_item("t", "https://x.com/t", "s", source="huggingface", category="ai", score=5.0)
+        item = make_item(
+            "t", "https://x.com/t", "s", source="huggingface", category="ai", score=5.0
+        )
         msg = format_message([item], "ai")
         assert "— HuggingFace" in msg
         assert "[EN]" in msg
@@ -68,7 +80,9 @@ class TestFormatMessage:
         assert "— 量子位 · 国内" in msg
 
     def test_foreign_source_has_region_label(self):
-        item = make_item("t", "https://x.com/t", "s", source="huggingface", category="ai", score=5.0)
+        item = make_item(
+            "t", "https://x.com/t", "s", source="huggingface", category="ai", score=5.0
+        )
         msg = format_message([item], "ai")
         assert "— HuggingFace · 国外" in msg
 
@@ -81,7 +95,16 @@ class TestWeComPusher:
 
         pusher = WeComPusher(webhook)
         items = {
-            "ai": [make_item("AI Test", "https://x.com/ai", "summary", source="qbitai", category="ai", score=8.0)],
+            "ai": [
+                make_item(
+                    "AI Test",
+                    "https://x.com/ai",
+                    "summary",
+                    source="qbitai",
+                    category="ai",
+                    score=8.0,
+                )
+            ],
             "game": [],
             "device": [],
         }
@@ -103,7 +126,16 @@ class TestWeComPusher:
 
         pusher = WeComPusher(webhook)
         items = {
-            "ai": [make_item("AI Test", "https://x.com/ai", "summary", source="qbitai", category="ai", score=8.0)],
+            "ai": [
+                make_item(
+                    "AI Test",
+                    "https://x.com/ai",
+                    "summary",
+                    source="qbitai",
+                    category="ai",
+                    score=8.0,
+                )
+            ],
             "game": [],
             "device": [],
         }

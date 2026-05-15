@@ -1,5 +1,4 @@
-import pytest
-from aggregator.merger import Merger, position_score, compute_source_score
+from aggregator.merger import Merger, compute_source_score, position_score
 from collectors.base import HotItem, time_modifier
 
 
@@ -73,15 +72,14 @@ class TestMerger:
         for category, items in result.items():
             if not items:
                 continue
-            # Count sources in result
-            cat_sources = {item.source for item in items}
             # Count sources in input
             input_sources = {item.source for item in sample_items_v2 if item.category == category}
             # Each input source should appear at least once in result
             for src in input_sources:
                 # At least 1 item should be from this source
-                assert any(item.source == src for item in items), \
+                assert any(item.source == src for item in items), (
                     f"Category {category}: source {src} missing from result"
+                )
 
     def test_time_modifier_import(self):
         """time_modifier 可正常导入"""

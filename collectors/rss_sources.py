@@ -5,7 +5,7 @@ from typing import List
 
 import feedparser
 
-from collectors.base import HotItem, BROWSER_HEADERS
+from collectors.base import BROWSER_HEADERS, HotItem
 
 # 设置 feedparser 的 User-Agent，防止被 RSS 源拦截
 feedparser.USER_AGENT = BROWSER_HEADERS["User-Agent"]
@@ -35,19 +35,25 @@ def extract_pub_date(published_parsed) -> str:
 
 
 class RssCollector:
-    def __init__(self, feed_configs: List[dict] | None = None, keywords: dict | None = None, fetch_count: int = 10):
+    def __init__(
+        self,
+        feed_configs: List[dict] | None = None,
+        keywords: dict | None = None,
+        fetch_count: int = 10,
+    ):
         self.feeds = feed_configs or FEED_CONFIGS
         self._keywords = keywords or {}
         self._fetch_count = fetch_count
 
     async def collect(self) -> List["HotItem"]:
         import logging
+
         logger = logging.getLogger(__name__)
         items = []
         for feed in self.feeds:
             try:
                 parsed = feedparser.parse(feed["url"])
-                for entry in parsed.entries[:self._fetch_count]:
+                for entry in parsed.entries[: self._fetch_count]:
                     items.append(self._parse_entry(entry, feed))
             except Exception as e:
                 logger.warning("RSS feed %s failed: %s", feed["url"], e)
@@ -64,10 +70,15 @@ class RssCollector:
         kw_hit = check_keyword_hit(title, summary, cat, self._keywords)
 
         return HotItem(
-            title=title, url=url, summary=summary,
-            source=source_name, category=cat,  # type: ignore[arg-type]
-            source_score=5.0, timestamp=ts,
-            keyword_hit=kw_hit, pub_date=pub_date,
+            title=title,
+            url=url,
+            summary=summary,
+            source=source_name,
+            category=cat,  # type: ignore[arg-type]
+            source_score=5.0,
+            timestamp=ts,
+            keyword_hit=kw_hit,
+            pub_date=pub_date,
         )
 
 

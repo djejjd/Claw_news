@@ -6,14 +6,16 @@ from datetime import date
 
 import pytest
 
-from collectors.base import HotItem
 from aggregator.merger import Merger
-
+from collectors.base import HotItem
+from collectors.utils import safe_collect
 
 # --- 模拟失败的采集器 ---
 
+
 class FailingCollector:
     """模拟服务器端 HTTP 405 反爬拦截或网络不可达"""
+
     def __init__(self, exc=None):
         self._exc = exc or RuntimeError("HTTP 405 Not Allowed")
 
@@ -23,20 +25,19 @@ class FailingCollector:
 
 class EmptyCollector:
     """模拟采集器正常返回但无数据（目标网站改版导致选择器失效）"""
+
     async def collect(self):
         return []
 
 
 class MockCollector:
     """模拟正常采集"""
+
     def __init__(self, items):
         self._items = items
 
     async def collect(self):
         return self._items
-
-
-from collectors.utils import safe_collect
 
 
 class TestSafeCollect:
@@ -87,11 +88,61 @@ class TestMergerWithPartialFailure:
         """TapTap 失败 → 游戏分类只剩游研社，仍应输出结果"""
         today = date.today().isoformat()
         items = [
-            HotItem("主机游戏评测", "https://y.com/1", "评测", "yystv", "game", 8.0, time.time(), True, today),
-            HotItem("Steam 新游", "https://y.com/2", "新游", "yystv", "game", 7.0, time.time(), True, today),
-            HotItem("手游攻略", "https://y.com/3", "攻略", "yystv", "game", 6.0, time.time(), False, today),
-            HotItem("版本更新", "https://y.com/4", "更新", "yystv", "game", 5.0, time.time(), False, today),
-            HotItem("赛季活动", "https://y.com/5", "活动", "yystv", "game", 4.0, time.time(), False, today),
+            HotItem(
+                "主机游戏评测",
+                "https://y.com/1",
+                "评测",
+                "yystv",
+                "game",
+                8.0,
+                time.time(),
+                True,
+                today,
+            ),
+            HotItem(
+                "Steam 新游",
+                "https://y.com/2",
+                "新游",
+                "yystv",
+                "game",
+                7.0,
+                time.time(),
+                True,
+                today,
+            ),
+            HotItem(
+                "手游攻略",
+                "https://y.com/3",
+                "攻略",
+                "yystv",
+                "game",
+                6.0,
+                time.time(),
+                False,
+                today,
+            ),
+            HotItem(
+                "版本更新",
+                "https://y.com/4",
+                "更新",
+                "yystv",
+                "game",
+                5.0,
+                time.time(),
+                False,
+                today,
+            ),
+            HotItem(
+                "赛季活动",
+                "https://y.com/5",
+                "活动",
+                "yystv",
+                "game",
+                4.0,
+                time.time(),
+                False,
+                today,
+            ),
         ]
         merger = Merger(top_n=5)
         result = merger.merge(items, period="morning")
@@ -115,7 +166,17 @@ class TestMergerWithPartialFailure:
     def test_category_with_zero_items(self):
         """某个分类完全没有数据时，该分类返回空"""
         items = [
-            HotItem("AI Only", "https://a.com/1", "", "qbitai", "ai", 5.0, time.time(), False, date.today().isoformat()),
+            HotItem(
+                "AI Only",
+                "https://a.com/1",
+                "",
+                "qbitai",
+                "ai",
+                5.0,
+                time.time(),
+                False,
+                date.today().isoformat(),
+            ),
         ]
         merger = Merger(top_n=5)
         result = merger.merge(items, period="morning")

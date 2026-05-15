@@ -1,7 +1,7 @@
+import time
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Literal
-import time
 
 Category = Literal["ai", "game", "device"]
 
@@ -16,7 +16,7 @@ class HotItem:
     source_score: float  # 0.0-10.0, derived from source popularity/rank
     timestamp: float = field(default_factory=time.time)
     keyword_hit: bool = False  # 是否命中分类关键词
-    pub_date: str = ""         # yyyy-mm-dd 发布日期
+    pub_date: str = ""  # yyyy-mm-dd 发布日期
 
     @property
     def final_score(self) -> float:
@@ -33,8 +33,10 @@ def time_modifier(pub_date: str, period: str = "morning") -> float:
         if period == "morning":
             return 0.0 if diff <= 1 else -2.0
         else:
-            if diff == 0: return 0.0
-            if diff == 1: return -1.0
+            if diff == 0:
+                return 0.0
+            if diff == 1:
+                return -1.0
             return -2.0
     except ValueError:
         return 0
@@ -55,7 +57,11 @@ def time_decay_bonus(ts: float, now: float | None = None) -> float:
 
 
 BROWSER_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
 }

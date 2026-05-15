@@ -1,6 +1,7 @@
 import httpx
 import pytest
-from collectors.huggingface import HfDailyPapersCollector, HF_API_URL
+
+from collectors.huggingface import HF_API_URL, HfDailyPapersCollector
 
 
 def test_parse_paper_to_hotitem():

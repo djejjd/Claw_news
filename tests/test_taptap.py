@@ -1,7 +1,7 @@
 import httpx
 import pytest
-from collectors.taptap import TapTapCollector, TAPTAP_HOT_URL
 
+from collectors.taptap import TAPTAP_HOT_URL, TapTapCollector
 
 SAMPLE_HTML = """
 <html>

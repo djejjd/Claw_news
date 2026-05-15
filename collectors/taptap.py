@@ -35,7 +35,7 @@ class TapTapCollector:
         soup = BeautifulSoup(html, "html.parser")
         cells = soup.select(".game-list-cell")
         items = []
-        for i, cell in enumerate(cells[:self._fetch_count]):
+        for i, cell in enumerate(cells[: self._fetch_count]):
             title_el = cell.select_one('[class*="title"]')
             title = title_el.get_text(strip=True) if title_el else ""
             app_link = cell.select_one('a[href*="/app/"]')
@@ -46,13 +46,17 @@ class TapTapCollector:
             if not title or not href:
                 continue
 
-            items.append(HotItem(
-                title=title,
-                url=href,
-                summary="",
-                source="taptap",
-                category="game",
-                source_score=normalize_rank_score(i + 1, total=min(len(cells), self._fetch_count)),
-                pub_date=date.today().isoformat(),
-            ))
+            items.append(
+                HotItem(
+                    title=title,
+                    url=href,
+                    summary="",
+                    source="taptap",
+                    category="game",
+                    source_score=normalize_rank_score(
+                        i + 1, total=min(len(cells), self._fetch_count)
+                    ),
+                    pub_date=date.today().isoformat(),
+                )
+            )
         return items

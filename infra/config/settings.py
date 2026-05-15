@@ -1,8 +1,10 @@
 # infra/config/settings.py
 from __future__ import annotations
+
 import os
 from dataclasses import dataclass
 from pathlib import Path
+
 import yaml
 
 
@@ -30,7 +32,9 @@ class Settings:
             raw = yaml.safe_load(f) or {}
         collectors = raw.get("collectors", {})
         source_flags = collectors.get("sources", {})
-        webhook = os.getenv("PUSHER_WECOM_WEBHOOK") or raw.get("pusher", {}).get("wecom_webhook", "")
+        webhook = os.getenv("PUSHER_WECOM_WEBHOOK") or raw.get("pusher", {}).get(
+            "wecom_webhook", ""
+        )
         return cls(
             fetch_count=collectors.get("fetch_count", 10),
             top_n=collectors.get("top_n", 5),
@@ -48,5 +52,5 @@ class Settings:
         if dry_run:
             return
         prefix = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key="
-        if not self.wecom_webhook.startswith(prefix) or not self.wecom_webhook[len(prefix):]:
+        if not self.wecom_webhook.startswith(prefix) or not self.wecom_webhook[len(prefix) :]:
             raise ValueError("invalid wecom webhook")

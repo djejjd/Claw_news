@@ -1,5 +1,7 @@
 from pathlib import Path
+
 import pytest
+
 from collectors.base import HotItem
 
 
@@ -9,15 +11,24 @@ class StubPusher:
 
     async def push_category(self, category, items, period="morning", pushed_urls=None):
         from pusher.wecom import PushResult
+
         if category == self.fail_category:
-            return PushResult(category=category, success=False, urls=[], errcode=45009, errmsg="rate limited")
-        return PushResult(category=category, success=True, urls=[item.url for item in items if item.url], errcode=0, errmsg="ok")
+            return PushResult(
+                category=category, success=False, urls=[], errcode=45009, errmsg="rate limited"
+            )
+        return PushResult(
+            category=category,
+            success=True,
+            urls=[item.url for item in items if item.url],
+            errcode=0,
+            errmsg="ok",
+        )
 
 
 @pytest.mark.asyncio
 async def test_successful_categories_committed_even_if_later_one_fails(tmp_path: Path):
-    from main import run_push_sequence
     from infra.storage.state_store import StateStore
+    from main import run_push_sequence
 
     grouped = {
         "ai": [HotItem("AI", "https://a.com/1", "", "qbitai", "ai", 5.0)],

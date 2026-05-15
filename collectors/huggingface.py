@@ -49,7 +49,7 @@ class HfDailyPapersCollector:
 
         max_votes = max((p.get("upvotes", 0) for p in papers), default=1)
         papers.sort(key=lambda p: p.get("upvotes", 0), reverse=True)
-        items = [self._parse_paper(p, max_votes) for p in papers[:self._fetch_count]]
+        items = [self._parse_paper(p, max_votes) for p in papers[: self._fetch_count]]
 
         # 并发翻译所有摘要
         translations = await asyncio.gather(

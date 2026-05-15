@@ -8,22 +8,21 @@ Usage:
 
 import asyncio
 import logging
+import shutil
 import sys
 import uuid
-from pathlib import Path
-import shutil
 from datetime import date, timedelta
+from pathlib import Path
 
 import portalocker
 
-from infra.config.settings import Settings
-from infra.storage.state_store import StateStore
-
-from collectors.rss_sources import RssCollector
+from aggregator.merger import Merger
 from collectors.huggingface import HfDailyPapersCollector
+from collectors.rss_sources import RssCollector
 from collectors.taptap import TapTapCollector
 from collectors.utils import safe_collect
-from aggregator.merger import Merger
+from infra.config.settings import Settings
+from infra.storage.state_store import StateStore
 from pusher.wecom import WeComPusher, format_message
 
 logger = logging.getLogger(__name__)

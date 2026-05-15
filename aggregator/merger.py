@@ -1,6 +1,6 @@
 from typing import Dict, List
 
-from collectors.base import HotItem, Category, time_modifier
+from collectors.base import Category, HotItem, time_modifier
 
 
 def position_score(pos: int) -> float:
@@ -65,7 +65,7 @@ class Merger:
 
             # Step 3: 最终排序
             selected.sort(key=lambda x: x.source_score, reverse=True)
-            result[category] = selected[:self.top_n]
+            result[category] = selected[: self.top_n]
 
         return result
 
