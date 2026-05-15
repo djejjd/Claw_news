@@ -12,12 +12,12 @@ V1 存在的问题：
 
 | 分类 | 源 | 方式 | 每次取 | 热度数据来源 |
 |------|-----|------|--------|-------------|
-| 🤖 AI | HuggingFace Daily Papers | API | 5 条 | API upvotes（自带） |
-| 🤖 AI | 量子位 | RSS + 富化 | 5 条 | 原文页面阅读量 |
-| 🎮 Game | TapTap 下载榜 | 爬虫 | 5 条 | 榜单排名（自带） |
-| 🎮 Game | 游研社 | RSS + 富化 | 5 条 | 原文页面阅读/评论 |
-| 📱 Device | IT之家 | RSS + 富化 | 5 条 | 原文页面阅读量+评论数 |
-| 📱 Device | 少数派 | RSS + 富化 | 5 条 | 原文页面阅读量 |
+| 🤖 AI | HuggingFace Daily Papers | API | 10 条 | API upvotes（自带） |
+| 🤖 AI | 量子位 | RSS + 富化 | 10 条 | 原文页面阅读量 |
+| 🎮 Game | TapTap 下载榜 | 爬虫 | 10 条 | 榜单排名（自带） |
+| 🎮 Game | 游研社 | RSS + 富化 | 10 条 | 原文页面阅读/评论 |
+| 📱 Device | IT之家 | RSS + 富化 | 10 条 | 原文页面阅读量+评论数 |
+| 📱 Device | 少数派 | RSS + 富化 | 10 条 | 原文页面阅读量 |
 
 > 量子位替换已关站的机器之心。
 
@@ -59,9 +59,12 @@ collectors/
 ### 4.2 富化流程
 
 ```
-RSS 条目 (source_score=5.0)
+所有条目（采集阶段产出）
   ↓
-访问原文页面 URL
+判断 source_score ≠ 5.0（HF/TapTap）→ 跳过热度提取，仅做关键词加权
+判断 source_score == 5.0（RSS）→ 执行以下全部步骤
+  ↓
+步骤 1：访问原文页面 URL
   ↓
 根据 source 路由到对应提取器
   ↓
@@ -69,7 +72,12 @@ RSS 条目 (source_score=5.0)
   ↓
 同一源内，指标归一化到 0-10（批次内相对竞争）
   ↓
-更新 source_score，覆盖原来的 5.0
+步骤 2：关键词命中加权
+  ↓
+标题/摘要匹配对应分类关键词 → source_score + 1.0
+未命中 → 不加
+  ↓
+更新 source_score
 ```
 
 ### 4.3 各源原始指标提取
@@ -139,34 +147,86 @@ collectors/enrichers/
 
 每个提取器暴露 `async def extract(url: str) -> dict`，返回原始指标字典。提取失败抛异常，由 Enricher 捕获处理。
 
+### 4.7 关键词命中加权
+
+富化步骤 2。在标题和摘要中匹配对应分类的关键词，命中则加权。
+
+**关键词库**：
+
+```yaml
+# config.yaml 中新增
+keywords:
+  ai:
+    - AI
+    - 大模型
+    - GPT
+    - LLM
+    - 机器学习
+    - 深度学习
+    - 人工智能
+    - 神经网络
+    - 训练
+    - Agent
+  game:
+    - 游戏
+    - 手游
+    - 主机
+    - Steam
+    - Switch
+    - PS5
+    - 上线
+    - 赛季
+    - 联动
+    - 版本
+  device:
+    - 芯片
+    - 手机
+    - 笔记本
+    - 显卡
+    - CPU
+    - 处理器
+    - iPhone
+    - 系统
+    - 发布
+    - 评测
+```
+
+**匹配规则**：
+- 对 `item.title + item.summary` 做小写匹配
+- 命中对应分类下任意 1 个关键词 → `source_score += 1.0`
+- 最多加 1.0（不叠加）
+- source_score 上限为 11.0
+
+> HF 条目（英文）也参与关键词加权，如果标题/摘要包含 "AI", "GPT", "LLM" 等可命中。
+
 ## 5. 聚合层设计（更新）
 
-### 5.1 每源取 5 条
+### 5.1 每源取 10 条
 
-配置项 `fetch_count: 5`，采集器统一遵守。
+配置项 `fetch_count: 10`，每个源采集 10 条，采集器统一遵守。每个分类 2 源 → 20 条竞争。
 
 ### 5.2 竞争规则
 
-每个分类 2 个源，各产 5 条，合并 10 条 → 输出 5 条：
+每个分类 2 个源，各产 10 条，合并 20 条 → 输出 5 条：
 
 ```
-前 3 条：全量 10 条按 final_score 自由竞争，取最高 3 条
+前 3 条：全量 20 条按 final_score 自由竞争，取最高 3 条
 后 2 条：每源各保底 1 条，取该源剩余条目中 final_score 最高者
 ```
 
-示例（AI 分类：HF 5条 + 量子位 5条）：
+示例（AI 分类：HF 10条 + 量子位 10条）：
 
 ```
-Step 1:  10条按 final_score 降序 → 取 top 3（可能是 HF:2 + 量子位:1）
-Step 2:  HF 剩余 3 条 → 取最高 1 条保底
-Step 3:  量子位剩余 4 条 → 取最高 1 条保底
+Step 1:  20条按 final_score 降序 → 取 top 3（可能是 HF:2 + 量子位:1）
+Step 2:  HF 剩余 → 取最高 1 条保底
+Step 3:  量子位剩余 → 取最高 1 条保底
 Result:  5 条，每源至少 1 条，最多 4 条
 ```
 
 ### 5.3 评分公式
 
 ```
-final_score = source_score（热度归一化 0-10）+ time_decay_bonus（时效分）
+final_score = source_score（热度归一化 0-10 + 关键词加权最多+1） + time_decay_bonus（时效分）
 ```
 
 - 已有热度数据的源（HF、TapTap）：source_score 来源于采集阶段
@@ -187,9 +247,9 @@ Claw_news/
 ├── config.yaml
 ├── collectors/
 │   ├── base.py                # HotItem（不变）
-│   ├── huggingface.py         # 改：fetch_count=5
-│   ├── rss_sources.py         # 改：fetch_count=5, 机器之心→量子位, HTML去标签
-│   ├── taptap.py              # 改：fetch_count=5
+│   ├── huggingface.py         # 改：fetch_count=10
+│   ├── rss_sources.py         # 改：fetch_count=10, 机器之心→量子位, HTML去标签
+│   ├── taptap.py              # 改：fetch_count=10
 │   ├── enricher.py            # 新增：富化入口
 │   └── enrichers/             # 新增：按源拆分
 │       ├── __init__.py
@@ -211,7 +271,7 @@ Claw_news/
 
 ```yaml
 collectors:
-  fetch_count: 5  # 每个源取几条
+  fetch_count: 10  # 每个源取几条
   sources:
     huggingface: true
     rss: true
@@ -240,7 +300,7 @@ schedule:
 | 风险 | 应对 |
 |------|------|
 | 原文页面结构变更导致热度提取失败 | 每条提取包裹 try/except，失败保留默认分 5.0 |
-| 并发富化 20 条导致请求过多 | 限制并发数 5，asyncio.Semaphore |
+| 并发富化 40 条导致请求过多 | 限制并发数 5，asyncio.Semaphore |
 | 量子位 RSS 后续也关站 | RSS feed 解析 bozo 标识，失败不中断 |
 | 网站反爬封 IP | 富化使用和采集器相同的 UA header |
 
