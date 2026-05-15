@@ -10,6 +10,7 @@ from collectors.base import HotItem
 FEED_CONFIGS: List[dict] = [
     {"url": "https://www.jiqizhixin.com/rss", "category": "ai"},
     {"url": "https://sspai.com/feed", "category": "device"},
+    {"url": "https://www.ithome.com/rss/", "category": "device"},
     {"url": "https://www.yystv.cn/rss/feed", "category": "game"},
 ]
 

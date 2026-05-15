@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 
 from collectors.base import HotItem, normalize_rank_score
 
-TAPTAP_HOT_URL = "https://www.taptap.cn/top/hot"
+TAPTAP_HOT_URL = "https://www.taptap.cn/top/download"
 
 
 class TapTapCollector:
@@ -29,12 +29,13 @@ class TapTapCollector:
 
     def _parse_html(self, html: str) -> List[HotItem]:
         soup = BeautifulSoup(html, "html.parser")
-        cards = soup.select("a.game-card")
+        cells = soup.select(".game-list-cell")
         items = []
-        for i, card in enumerate(cards[:10]):
-            title_el = card.select_one("h3")
+        for i, cell in enumerate(cells[:10]):
+            title_el = cell.select_one('[class*="title"]')
             title = title_el.get_text(strip=True) if title_el else ""
-            href = card.get("href", "")
+            app_link = cell.select_one('a[href*="/app/"]')
+            href = app_link.get("href", "") if app_link else ""
             if href and not href.startswith("http"):
                 href = f"https://www.taptap.cn{href}"
 
@@ -47,6 +48,6 @@ class TapTapCollector:
                 summary="",
                 source="taptap",
                 category="game",
-                source_score=normalize_rank_score(i + 1, total=min(len(cards), 10)),
+                source_score=normalize_rank_score(i + 1, total=min(len(cells), 10)),
             ))
         return items

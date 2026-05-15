@@ -5,19 +5,17 @@ from collectors.taptap import TapTapCollector, TAPTAP_HOT_URL
 SAMPLE_HTML = """
 <html>
 <body>
-<div class="tap-top-list">
-  <a class="game-card" href="/app/12345">
-    <h3>原神</h3>
-    <span class="game-genre">角色扮演</span>
-  </a>
-  <a class="game-card" href="/app/67890">
-    <h3>崩坏：星穹铁道</h3>
-    <span class="game-genre">回合制</span>
-  </a>
-  <a class="game-card" href="/app/11111">
-    <h3>绝区零</h3>
-    <span class="game-genre">动作</span>
-  </a>
+<div class="game-list-cell tap-router rank-game-cell">
+  <a href="/app/12345"><span>App icon</span></a>
+  <span class="game-list-cell-title">原神</span>
+</div>
+<div class="game-list-cell tap-router rank-game-cell">
+  <a href="/app/67890"><span>App icon</span></a>
+  <span class="game-list-cell-title">崩坏：星穹铁道</span>
+</div>
+<div class="game-list-cell tap-router rank-game-cell">
+  <a href="/app/11111"><span>App icon</span></a>
+  <span class="game-list-cell-title">绝区零</span>
 </div>
 </body>
 </html>
