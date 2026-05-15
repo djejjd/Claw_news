@@ -48,38 +48,96 @@ collectors/
 
 ## 4. 富化层设计
 
-### 4.1 接口
+### 4.1 当前 source_score 来源
+
+| 源 | 当前 source_score | 问题 |
+|----|------------------|------|
+| HuggingFace | upvotes 归一化到 0-10 | ✅ 有意义 |
+| TapTap | 榜单排名归一化到 0-10 | ✅ 有意义 |
+| 量子位/IT之家/少数派/游研社 | 全部 5.0 | ❌ 无法区分热度 |
+
+### 4.2 富化流程
+
+```
+RSS 条目 (source_score=5.0)
+  ↓
+访问原文页面 URL
+  ↓
+根据 source 路由到对应提取器
+  ↓
+从 HTML 中提取原始指标（阅读量/评论数）
+  ↓
+同一源内，指标归一化到 0-10（批次内相对竞争）
+  ↓
+更新 source_score，覆盖原来的 5.0
+```
+
+### 4.3 各源原始指标提取
+
+| 源 | 提取字段 | 说明 |
+|----|---------|------|
+| 量子位 | `views`（阅读量） | 原文页面通常有阅读数 |
+| IT之家 | `views`（阅读量）+ `comments`（评论数） | 两者都显示在文章页 |
+| 少数派 | `views`（阅读量） | 文章页有阅读数 |
+| 游研社 | `views`（阅读量）+ `comments`（评论数） | 同 IT之家 |
+
+### 4.4 归一化公式
+
+**单指标源（量子位、少数派）**：
+
+```
+source_score = (views / max_views_in_batch) × 10
+```
+
+**双指标源（IT之家、游研社）**：
+
+```
+heat = views + comments × 10    # 1 条评论 ≈ 10 次阅读
+source_score = (heat / max_heat_in_batch) × 10
+```
+
+**边界处理**：
+
+- `max_views_in_batch == 0`（全为 0）→ 全部保留 5.0（无法竞争）
+- 批次仅 1 条 → source_score = 10.0（没有比较对象，按最高处理）
+- 提取失败 → 保留 5.0，不中断其他条目
+
+### 4.5 接口定义
 
 ```python
 # collectors/enricher.py
 
 class Enricher:
+    """热度富化器：对 source_score=5.0 的 RSS 条目，从原文提取热度数据"""
+
     def __init__(self, client: httpx.AsyncClient | None = None): ...
 
     async def enrich(self, items: List[HotItem]) -> List[HotItem]:
         """
-        对 HotItem 列表进行富化：
-        - 已有 source_score ≠ 5.0 的跳过（HF、TapTap 自带热度）
-        - source_score == 5.0 的 RSS 条目根据 source 字段路由到对应提取器
-        - 并发访问原文页面获取热度指标
-        - 热度指标归一化为 source_score（0-10）
+        输入：采集阶段产出的所有 HotItem（含 HF/TapTap 已评分 + RSS 默认 5.0）
+        输出：富化后的 HotItem（RSS 条目的 source_score 替换为归一化热度）
+        
+        识别逻辑：
+        - source_score != 5.0 → 跳过（已有热度数据）
+        - source_score == 5.0 → 根据 item.source 路由到对应提取器
+        
+        并发控制：asyncio.Semaphore(5)
+        超时：单条 15s
         """
 ```
 
-### 4.2 各源提取策略
+### 4.6 提取器文件结构
 
-| 源 | 提取字段 | 归一化方式 |
-|----|---------|-----------|
-| 量子位 | 阅读量 | 同类阅读量最高者=10，其他按比例 |
-| IT之家 | 阅读量 + 评论数 | 评论数加权（1评论=10阅读），取最大者=10 |
-| 少数派 | 阅读量 | 同类阅读量最高者=10，其他按比例 |
-| 游研社 | 阅读量 + 评论数 | 同 IT之家策略 |
+```
+collectors/enrichers/
+├── __init__.py
+├── qbitai.py         # extract(title, url) -> dict{views: int}
+├── ithome.py         # extract(title, url) -> dict{views: int, comments: int}
+├── sspai.py          # extract(title, url) -> dict{views: int}
+└── yystv.py          # extract(title, url) -> dict{views: int, comments: int}
+```
 
-### 4.3 容错
-
-- 原文页面访问失败 → 保留 source_score = 5.0，不中断
-- 页面解析不到热度数据 → 保留 source_score = 5.0
-- 单条富化超时 15s，超时跳过
+每个提取器暴露 `async def extract(url: str) -> dict`，返回原始指标字典。提取失败抛异常，由 Enricher 捕获处理。
 
 ## 5. 聚合层设计（更新）
 
