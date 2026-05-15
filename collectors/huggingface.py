@@ -1,14 +1,20 @@
+from datetime import date
+from pathlib import Path
 from typing import List
 
 import httpx
+import yaml
 
 from collectors.base import HotItem
 
 HF_API_URL = "https://huggingface.co/api/daily_papers"
 
+_cfg = yaml.safe_load(open(Path(__file__).parent.parent / "config.yaml"))
+HF_FETCH_COUNT = _cfg.get("collectors", {}).get("fetch_count", 10)
+
 
 class HfDailyPapersCollector:
-    """HuggingFace Daily Papers API collector. Sorted by community votes, takes top 10."""
+    """HuggingFace Daily Papers API collector. Sorted by community votes, takes top N."""
 
     def __init__(self, client: httpx.AsyncClient | None = None):
         self._client = client
@@ -25,7 +31,7 @@ class HfDailyPapersCollector:
 
         max_votes = max((p.get("upvotes", 0) for p in papers), default=1)
         papers.sort(key=lambda p: p.get("upvotes", 0), reverse=True)
-        items = [self._parse_paper(p, max_votes) for p in papers[:10]]
+        items = [self._parse_paper(p, max_votes) for p in papers[:HF_FETCH_COUNT]]
         return items
 
     def _parse_paper(self, paper: dict, max_votes: int | None = None) -> HotItem:
@@ -44,6 +50,7 @@ class HfDailyPapersCollector:
             source="huggingface",
             category="ai",
             source_score=self._upvotes_to_score(upvotes, max_votes),
+            pub_date=date.today().isoformat(),
         )
 
     def _upvotes_to_score(self, upvotes: int, max_votes: int) -> float:

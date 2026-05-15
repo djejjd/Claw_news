@@ -32,6 +32,7 @@ def test_parse_html_to_items():
     assert items[0].category == "game"
     assert items[0].source == "taptap"
     assert items[0].source_score > items[1].source_score  # rank 1 > rank 2
+    assert all(item.pub_date != "" for item in items)
 
 
 def test_parse_html_empty():

@@ -17,6 +17,7 @@ def test_parse_paper_to_hotitem():
     assert item.category == "ai"
     assert item.source == "huggingface"
     assert 5.0 <= item.source_score <= 10.0
+    assert item.pub_date != ""
 
 
 def test_parse_paper_minimal():
