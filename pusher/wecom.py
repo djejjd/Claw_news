@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List
 
@@ -96,6 +97,23 @@ def format_message(
     return "\n".join(lines)
 
 
+@dataclass
+class PushResult:
+    category: str
+    success: bool
+    urls: list[str]
+    errcode: int | None = None
+    errmsg: str | None = None
+
+
+class WeComError(RuntimeError):
+    def __init__(self, category: str, errcode: int | None, errmsg: str | None):
+        self.category = category
+        self.errcode = errcode
+        self.errmsg = errmsg or "unknown"
+        super().__init__(f"category={category} errcode={errcode} errmsg={self.errmsg}")
+
+
 class WeComPusher:
     """企微机器人推送器"""
 
@@ -103,25 +121,53 @@ class WeComPusher:
         self.webhook_url = webhook_url
         self._client = client
 
-    async def push(
+    async def push_category(
         self,
-        items: Dict[Category, List[HotItem]],
+        category: str,
+        items: list,
         period: str = "morning",
         pushed_urls: set | None = None,
-    ) -> None:
+    ) -> PushResult:
         if pushed_urls is None:
             pushed_urls = set()
 
+        msg = format_message(items, category, period=period, pushed_urls=pushed_urls)
+        payload = {"msgtype": "markdown", "markdown": {"content": msg}}
+        urls = [item.url for item in items if item.url]
+
         client = self._client or httpx.AsyncClient()
         try:
-            for category in ("ai", "game", "device"):
-                cat_items = items.get(category, [])
-                if not cat_items:
-                    continue
-                msg = format_message(cat_items, category, period=period, pushed_urls=pushed_urls)
-                payload = {"msgtype": "markdown", "markdown": {"content": msg}}
-                resp = await client.post(self.webhook_url, json=payload, timeout=15.0)
-                resp.raise_for_status()
+            resp = await client.post(self.webhook_url, json=payload, timeout=15.0)
+            resp.raise_for_status()
+            body = resp.json()
+            if body.get("errcode") != 0:
+                raise WeComError(
+                    category=category,
+                    errcode=body.get("errcode"),
+                    errmsg=body.get("errmsg"),
+                )
+            return PushResult(
+                category=category,
+                success=True,
+                urls=urls,
+                errcode=0,
+                errmsg=body.get("errmsg"),
+            )
         finally:
             if self._client is None:
                 await client.aclose()
+
+    async def push(self, items_by_category, period="morning", pushed_urls=None):
+        results = []
+        for category in ("ai", "game", "device"):
+            cat_items = items_by_category.get(category, [])
+            if not cat_items:
+                continue
+            result = await self.push_category(
+                category=category,
+                items=cat_items,
+                period=period,
+                pushed_urls=pushed_urls,
+            )
+            results.append(result)
+        return results

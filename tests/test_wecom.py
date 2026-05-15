@@ -1,6 +1,6 @@
 import time
 import pytest
-from pusher.wecom import WeComPusher, format_message, strip_html, CATEGORY_LABELS, CATEGORY_EMOJI
+from pusher.wecom import WeComPusher, format_message, strip_html, CATEGORY_LABELS, CATEGORY_EMOJI, PushResult, WeComError
 from collectors.base import HotItem
 
 
@@ -109,3 +109,35 @@ class TestWeComPusher:
         }
         await pusher.push(items, period="evening")
         assert len(httpx_mock.get_requests()) >= 1
+
+
+@pytest.mark.asyncio
+async def test_push_category_success(httpx_mock):
+    webhook = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+    httpx_mock.add_response(url=webhook, json={"errcode": 0, "errmsg": "ok"})
+    pusher = WeComPusher(webhook)
+    items = [make_item("Test", "https://x.com/1", "s", source="qbitai", category="ai", score=5.0)]
+    result = await pusher.push_category("ai", items)
+    assert result.success is True
+    assert result.category == "ai"
+    assert result.errcode == 0
+
+
+@pytest.mark.asyncio
+async def test_push_category_business_error(httpx_mock):
+    webhook = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+    httpx_mock.add_response(url=webhook, json={"errcode": 45009, "errmsg": "rate limited"})
+    pusher = WeComPusher(webhook)
+    items = [make_item("Test", "https://x.com/1", "s", source="qbitai", category="ai", score=5.0)]
+    with pytest.raises(WeComError, match="45009"):
+        await pusher.push_category("ai", items)
+
+
+@pytest.mark.asyncio
+async def test_push_category_http_error(httpx_mock):
+    webhook = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+    httpx_mock.add_response(url=webhook, status_code=500)
+    pusher = WeComPusher(webhook)
+    items = [make_item("Test", "https://x.com/1", "s", source="qbitai", category="ai", score=5.0)]
+    with pytest.raises(Exception):
+        await pusher.push_category("ai", items)
