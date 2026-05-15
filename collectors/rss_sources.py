@@ -1,23 +1,43 @@
+import re
 import time
 from calendar import timegm
+from pathlib import Path
 from typing import List
 
 import feedparser
+import yaml
 
 from collectors.base import HotItem
 
-# Each feed: url + category
 FEED_CONFIGS: List[dict] = [
-    {"url": "https://www.jiqizhixin.com/rss", "category": "ai"},
-    {"url": "https://sspai.com/feed", "category": "device"},
-    {"url": "https://www.ithome.com/rss/", "category": "device"},
-    {"url": "https://www.yystv.cn/rss/feed", "category": "game"},
+    {"url": "https://www.qbitai.com/feed", "category": "ai", "source": "qbitai"},
+    {"url": "https://sspai.com/feed", "category": "device", "source": "sspai"},
+    {"url": "https://www.ithome.com/rss/", "category": "device", "source": "ithome"},
+    {"url": "https://www.yystv.cn/rss/feed", "category": "game", "source": "yystv"},
 ]
+
+_cfg = yaml.safe_load(open(Path(__file__).parent.parent / "config.yaml"))
+KEYWORDS: dict = _cfg.get("keywords", {})
+FETCH_COUNT: int = _cfg.get("collectors", {}).get("fetch_count", 10)
+
+
+def strip_html(text: str) -> str:
+    return re.sub(r"<[^>]+>", "", text).strip()
+
+
+def check_keyword_hit(title: str, summary: str, category: str, keywords: dict) -> bool:
+    kws = keywords.get(category, [])
+    text = (title + " " + summary).lower()
+    return any(kw.lower() in text for kw in kws)
+
+
+def extract_pub_date(published_parsed) -> str:
+    if published_parsed and len(published_parsed) >= 3:
+        return f"{published_parsed[0]:04d}-{published_parsed[1]:02d}-{published_parsed[2]:02d}"
+    return ""
 
 
 class RssCollector:
-    """RSS multi-source collector. Iterates FEED_CONFIGS, takes last 10 entries from each, converts to HotItem."""
-
     def __init__(self, feed_configs: List[dict] | None = None):
         self.feeds = feed_configs or FEED_CONFIGS
 
@@ -28,8 +48,7 @@ class RssCollector:
         for feed in self.feeds:
             try:
                 parsed = feedparser.parse(feed["url"])
-                entries = parsed.entries[:10]
-                for entry in entries:
+                for entry in parsed.entries[:FETCH_COUNT]:
                     items.append(self._parse_entry(entry, feed))
             except Exception as e:
                 logger.warning("RSS feed %s failed: %s", feed["url"], e)
@@ -38,23 +57,21 @@ class RssCollector:
     def _parse_entry(self, entry: dict, feed: dict) -> "HotItem":
         title = entry.get("title", "")
         url = entry.get("link", "")
-        summary = entry.get("summary", "")
+        summary = strip_html(entry.get("summary", ""))
         ts = _parse_timestamp(entry)
+        pub_date = extract_pub_date(entry.get("published_parsed"))
+        cat = feed["category"]
+        source_name = feed.get("source", cat)
+        kw_hit = check_keyword_hit(title, summary, cat, KEYWORDS)
 
         return HotItem(
-            title=title,
-            url=url,
-            summary=summary,
-            source="rss",
-            category=feed["category"],  # type: ignore[arg-type]
-            source_score=5.0,
-            timestamp=ts,
+            title=title, url=url, summary=summary,
+            source=source_name, category=cat,  # type: ignore[arg-type]
+            source_score=5.0, timestamp=ts,
+            keyword_hit=kw_hit, pub_date=pub_date,
         )
 
 
 def _parse_timestamp(entry: dict) -> float:
-    """Extract timestamp from feedparser entry, fallback to current time"""
-    published_parsed = entry.get("published_parsed")
-    if published_parsed:
-        return float(timegm(published_parsed))
-    return time.time()
+    pp = entry.get("published_parsed")
+    return float(timegm(pp)) if pp else time.time()
