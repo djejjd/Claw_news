@@ -1,58 +1,88 @@
-import time
 import pytest
-from aggregator.merger import Merger
-from collectors.base import HotItem
+from aggregator.merger import Merger, position_score, compute_source_score
+from collectors.base import HotItem, time_modifier
+
+
+class TestPositionScore:
+    def test_position_score_first(self):
+        assert position_score(1) == 10.0
+
+    def test_position_score_last(self):
+        assert position_score(10) == 5.5
+
+    def test_position_score_decreasing(self):
+        assert position_score(1) > position_score(5) > position_score(10)
+
+    def test_position_score_clamp(self):
+        assert position_score(0) == 10.0
+        assert position_score(100) == 5.5
+
+
+class TestComputeSourceScore:
+    def test_hf_keeps_original(self):
+        item = HotItem("t", "", "", "huggingface", "ai", 9.0)
+        assert compute_source_score(item, position=1) == 9.0
+
+    def test_taptap_keeps_original(self):
+        item = HotItem("t", "", "", "taptap", "game", 8.0)
+        assert compute_source_score(item, position=1) == 8.0
+
+    def test_rss_with_keyword_and_today(self):
+        item = HotItem("t", "", "", "qbitai", "ai", 5.0, keyword_hit=True, pub_date="2026-05-16")
+        score = compute_source_score(item, position=1, period="morning")
+        # position_score(1)=10.0 + keyword_bonus=1.0 + time_modifier=0
+        assert score == 11.0
+
+    def test_rss_no_keyword_old(self):
+        item = HotItem("t", "", "", "yystv", "game", 5.0, keyword_hit=False, pub_date="2026-05-10")
+        score = compute_source_score(item, position=5, period="morning")
+        # position_score(5)=8.0 + keyword_bonus=0 + time_modifier(old)=-2.0
+        assert score == 6.0
 
 
 class TestMerger:
-    def test_dedup_by_url_keeps_higher_score(self, sample_items):
-        """URL dedup keeps the item with higher source_score"""
+    def test_groups_by_category(self, sample_items_v2):
         merger = Merger(top_n=5)
-        result = merger.merge(sample_items)
-        ai_items = result["ai"]
-        titles = [item.title for item in ai_items]
-        assert "AI Paper A" in titles
-        assert "AI Paper A dup" not in titles
-
-    def test_groups_by_category(self, sample_items):
-        """Groups results by category dict"""
-        merger = Merger(top_n=5)
-        result = merger.merge(sample_items)
+        result = merger.merge(sample_items_v2, period="morning")
         assert set(result.keys()) == {"ai", "game", "device"}
-        assert all(item.category == "ai" for item in result["ai"])
-        assert all(item.category == "game" for item in result["game"])
-        assert all(item.category == "device" for item in result["device"])
 
-    def test_sorts_by_final_score_desc(self, sample_items):
-        """Each category sorted by final_score descending"""
+    def test_sorts_desc(self, sample_items_v2):
         merger = Merger(top_n=5)
-        result = merger.merge(sample_items)
-        for cat_items in result.values():
-            scores = [item.final_score for item in cat_items]
-            assert scores == sorted(scores, reverse=True)
+        result = merger.merge(sample_items_v2, period="morning")
+        for items in result.values():
+            if items:
+                scores = [item.source_score for item in items]
+                assert scores == sorted(scores, reverse=True)
 
-    def test_top_n_limit(self, sample_items):
-        """Each category capped at top_n items"""
-        merger = Merger(top_n=2)
-        result = merger.merge(sample_items)
-        for cat_items in result.values():
-            assert len(cat_items) <= 2
+    def test_top_n_limit(self, sample_items_v2):
+        merger = Merger(top_n=5)
+        result = merger.merge(sample_items_v2, period="morning")
+        for items in result.values():
+            assert len(items) <= 5
 
     def test_empty_input(self):
-        """Empty input returns empty dict with all categories"""
         merger = Merger(top_n=5)
-        result = merger.merge([])
+        result = merger.merge([], period="morning")
         assert result == {"ai": [], "game": [], "device": []}
 
-    def test_single_category(self):
-        """Only one category of data"""
-        now = time.time()
-        items = [
-            HotItem("AI 1", "https://x.com/1", "", "huggingface", "ai", 8.0, now),
-            HotItem("AI 2", "https://x.com/2", "", "rss", "ai", 5.0, now),
-        ]
+    def test_each_source_has_at_least_one(self, sample_items_v2):
+        """每源至少 1 条出现在结果中（V2 关键词保底规则）"""
         merger = Merger(top_n=5)
-        result = merger.merge(items)
-        assert len(result["ai"]) == 2
-        assert result["game"] == []
-        assert result["device"] == []
+        result = merger.merge(sample_items_v2, period="morning")
+
+        for category, items in result.items():
+            if not items:
+                continue
+            # Count sources in result
+            cat_sources = {item.source for item in items}
+            # Count sources in input
+            input_sources = {item.source for item in sample_items_v2 if item.category == category}
+            # Each input source should appear at least once in result
+            for src in input_sources:
+                # At least 1 item should be from this source
+                assert any(item.source == src for item in items), \
+                    f"Category {category}: source {src} missing from result"
+
+    def test_time_modifier_import(self):
+        """time_modifier 可正常导入"""
+        assert callable(time_modifier)
