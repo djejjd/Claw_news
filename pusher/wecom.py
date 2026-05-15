@@ -1,7 +1,8 @@
+from __future__ import annotations
+
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List
 
 import httpx
 
@@ -32,10 +33,10 @@ def strip_html(text: str) -> str:
 
 
 def format_message(
-    items: List[HotItem],
+    items: list[HotItem],
     category: Category,
     period: str = "morning",
-    pushed_urls: set | None = None,
+    pushed_urls: set[str] | None = None,
 ) -> str:
     """格式化某个分类的热点列表为企微 Markdown 消息"""
     if pushed_urls is None:
@@ -123,10 +124,10 @@ class WeComPusher:
 
     async def push_category(
         self,
-        category: str,
-        items: list,
+        category: Category,
+        items: list[HotItem],
         period: str = "morning",
-        pushed_urls: set | None = None,
+        pushed_urls: set[str] | None = None,
     ) -> PushResult:
         if pushed_urls is None:
             pushed_urls = set()

@@ -65,3 +65,22 @@ def test_parse_entry_missing():
     assert not item.keyword_hit
     assert item.pub_date == ""
     assert item.source == "yystv"
+
+
+def test_rss_collector_uses_injected_feeds():
+    custom_feeds = [
+        {"url": "https://custom.example.com/feed", "category": "ai", "source": "custom"},
+    ]
+    collector = RssCollector(
+        feed_configs=custom_feeds,
+        keywords={"ai": ["AI"]},
+        fetch_count=3,
+    )
+    assert collector.feeds == custom_feeds
+    assert collector._fetch_count == 3
+    assert collector._keywords == {"ai": ["AI"]}
+
+
+def test_rss_collector_defaults_to_feed_configs_when_none_provided():
+    collector = RssCollector()
+    assert collector.feeds == FEED_CONFIGS

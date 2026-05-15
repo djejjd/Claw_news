@@ -36,11 +36,12 @@ HF/TapTap = 自带 upvotes/排名分数
 # 1. 一键安装
 make install
 
-# 2. 配置 webhook
-cp .env.example .env
-# 编辑 .env 填入你的 webhook，或在 shell 中 export:
+# 2. 配置 webhook（二选一）
+#    方式 A: 环境变量（推荐）
 export PUSHER_WECOM_WEBHOOK="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY_HERE"
-# 也可以保留 config.example.yaml -> config.yaml 的配置方式
+#    方式 B: YAML 配置
+cp config.example.yaml config.yaml
+# 编辑 config.yaml 填入 webhook
 
 # 3. 验证
 make test
@@ -51,10 +52,11 @@ make run-morning
 ```
 
 > **注意：**
-> - `.env.example` 只是模板，程序不会自动加载 `.env` 文件。需要通过 `export` 或 launchd/cron 注入环境变量。
+> - `.env.example` 是人工参考模板，程序不会自动加载。如需环境变量注入，请在 shell / launchd / cron 中 `export`。
 > - `--dry-run` 不要求 webhook 配置。
-> - `make clean` 不会删除 `data/`（运行状态）。
-> - `make clean-data` 才会清空 `data/`（pushed_urls、日报、日志）。
+> - `make clean` 不删除 `data/`（运行状态），`make clean-data` 清空。
+> - **不要直接使用系统 Python 跑 `pytest`**。标准入口是 `make install` 后再 `make test`。
+> - `deploy.example.sh` 是部署参考模板，只做安装+dry-run 验证，不是生产推送入口。
 
 ## 定时自动运行 (macOS launchd)
 

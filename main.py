@@ -18,7 +18,7 @@ import portalocker
 
 from aggregator.merger import Merger
 from collectors.huggingface import HfDailyPapersCollector
-from collectors.rss_sources import RssCollector
+from collectors.rss_sources import FEED_CONFIGS, RssCollector
 from collectors.taptap import TapTapCollector
 from collectors.utils import safe_collect
 from infra.config.settings import Settings
@@ -54,7 +54,11 @@ async def collect_all(settings: Settings):
     if sources.rss:
         tasks["rss"] = safe_collect(
             "rss",
-            RssCollector(keywords=settings.keywords, fetch_count=settings.fetch_count),
+            RssCollector(
+                feed_configs=settings.rss_feeds or FEED_CONFIGS,
+                keywords=settings.keywords,
+                fetch_count=settings.fetch_count,
+            ),
         )
     if sources.huggingface:
         tasks["huggingface"] = safe_collect(
@@ -81,12 +85,16 @@ async def run_push_sequence(grouped, period, pushed_urls, state_store, pusher):
         if not cat_items:
             continue
 
-        result = await pusher.push_category(
-            category=category,
-            items=cat_items,
-            period=period,
-            pushed_urls=current_urls,
-        )
+        try:
+            result = await pusher.push_category(
+                category=category,
+                items=cat_items,
+                period=period,
+                pushed_urls=current_urls,
+            )
+        except Exception as exc:
+            logger.error("push failed for category=%s: %s", category, exc)
+            continue
 
         if result.success:
             current_urls = state_store.merge_pushed_urls(set(result.urls))
