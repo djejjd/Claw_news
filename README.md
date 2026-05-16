@@ -93,6 +93,10 @@ launchctl load ~/Library/LaunchAgents/com.lanser.clawnews.evening.plist
 - `[续]` — 上次推送已出现过
 - 来源名 + 国内/国外标注
 
+## License
+
+MIT — see [LICENSE](LICENSE)
+
 ## 项目结构
 
 ```

@@ -5,14 +5,14 @@
     <key>Label</key><string>com.lanser.clawnews.morning</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/lanser/Code/Claw_news/venv/bin/python</string>
-        <string>/Users/lanser/Code/Claw_news/main.py</string>
+        <string>{{PROJECT_DIR}}/venv/bin/python</string>
+        <string>{{PROJECT_DIR}}/main.py</string>
         <string>--period</string><string>morning</string>
     </array>
     <key>StartCalendarInterval</key>
     <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
-    <key>StandardOutPath</key><string>/Users/lanser/Code/Claw_news/data/morning.log</string>
-    <key>StandardErrorPath</key><string>/Users/lanser/Code/Claw_news/data/morning_error.log</string>
-    <key>WorkingDirectory</key><string>/Users/lanser/Code/Claw_news</string>
+    <key>StandardOutPath</key><string>{{PROJECT_DIR}}/data/morning.log</string>
+    <key>StandardErrorPath</key><string>{{PROJECT_DIR}}/data/morning_error.log</string>
+    <key>WorkingDirectory</key><string>{{PROJECT_DIR}}</string>
 </dict>
 </plist>

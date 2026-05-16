@@ -7,3 +7,8 @@ deploy.sh
 .env
 .ruff_cache/
 data/.task.lock
+.claude/
+.prompt/
+docs/superpowers/
+spec/
+docs/*.plist
