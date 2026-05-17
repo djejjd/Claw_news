@@ -16,6 +16,14 @@ class AppConfig:
     tz: str
     news_rss_urls: list[str]
 
+    def __repr__(self) -> str:
+        masked = self.llm_api_key[:7] + "***" if len(self.llm_api_key) > 7 else "***"
+        return (
+            f"AppConfig(llm_api_key={masked!r}, llm_base_url={self.llm_base_url!r}, "
+            f"llm_model={self.llm_model!r}, wecom_webhook_url={self.wecom_webhook_url!r}, "
+            f"tz={self.tz!r}, news_rss_urls={self.news_rss_urls!r})"
+        )
+
 
 def load_config() -> AppConfig:
     """Load configuration from environment variables.
