@@ -197,14 +197,14 @@ TZ=Asia/Shanghai
 NEWS_RSS_URLS=https://www.qbitai.com/feed,https://sspai.com/feed
 ```
 
-### 4.2 创建 config.yaml（旧 CLI 备用）
+### 5.2 创建 config.yaml（旧 CLI 备用）
 
 ```bash
 cp config.example.yaml config.yaml
 # 编辑 webhook 或通过环境变量 PUSHER_WECOM_WEBHOOK 覆盖
 ```
 
-### 4.3 权限
+### 5.3 权限
 
 ```bash
 chmod 600 .env config.yaml   # 防止其他用户读取密钥
@@ -240,7 +240,7 @@ curl http://127.0.0.1:8000/
 curl -X POST http://127.0.0.1:8000/run/news
 ```
 
-## 7. 日常运维
+## 8. 日常运维
 
 ### 查看日志
 
@@ -280,12 +280,12 @@ git pull
 
 APScheduler 在服务内自动运行（09:00 / 14:00 / 20:00），无需外部 cron。要确认定时任务在运行，看日志中是否有：
 
-```
+```text
 Added job "NewsAgent.run_once" to job store "default"
 Scheduler started
 ```
 
-## 8. 可选：外部 cron 触发
+## 9. 可选：外部 cron 触发
 
 如果不想用内部 scheduler，而是用服务器 cron：
 
@@ -295,7 +295,7 @@ Scheduler started
 crontab -e
 ```
 
-```
+```text
 0 9 * * * curl -X POST http://127.0.0.1:8000/run/news
 0 14 * * * curl -X POST http://127.0.0.1:8000/run/news
 0 20 * * * curl -X POST http://127.0.0.1:8000/run/news
@@ -303,7 +303,7 @@ crontab -e
 
 > 注意：同时启用内部 scheduler 和外部 cron 会导致重复推送！
 
-## 9. 常见问题
+## 10. 常见问题
 
 ### 服务起不来
 
@@ -348,7 +348,7 @@ docker compose exec claw-news curl -I $LLM_BASE_URL
 du -sh /opt/Claw_news/data/
 ```
 
-## 10. LLM 供应商示例
+## 11. LLM 供应商示例
 
 只要支持 OpenAI-compatible 接口即可，修改 `.env` 中的三个变量：
 
