@@ -150,6 +150,26 @@ Disable the internal scheduler and use an external timer (cron, systemd timer, e
 
 > **Important:** This is a single-instance service. Do not run multiple replicas or workers, as deduplication state is stored in local files.
 
+### LLM Provider Compatibility
+
+The service uses an OpenAI-compatible HTTP interface. Any provider that supports `base_url + api_key + model` works — just change the three `LLM_*` environment variables. Examples: OpenAI, DeepSeek, Qwen (通义千问), Groq, local vLLM, Ollama.
+
+### Local Development (without Docker)
+
+```bash
+# Set up environment
+cp .env.example .env
+# Edit .env with your keys
+
+# Install and run
+make install
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# In another terminal
+curl http://127.0.0.1:8000/health
+curl -X POST http://127.0.0.1:8000/run/news
+```
+
 ## License
 
 MIT — see [LICENSE](LICENSE)
@@ -158,25 +178,39 @@ MIT — see [LICENSE](LICENSE)
 
 ```
 Claw_news/
-├── main.py                  # 入口：--period morning|evening [--dry-run]
-├── config.example.yaml      # 配置模板（复制为 config.yaml 填入 key）
+├── main.py                  # 旧 CLI 入口：--period morning|evening [--dry-run]
+├── config.example.yaml      # 旧 CLI 配置模板
 ├── pyproject.toml           # 项目元数据与依赖
 ├── Makefile                 # 统一命令入口
-├── .env.example             # 环境变量模板
+├── .env.example             # 环境变量模板（CLI + Service）
 ├── requirements.txt         # 运行时依赖参考
+├── Dockerfile               # Docker 镜像
+├── docker-compose.yml       # Docker 服务编排
+├── deploy.example.sh        # 部署参考模板
+├── app/                     # 新 AI 助手服务入口
+│   ├── main.py              # FastAPI 入口 + lifespan
+│   ├── config.py            # env 配置（AppConfig）
+│   ├── agents/
+│   │   └── news_agent.py    # 任务编排内核
+│   ├── tools/
+│   │   ├── crawler.py       # RSS 抓取与去重
+│   │   ├── llm.py           # OpenAI-compatible LLM 摘要
+│   │   └── wecom.py         # 企业微信 text 推送
+│   └── scheduler/
+│       └── jobs.py          # APScheduler 09:00/14:00/20:00
 ├── collectors/
 │   ├── base.py              # HotItem 数据模型 + time_modifier
-│   ├── rss_sources.py       # RSS 多源采集（量子位/少数派/IT之家/游研社）
-│   ├── huggingface.py       # HuggingFace Daily Papers + 摘要翻译
+│   ├── rss_sources.py       # RSS 多源采集
+│   ├── huggingface.py       # HuggingFace Daily Papers
 │   ├── taptap.py            # TapTap 下载榜爬虫
 │   └── utils.py             # safe_collect 公共辅助
 ├── aggregator/
 │   └── merger.py            # 三维评分 + 关键词保底竞争
 ├── pusher/
-│   └── wecom.py             # 企业微信机器人推送 + 格式化
+│   └── wecom.py             # 旧 CLI 企业微信推送
 ├── infra/
 │   ├── config/
-│   │   └── settings.py      # 配置集中加载与校验
+│   │   └── settings.py      # 旧 CLI 配置
 │   └── storage/
 │       └── state_store.py   # 原子化状态持久化
 ├── tests/                   # pytest 测试
