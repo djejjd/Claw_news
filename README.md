@@ -93,6 +93,63 @@ launchctl load ~/Library/LaunchAgents/com.lanser.clawnews.evening.plist
 - `[续]` — 上次推送已出现过
 - 来源名 + 国内/国外标注
 
+## Service Mode
+
+Claw_news also provides a long-running service mode with FastAPI + APScheduler for automated RSS news collection, OpenAI-compatible LLM summarization, and WeCom bot text push.
+
+### Environment Variables
+
+The service mode reads configuration from environment variables. Copy `.env.example` to `.env` and fill in your values:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `LLM_API_KEY` | Yes | API key for OpenAI-compatible LLM |
+| `LLM_BASE_URL` | Yes | Base URL for LLM API |
+| `LLM_MODEL` | Yes | Model name to use |
+| `WECOM_WEBHOOK_URL` | Yes | WeCom bot webhook URL |
+| `TZ` | No | Timezone (default: `Asia/Shanghai`) |
+| `NEWS_RSS_URLS` | Yes | Comma-separated RSS feed URLs |
+
+### HTTP Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | Service status and description |
+| `GET` | `/health` | Health check |
+| `POST` | `/run/news` | Manually trigger a news collection + summarization + push cycle |
+
+### Docker Deployment
+
+```bash
+# Build and start the service
+docker compose up -d --build
+
+# Check health
+curl http://127.0.0.1:8000/health
+
+# Manually trigger a news run
+curl -X POST http://127.0.0.1:8000/run/news
+
+# View logs
+docker compose logs -f
+```
+
+### Deployment Modes
+
+**Mode A: Internal APScheduler (recommended)**
+
+The service schedules its own cron jobs at 09:00, 14:00, and 20:00. The container keeps a single process running with a built-in scheduler. This is the default mode.
+
+**Mode B: External HTTP trigger**
+
+Disable the internal scheduler and use an external timer (cron, systemd timer, etc.) to call `POST /run/news`. This is available as a migration-friendly option if you prefer to keep your existing scheduling infrastructure.
+
+> **Important:** This is a single-instance service. Do not run multiple replicas or workers, as deduplication state is stored in local files.
+
 ## License
 
 MIT — see [LICENSE](LICENSE)
