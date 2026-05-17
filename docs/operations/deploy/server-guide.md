@@ -82,7 +82,7 @@ vim .env
 LLM_API_KEY=sk-your-real-api-key
 LLM_BASE_URL=https://api.deepseek.com
 LLM_MODEL=deepseek-chat
-WECOM_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_REAL_KEY
+WECOM_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY_HERE
 TZ=Asia/Shanghai
 NEWS_RSS_URLS=https://www.qbitai.com/feed,https://sspai.com/feed
 ```

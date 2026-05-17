@@ -90,7 +90,7 @@
 ### 审查 Agent
 
 1. 契约审查 Agent
-   - 只检查是否符合 `spec/task003/spec.md`
+   - 只检查是否符合 `spec/task003/contract.md`
 2. 质量审查 Agent
    - 只检查代码质量、测试完整性、文档一致性
 
@@ -99,17 +99,17 @@
 ## 任务 1：冻结服务边界
 
 **文件：**
-- 只读：`spec/task003/spec.md`
-- 只读：`docs/superpowers/specs/2026-05-17-ai-assistant-service-design.md`
-- 只读：`docs/superpowers/specs/2026-05-17-ai-assistant-service-design-review.md`
+- 只读：`spec/task003/contract.md`
+- 只读：`docs/tasks/task003/design.md`
+- 只读：`docs/tasks/task003/design-review.md`
 - 修改：`README.md`
 
 - [ ] **步骤 1：开发前先复核不可变范围**
 
 阅读：
-- `spec/task003/spec.md`
-- `docs/superpowers/specs/2026-05-17-ai-assistant-service-design.md`
-- `docs/superpowers/specs/2026-05-17-ai-assistant-service-design-review.md`
+- `spec/task003/contract.md`
+- `docs/tasks/task003/design.md`
+- `docs/tasks/task003/design-review.md`
 
 预期：
 - 明确本轮是“同仓双入口”
@@ -134,7 +134,7 @@
 - [ ] **步骤 3：提交边界冻结结果**
 
 ```bash
-git add spec/task003/spec.md docs/superpowers/specs/2026-05-17-ai-assistant-service-design.md docs/superpowers/specs/2026-05-17-ai-assistant-service-design-review.md README.md
+git add spec/task003/contract.md docs/tasks/task003/design.md docs/tasks/task003/design-review.md README.md
 git commit -m "docs: freeze service architecture boundaries"
 ```
 
@@ -765,10 +765,10 @@ git commit -m "test: verify ai assistant service integration"
 
 最终 reviewer 必须按以下顺序审查：
 
-1. `spec/task003/spec.md`
-2. `docs/superpowers/specs/2026-05-17-ai-assistant-service-design.md`
-3. `docs/superpowers/specs/2026-05-17-ai-assistant-service-design-review.md`
-4. `docs/superpowers/specs/2026-05-17-ai-assistant-service-one-page.md`
+1. `spec/task003/contract.md`
+2. `docs/tasks/task003/design.md`
+3. `docs/tasks/task003/design-review.md`
+4. `docs/tasks/task003/one-page.md`
 5. 所有新增测试
 6. Docker、README、`deploy.example.sh`
 

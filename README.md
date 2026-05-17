@@ -62,10 +62,10 @@ make run-morning
 ## 定时自动运行 (macOS launchd)
 
 ```bash
-# 编辑 plist 中的路径，然后加载
-cp docs/com.lanser.clawnews.morning.plist ~/Library/LaunchAgents/
-cp docs/com.lanser.clawnews.evening.plist ~/Library/LaunchAgents/
-# 修改 plist 中 python 路径为你的 venv/bin/python
+# 从模板复制后，按你的本机路径修改
+cp docs/operations/launchd/com.lanser.clawnews.morning.plist.example ~/Library/LaunchAgents/com.lanser.clawnews.morning.plist
+cp docs/operations/launchd/com.lanser.clawnews.evening.plist.example ~/Library/LaunchAgents/com.lanser.clawnews.evening.plist
+# 将 {{PROJECT_DIR}} 替换为你的项目绝对路径
 
 launchctl load ~/Library/LaunchAgents/com.lanser.clawnews.morning.plist
 launchctl load ~/Library/LaunchAgents/com.lanser.clawnews.evening.plist

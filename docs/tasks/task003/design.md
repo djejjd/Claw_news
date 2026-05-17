@@ -648,7 +648,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
    - 负责 `app/tools/wecom.py`、`app/scheduler/jobs.py`、`app/main.py`
 
 5. Spec Review Agent
-   - 按 `spec/task003/spec.md` 审核是否越界
+   - 按 `spec/task003/contract.md` 审核是否越界
 
 6. Quality Review Agent
    - 审核代码质量、测试完整性、文档一致性
@@ -656,7 +656,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
 ### 13.2 协作原则
 
 1. 每个 Worker 只改自己的文件集合
-2. 任何实现前先对照 `spec/task003/spec.md`
+2. 任何实现前先对照 `spec/task003/contract.md`
 3. 每个任务完成后先过 Spec Review，再过 Quality Review
 4. 不允许在 review 阶段引入范围外需求
 

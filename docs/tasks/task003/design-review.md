@@ -4,9 +4,9 @@
 
 本次审查基于以下文档与当前仓库事实：
 
-1. `spec/task003/spec.md`
-2. `docs/superpowers/specs/2026-05-17-ai-assistant-service-design.md`
-3. `docs/superpowers/plans/2026-05-17-ai-assistant-service-implementation-plan.md`
+1. `spec/task003/contract.md`
+2. `docs/tasks/task003/design.md`
+3. `docs/tasks/task003/plan.md`
 4. 当前仓库现状
    - 现有入口：`main.py`
    - 现有采集层：`collectors/`

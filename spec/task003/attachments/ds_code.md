@@ -1,4 +1,4 @@
-1. 先读 @spec/task003/spec.md
+1. 先读 @spec/task003/contract.md
 2. 再读 @docs/superpowers/specs/2026-05-17-ai-assistant-service-design.md
 3. 再读 @docs/superpowers/specs/2026-05-17-ai-assistant-service-design-review.md
 4. 再看一页版 @docs/superpowers/specs/2026-05-17-ai-assistant-service-one-page.md
