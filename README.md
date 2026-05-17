@@ -138,6 +138,20 @@ curl -X POST http://127.0.0.1:8000/run/news
 docker compose logs -f
 ```
 
+### Recommended Delivery Strategy
+
+For cloud servers where access to GitHub may be unstable, do not treat `git pull` on the server as the primary deployment path.
+
+Recommended order:
+
+1. **Preferred:** sync code from a local machine or CI to the server with `scp` or `rsync`
+2. **Advanced:** let GitHub Actions build and deliver artifacts to the server
+3. **Fallback only:** direct `git pull` on the server
+
+See the full deployment guide:
+
+- [docs/operations/deploy/server-guide.md](docs/operations/deploy/server-guide.md)
+
 ### Deployment Modes
 
 **Mode A: Internal APScheduler (recommended)**

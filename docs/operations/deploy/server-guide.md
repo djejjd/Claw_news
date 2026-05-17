@@ -11,43 +11,151 @@
 | 网络 | 能访问外网（RSS 源 + LLM API + 企微 webhook） |
 | 软件 | Docker 20.10+ + docker compose v2 |
 
-## 2. 服务器初始化
+## 2. 服务器环境检查
 
-### 安装 Docker（Ubuntu/Debian）
+登录服务器后，先跑一遍状态检查：
 
 ```bash
-# 安装 Docker
-curl -fsSL https://get.docker.com | sudo sh
-
-# 将当前用户加入 docker 组（免 sudo）
-sudo usermod -aG docker $USER
-
-# 重新登录使权限生效，或执行
-newgrp docker
-
-# 验证
-docker --version
-docker compose version
+echo "=== OS ===" && cat /etc/os-release | head -2
+echo "=== git ===" && git --version 2>&1 || echo "【未安装】"
+echo "=== Docker ===" && docker --version 2>&1 || echo "【未安装】"
+echo "=== docker compose ===" && docker compose version 2>&1 || echo "【未安装】"
+echo "=== curl ===" && curl --version | head -1 2>&1 || echo "【未安装】"
+echo "=== 磁盘 ===" && df -h /opt 2>/dev/null || df -h /
 ```
 
-CentOS/RHEL 使用 `sudo yum install -y docker`，其余步骤相同。
+## 3. 安装所需工具
 
-### 开放端口（如有防火墙）
+| 工具 | 用途 | 必装 | 安装命令 |
+|------|------|------|----------|
+| git | 拉代码、更新 | **是** | `sudo apt install -y git` |
+| Docker | 容器运行 | **是** | 见下方详细步骤 |
+| docker compose | 服务编排 | **是** | Docker 自带（`docker compose`） |
+| curl | 健康检查、手动触发 | 建议 | `sudo apt install -y curl` |
+
+### 3.1 一行装齐 git + curl
 
 ```bash
-# ufw
-sudo ufw allow 8000/tcp
+# Ubuntu / Debian
+sudo apt update && sudo apt install -y git curl
 
-# firewalld
-sudo firewall-cmd --add-port=8000/tcp --permanent
-sudo firewall-cmd --reload
+# CentOS / RHEL
+sudo yum install -y git curl
+```
+
+### 3.2 安装 Docker
+
+```bash
+# 官方脚本（自动适配发行版）
+curl -fsSL https://get.docker.com | sudo sh
+
+# 将当前用户加入 docker 组（否则每次要 sudo）
+sudo usermod -aG docker $USER
+# 退出重新 SSH 登录使权限生效
+```
+
+### 3.3 验证安装
+
+```bash
+docker --version        # 应 >= 20.10
+docker compose version  # 应出现版本号
+docker run hello-world  # 冒烟测试
+```
+
+### 3.4 开放端口（如有防火墙）
+
+```bash
+sudo ufw allow 8000/tcp       # ufw
+sudo firewall-cmd --add-port=8000/tcp --permanent && sudo firewall-cmd --reload  # firewalld
 ```
 
 > 如果只在服务器本地调用（外部 cron curl），不需要开放端口。
 
-## 3. 部署代码
+## 4. 部署代码
 
-### 方式 A：git clone（推荐，方便更新）
+不再推荐把“服务器直接 `git pull` GitHub”作为主部署路径，尤其是在腾讯云等云服务器访问 GitHub 不稳定时。
+
+推荐顺序：
+
+1. **方案 A：本地或 CI 拉代码，再用 `scp/rsync` 同步到服务器**（推荐）
+2. **方案 B：GitHub Actions 构建后交付到服务器**（进阶）
+3. **方案 C：服务器直接 `git pull`**（仅作备选）
+
+### 4.1 方案 A：`scp/rsync` 同步代码到服务器（推荐）
+
+适用场景：
+
+1. 服务器访问 GitHub 不稳定
+2. 你本地或 CI 能稳定访问 GitHub
+3. 你希望服务器只负责运行，不直接依赖 GitHub 网络
+
+首次同步：
+
+```bash
+# 在本地执行
+rsync -avz --delete \
+  --exclude '.git' \
+  --exclude 'venv' \
+  --exclude '.env' \
+  --exclude 'data' \
+  ./ user@your-server:/opt/Claw_news/
+```
+
+后续更新：
+
+```bash
+# 在本地执行
+git pull
+rsync -avz --delete \
+  --exclude '.git' \
+  --exclude 'venv' \
+  --exclude '.env' \
+  --exclude 'data' \
+  ./ user@your-server:/opt/Claw_news/
+```
+
+如果没有 `rsync`，也可以使用：
+
+```bash
+scp -r /path/to/Claw_news user@your-server:/opt/Claw_news
+```
+
+同步完成后，在服务器执行：
+
+```bash
+cd /opt/Claw_news
+docker compose up -d --build
+```
+
+### 4.2 方案 B：GitHub Actions / CI 交付到服务器（进阶）
+
+适用场景：
+
+1. 你希望减少手工部署
+2. 你已经有 CI/CD 密钥和服务器凭据管理
+3. 你希望服务器不直接依赖 GitHub 联通性
+
+常见做法：
+
+1. GitHub Actions 拉代码并跑测试
+2. 生成构建产物或准备部署目录
+3. 通过 `scp`、`rsync` 或 SSH 发布到服务器
+4. 在服务器上执行 `docker compose up -d --build`
+
+推荐原则：
+
+1. CI 负责“拉代码和校验”
+2. 服务器负责“接收产物和运行”
+
+### 4.3 方案 C：服务器直接 `git pull`（备选）
+
+只在以下条件同时满足时使用：
+
+1. 服务器访问 GitHub 稳定
+2. 认证链路稳定
+3. 你接受服务器直接依赖 GitHub 可用性
+
+全新服务器：
 
 ```bash
 cd /opt
@@ -55,16 +163,18 @@ git clone https://github.com/djejjd/Claw_news.git
 cd Claw_news
 ```
 
-### 方式 B：scp 上传
+已有代码的服务器：
 
 ```bash
-# 在本地执行
-scp -r /path/to/Claw_news user@your-server:/opt/Claw_news
+cd /opt/Claw_news
+git pull
 ```
 
-## 4. 配置文件
+> 如果 `curl -I https://github.com` 或 `git fetch origin` 在服务器上卡住，就不要继续使用本方案，切回方案 A 或方案 B。
 
-### 4.1 创建 .env
+## 5. 配置文件
+
+### 5.1 创建 .env（新服务用）
 
 ```bash
 cd /opt/Claw_news
@@ -100,21 +210,22 @@ cp config.example.yaml config.yaml
 chmod 600 .env config.yaml   # 防止其他用户读取密钥
 ```
 
-## 5. 启动服务
+## 6. 启动服务
 
 ```bash
 cd /opt/Claw_news
 docker compose up -d --build
 ```
 
-首次构建约 2-3 分钟。之后更新代码只需要：
+首次构建约 2-3 分钟。
 
-```bash
-git pull
-docker compose up -d --build
-```
+后续更新方式：
 
-## 6. 验证服务
+1. 方案 A：先在本地 `rsync/scp` 同步，再在服务器执行 `docker compose up -d --build`
+2. 方案 B：由 CI 发布后，在服务器执行 `docker compose up -d --build`
+3. 方案 C：先 `git pull`，再 `docker compose up -d --build`
+
+## 7. 验证服务
 
 ```bash
 # 健康检查
@@ -156,8 +267,13 @@ docker compose down
 
 ```bash
 cd /opt/Claw_news
-git pull
 docker compose up -d --build
+```
+
+如果你使用方案 C，再先执行：
+
+```bash
+git pull
 ```
 
 ### 定时触发验证
