@@ -278,6 +278,35 @@ class TestLLMFailure:
         pushed_content = call_args[0][1]
         assert SUMMARY not in pushed_content
 
+    @pytest.mark.asyncio
+    async def test_llm_error_without_message_reports_exception_type(self):
+        """Empty exception messages should still produce a diagnosable error string."""
+        from app.agents.news_agent import NewsAgent
+
+        class SilentLLMError(RuntimeError):
+            def __str__(self) -> str:
+                return ""
+
+        config = _make_config()
+        items = _make_items(5)
+
+        with (
+            patch("app.agents.news_agent.fetch_news", new=AsyncMock(return_value=items)),
+            patch(
+                "app.agents.news_agent.summarize_news",
+                side_effect=SilentLLMError(),
+            ),
+            patch(
+                "app.agents.news_agent.send_text",
+                new=AsyncMock(return_value={"errcode": 0, "errmsg": "ok"}),
+            ),
+        ):
+            agent = NewsAgent(config)
+            result = await agent.run_once()
+
+        assert result["status"] == "failed"
+        assert result["errors"] == ["llm: SilentLLMError"]
+
 
 # ===================================================================
 # 5. Push failure path

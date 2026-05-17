@@ -22,6 +22,14 @@ _TOP_N = 5
 _KEYWORD_BONUS = 1.0
 
 
+def _describe_exception(exc: Exception) -> str:
+    """Return a stable exception description even when str(exc) is empty."""
+    message = str(exc).strip()
+    if message:
+        return message
+    return exc.__class__.__name__
+
+
 class NewsAgent:
     """Orchestrates the AI news pipeline: crawl -> score -> summarize -> push.
 
@@ -84,9 +92,10 @@ class NewsAgent:
         try:
             items = await fetch_news(self._config.news_rss_urls, limit=10)
         except Exception as exc:
-            logger.error("新闻抓取失败: %s", exc)
-            errors.append(f"crawl: {exc}")
-            await self._try_push_error(f"新闻抓取失败: {exc}")
+            detail = _describe_exception(exc)
+            logger.error("新闻抓取失败: %s", detail)
+            errors.append(f"crawl: {detail}")
+            await self._try_push_error(f"新闻抓取失败: {detail}")
             return {
                 "status": "failed",
                 "fetched_count": 0,
@@ -122,9 +131,10 @@ class NewsAgent:
                 model=self._config.llm_model,
             )
         except Exception as exc:
-            logger.error("LLM 总结失败: %s", exc)
-            errors.append(f"llm: {exc}")
-            await self._try_push_error(f"LLM 总结失败: {exc}")
+            detail = _describe_exception(exc)
+            logger.error("LLM 总结失败: %s", detail)
+            errors.append(f"llm: {detail}")
+            await self._try_push_error(f"LLM 总结失败: {detail}")
             return {
                 "status": "failed",
                 "fetched_count": fetched_count,
@@ -143,8 +153,9 @@ class NewsAgent:
             pushed = True
             logger.info("推送完成")
         except Exception as exc:
-            logger.error("推送失败: %s", exc)
-            errors.append(f"push: {exc}")
+            detail = _describe_exception(exc)
+            logger.error("推送失败: %s", detail)
+            errors.append(f"push: {detail}")
             return {
                 "status": "failed",
                 "fetched_count": fetched_count,
@@ -197,4 +208,4 @@ class NewsAgent:
             await send_text(self._config.wecom_webhook_url, content)
             logger.info("已推送异常通知到 WeCom")
         except Exception as exc:
-            logger.error("推送异常通知失败: %s", exc)
+            logger.error("推送异常通知失败: %s", _describe_exception(exc))
