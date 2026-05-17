@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Sample news items
 # ---------------------------------------------------------------------------
@@ -41,7 +40,11 @@ def _make_valid_response(content: str) -> dict:
     }
 
 
-def _build_mock_client(json_response: dict | None = None, *, side_effect: Exception | None = None) -> AsyncMock:
+def _build_mock_client(
+    json_response: dict | None = None,
+    *,
+    side_effect: Exception | None = None,
+) -> AsyncMock:
     """Build a mock httpx.AsyncClient that returns a controlled response.
 
     Args:

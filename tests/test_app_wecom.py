@@ -1,7 +1,6 @@
 """Tests for app/tools/wecom.py — send_text() WeCom text pusher."""
 
 import json
-from unittest.mock import patch
 
 import httpx
 import pytest

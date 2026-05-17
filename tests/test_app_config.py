@@ -1,9 +1,8 @@
 # tests/test_app_config.py
-import os
 
 import pytest
 
-from app.config import AppConfig, load_config
+from app.config import load_config
 
 
 class TestLoadConfigMissingRequired:

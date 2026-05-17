@@ -9,11 +9,11 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from aggregator.merger import position_score
 from app.config import AppConfig
 from app.tools.crawler import fetch_news
 from app.tools.llm import summarize_news
 from app.tools.wecom import send_text
-from aggregator.merger import position_score
 from collectors.base import time_modifier
 
 logger = logging.getLogger(__name__)
@@ -169,7 +169,7 @@ class NewsAgent:
     def _score_items(items: list[dict]) -> list[dict]:
         """Score each item via 3D RSS formula and return sorted desc.
 
-        Formula: position_score(index + 1) + keyword_bonus(1.0) + time_modifier(published_at, "morning")
+        Formula: position_score(i+1) + keyword_bonus(1.0) + time_modifier(pub_date, "morning")
         """
         scored: list[tuple[float, dict]] = []
         for i, item in enumerate(items):

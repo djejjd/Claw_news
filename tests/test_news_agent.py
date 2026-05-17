@@ -270,7 +270,7 @@ class TestLLMFailure:
             ) as mock_push,
         ):
             agent = NewsAgent(config)
-            result = await agent.run_once()
+            await agent.run_once()
 
         # Exactly one push call — the error summary, not the LLM output
         assert mock_push.call_count == 1
