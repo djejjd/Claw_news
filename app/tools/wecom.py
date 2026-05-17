@@ -12,9 +12,9 @@ from __future__ import annotations
 import httpx
 
 # WeCom text messages have an approximate 2048-byte limit in practice.
-# We truncate at 2000 characters with an ellipsis indicator to stay
-# safely under the limit while retaining a usable message.
-MAX_CONTENT_CHARS = 2000
+# We truncate at 2000 UTF-8 bytes with an ellipsis indicator to stay
+# safely under the limit regardless of content character width.
+MAX_CONTENT_BYTES = 2000
 TRUNCATION_INDICATOR = "…"
 
 
@@ -27,13 +27,37 @@ class WeComError(RuntimeError):
         super().__init__(f"errcode={errcode} errmsg={self.errmsg}")
 
 
-def _truncate(content: str, max_chars: int = MAX_CONTENT_CHARS) -> str:
-    """Truncate content to *max_chars* characters, appending an ellipsis."""
-    if len(content) <= max_chars:
+def _truncate(content: str, max_bytes: int = MAX_CONTENT_BYTES) -> str:
+    """Truncate content to fit within *max_bytes* UTF-8 bytes.
+
+    Walks characters one by one, accumulating byte count.  When the
+    accumulated size would exceed *max_bytes*, truncation stops.
+    Multi-byte characters are never split — the last kept character
+    is always fully included.  An ellipsis indicator is appended when
+    truncation occurs.
+    """
+    if not content:
         return content
-    # Keep the first (max_chars - len(indicator)) characters
-    keep = max_chars - len(TRUNCATION_INDICATOR)
-    return content[:keep] + TRUNCATION_INDICATOR
+
+    content_bytes = content.encode("utf-8")
+    if len(content_bytes) <= max_bytes:
+        return content
+
+    indicator_bytes = len(TRUNCATION_INDICATOR.encode("utf-8"))
+    target_bytes = max_bytes - indicator_bytes
+    if target_bytes <= 0:
+        return TRUNCATION_INDICATOR
+
+    accumulated = 0
+    keep_chars = 0
+    for ch in content:
+        ch_bytes = len(ch.encode("utf-8"))
+        if accumulated + ch_bytes > target_bytes:
+            break
+        accumulated += ch_bytes
+        keep_chars += 1
+
+    return content[:keep_chars] + TRUNCATION_INDICATOR
 
 
 async def send_text(webhook_url: str, content: str) -> dict:
@@ -42,7 +66,7 @@ async def send_text(webhook_url: str, content: str) -> dict:
     Args:
         webhook_url: The full WeCom webhook URL (key included).
         content: The plain-text message content. Oversize content is
-                 truncated to ~2000 characters with an ellipsis.
+                 truncated to fit within ~2000 UTF-8 bytes.
 
     Returns:
         The parsed JSON response dict, e.g. ``{"errcode": 0, "errmsg": "ok"}``.

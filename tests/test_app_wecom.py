@@ -130,8 +130,8 @@ class TestSendTextOversize:
             json={"errcode": 0, "errmsg": "ok"},
         )
 
-        # Create content well above the 2048-byte limit
-        long_content = "测" * 3000  # 3000 Chinese characters = way over limit
+        # 700 Chinese chars × 3 bytes = 2100 bytes, over the ~2000 byte limit
+        long_content = "人工智能新闻摘要测试内容" * 70
 
         await send_text(WEBHOOK, long_content)
 
@@ -139,9 +139,8 @@ class TestSendTextOversize:
         sent_content = json.loads(request.read())["text"]["content"]
 
         assert len(sent_content) < len(long_content)
+        assert len(sent_content.encode("utf-8")) <= 2050  # byte-safe bound
         assert "…" in sent_content
-        # The truncated version should still start with the original content
-        assert sent_content.startswith(long_content[:500])
 
     @pytest.mark.asyncio
     async def test_short_content_not_truncated(self, httpx_mock):

@@ -195,3 +195,47 @@ class TestFetchNews:
         assert item["link"] == ""
         assert item["summary"] == ""
         assert item["published_at"] == ""
+
+    async def test_later_feeds_not_skipped_when_early_feed_has_many(self):
+        """All RSS feeds participate even if earlier ones have enough entries."""
+        from app.tools.crawler import fetch_news
+
+        urls = ["https://a.com/rss", "https://b.com/rss"]
+        with patch("app.tools.crawler.feedparser") as mock_fp:
+            def _parse(url):
+                if "a.com" in url:
+                    return _make_parsed([
+                        _make_entry(f"A{i}", f"https://a.com/{i}", f"sum{i}",
+                                    (2026, 5, 10 + i))
+                        for i in range(15)
+                    ])
+                return _make_parsed([
+                    _make_entry("FromB", "https://b.com/1", "summary b",
+                                (2026, 5, 25))
+                ])
+
+            mock_fp.parse.side_effect = _parse
+            result = await fetch_news(urls, limit=10)
+
+        assert mock_fp.parse.call_count == 2
+        # Feed B was processed
+        b_items = [r for r in result if r["link"] == "https://b.com/1"]
+        assert len(b_items) == 1
+        assert b_items[0]["title"] == "FromB"
+
+    async def test_sorted_by_published_at_desc(self):
+        """Results are sorted by published_at descending after collection."""
+        from app.tools.crawler import fetch_news
+
+        urls = ["https://a.com/rss"]
+        entries = [
+            _make_entry("Old", "https://a.com/old", "old", (2026, 5, 10)),
+            _make_entry("New", "https://a.com/new", "new", (2026, 5, 20)),
+            _make_entry("Mid", "https://a.com/mid", "mid", (2026, 5, 15)),
+        ]
+        with patch("app.tools.crawler.feedparser") as mock_fp:
+            mock_fp.parse.return_value = _make_parsed(entries)
+            result = await fetch_news(urls, limit=10)
+
+        dates = [r["published_at"] for r in result]
+        assert dates == ["2026-05-20", "2026-05-15", "2026-05-10"]
