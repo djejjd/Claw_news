@@ -16,6 +16,9 @@ dependencies = [
   "curl-cffi>=0.7.0",
   "deep-translator>=1.11.0",
   "portalocker>=2.0",
+  "fastapi>=0.115.0",
+  "uvicorn>=0.32.0",
+  "apscheduler>=3.10.0",
 ]
 
 [project.optional-dependencies]
@@ -36,3 +39,6 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
+
+[tool.setuptools.packages.find]
+include = ["collectors*", "aggregator*", "infra*", "pusher*", "app*"]
