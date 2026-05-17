@@ -112,7 +112,7 @@ cp .env.example .env
 | `LLM_MODEL` | Yes | Model name to use |
 | `WECOM_WEBHOOK_URL` | Yes | WeCom bot webhook URL |
 | `TZ` | No | Timezone (default: `Asia/Shanghai`) |
-| `NEWS_RSS_URLS` | Yes | Comma-separated RSS feed URLs |
+| `NEWS_RSS_URLS` | Yes | Comma-separated RSS feed URLs, e.g. `https://www.qbitai.com/feed,https://sspai.com/feed` |
 
 ### HTTP Endpoints
 
