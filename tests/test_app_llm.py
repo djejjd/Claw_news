@@ -143,6 +143,7 @@ class TestSummarizeNews:
         user_msg = messages[1]["content"]
         for item in items:
             assert item["link"] in user_msg
+        assert kwargs["timeout"] == httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=60.0)
 
     # -- Empty items ---------------------------------------------------------
 

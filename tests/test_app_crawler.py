@@ -1,6 +1,7 @@
 """Tests for app/tools/crawler.py — fetch_news() RSS crawler."""
 
-from unittest.mock import MagicMock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # ---------------------------------------------------------------------------
 # Helpers: build fake feedparser entries
@@ -239,3 +240,44 @@ class TestFetchNews:
 
         dates = [r["published_at"] for r in result]
         assert dates == ["2026-05-20", "2026-05-15", "2026-05-10"]
+
+    async def test_single_feed_timeout_skipped_others_processed(self, caplog):
+        """A timed-out feed is skipped and later feeds still contribute results."""
+        from app.tools.crawler import fetch_news
+
+        urls = ["https://slow.com/rss", "https://good.com/rss"]
+        calls = 0
+
+        async def _wait_for(awaitable, timeout):
+            nonlocal calls
+            if calls == 0:
+                calls += 1
+                raise asyncio.TimeoutError()
+            calls += 1
+            return await awaitable
+
+        with (
+            patch("app.tools.crawler.feedparser") as mock_fp,
+            patch(
+                "app.tools.crawler.asyncio.to_thread",
+                new=AsyncMock(side_effect=lambda func, url: func(url)),
+            ),
+            patch("app.tools.crawler.asyncio.wait_for", new_callable=AsyncMock) as mock_wait_for,
+        ):
+            def _parse(url):
+                if "slow" in url:
+                    return _make_parsed([
+                        _make_entry("Slow", "https://slow.com/1", "slow")
+                    ])
+                return _make_parsed([
+                    _make_entry("Good", "https://good.com/1", "Works")
+                ])
+
+            mock_fp.parse.side_effect = _parse
+            mock_wait_for.side_effect = _wait_for
+            result = await fetch_news(urls, limit=10)
+
+        assert len(result) == 1
+        assert result[0]["title"] == "Good"
+        assert mock_wait_for.await_count == 2
+        assert any("slow.com" in r.message for r in caplog.records if r.levelname == "WARNING")

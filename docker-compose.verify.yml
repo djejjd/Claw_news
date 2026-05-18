@@ -1,0 +1,33 @@
+services:
+  claw-news:
+    env_file:
+      - .env.verify
+
+  mock-wecom:
+    image: python:3.12-slim
+    container_name: mock-wecom
+    command:
+      - python
+      - -c
+      - |
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, format, *args):
+                return
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                body = self.rfile.read(length).decode("utf-8")
+                print("=== mock wecom received ===", flush=True)
+                print(self.path, flush=True)
+                print(body, flush=True)
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"errcode":0,"errmsg":"ok"}')
+
+        HTTPServer(("0.0.0.0", 18080), Handler).serve_forever()
+    ports:
+      - "18080:18080"

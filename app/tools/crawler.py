@@ -10,6 +10,7 @@ import feedparser
 from collectors.rss_sources import extract_pub_date, strip_html
 
 logger = logging.getLogger(__name__)
+_RSS_FETCH_TIMEOUT_SECONDS = 15
 
 
 async def fetch_news(rss_urls: list[str], limit: int = 10) -> list[dict]:
@@ -32,7 +33,10 @@ async def fetch_news(rss_urls: list[str], limit: int = 10) -> list[dict]:
 
     for url in rss_urls:
         try:
-            parsed = await asyncio.to_thread(feedparser.parse, url)
+            parsed = await asyncio.wait_for(
+                asyncio.to_thread(feedparser.parse, url),
+                timeout=_RSS_FETCH_TIMEOUT_SECONDS,
+            )
             for entry in parsed.entries:
                 link = entry.get("link", "")
                 if link and link in seen:

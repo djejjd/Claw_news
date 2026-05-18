@@ -37,6 +37,7 @@ _USER_PROMPT_TEMPLATE = """请总结以下新闻：
 请按照格式要求生成摘要。"""
 
 _FALLBACK_MESSAGE = "今日暂无 AI 相关新闻，请稍后再关注。"
+_LLM_TIMEOUT = httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=60.0)
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +100,7 @@ async def summarize_news(
     }
 
     async with httpx.AsyncClient() as client:
-        response = await client.post(url, headers=headers, json=body)
+        response = await client.post(url, headers=headers, json=body, timeout=_LLM_TIMEOUT)
 
     # httpx raises HTTPStatusError for 4xx/5xx when raise_for_status is called;
     # we call it explicitly to get consistent behaviour.
