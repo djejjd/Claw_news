@@ -6,7 +6,6 @@ An APScheduler runs the news pipeline at 09:00 daily.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -17,7 +16,7 @@ from app.agents.news_agent import NewsAgent
 from app.config import load_config
 from app.pipeline.context import RunContext
 from app.pipeline.news_pipeline import run_pipeline
-from app.scheduler.jobs import create_scheduler, run_ingest
+from app.scheduler.jobs import create_scheduler
 from app.storage.ingest_status_store import IngestStatusStore
 
 logging.basicConfig(
@@ -33,8 +32,6 @@ scheduler = create_scheduler(agent, config.tz)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler.start()
-    # 后台跑首次 ingest，不阻塞服务启动
-    asyncio.create_task(run_ingest())
     yield
     scheduler.shutdown(wait=False)
 
