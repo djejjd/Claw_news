@@ -13,6 +13,7 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.storage.ingestion_store import IngestionStore
+from app.storage.github_store import GitHubStore
 from collectors.base import hotitem_to_candidate
 
 # ------------------------------------------------------------------
@@ -31,6 +32,7 @@ async def run_ingest():
     from collectors.rss_sources import RssCollector
     from collectors.ai_rss import load_ai_rss_feeds
     from collectors.huggingface import HfDailyPapersCollector
+    from collectors.github import GitHubCollector
     from collectors.utils import safe_collect
 
     store = IngestionStore()
@@ -55,6 +57,12 @@ async def run_ingest():
                 all_items.append(candidate)
         except Exception as e:
             source_failures.append(f"{name}: {e}")
+
+    try:
+        github_items = await GitHubCollector().collect()
+        GitHubStore().write_snapshot(github_items)
+    except Exception as e:
+        source_failures.append(f"github: {e}")
 
     if all_items or source_failures:
         result = store.append_or_merge(all_items, source_failures=source_failures)
