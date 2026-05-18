@@ -94,8 +94,10 @@ class IngestionStore:
         if pushed_keys is None:
             pushed_keys = set()
 
-        start_date = datetime.fromisoformat(time_window_start).date()
-        end_date = datetime.fromisoformat(time_window_end).date()
+        start_dt = datetime.fromisoformat(time_window_start)
+        end_dt = datetime.fromisoformat(time_window_end)
+        start_date = start_dt.date()
+        end_date = end_dt.date()
 
         # 1. 收集窗口内所有原始条目
         raw_items: list[CandidateItem] = []
@@ -121,7 +123,15 @@ class IngestionStore:
                         try:
                             data = json.loads(line)
                             fields = {k: v for k, v in data.items() if k in _CANDIDATE_FIELD_NAMES}
-                            raw_items.append(CandidateItem(**fields))
+                            item = CandidateItem(**fields)
+                            if item.fetched_at:
+                                try:
+                                    fetched_dt = datetime.fromisoformat(item.fetched_at)
+                                except ValueError:
+                                    fetched_dt = None
+                                if fetched_dt is not None and not (start_dt <= fetched_dt <= end_dt):
+                                    continue
+                            raw_items.append(item)
                         except (json.JSONDecodeError, TypeError):
                             continue
 

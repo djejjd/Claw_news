@@ -233,3 +233,42 @@ class TestPipelineNoCandidates:
         assert result.status == "skipped"
         assert result.selected_count == 0
         assert result.pushed is False
+
+
+class TestPipelinePublishScope:
+    """Formal publishing must obey the ai_only scope from RunContext."""
+
+    @pytest.mark.asyncio
+    async def test_ai_only_scope_excludes_non_ai_candidates(self, tmp_path: Path):
+        from app.pipeline.news_pipeline import run_pipeline
+
+        config = _make_config()
+        ctx = _make_ctx()
+        ai_candidate = _make_candidate(url="https://example.com/ai", category="ai")
+        game_candidate = _make_candidate(url="https://example.com/game", category="game")
+        llm_result = _make_llm_result()
+        push_result = _make_push_result(success=True)
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)) as mock_llm,
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
+            patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
+        ):
+            mock_is_inst = MagicMock()
+            mock_is_inst.load_window_candidates.return_value = [ai_candidate, game_candidate]
+            mock_is.return_value = mock_is_inst
+
+            mock_cls_inst = MagicMock()
+            mock_cls.return_value = mock_cls_inst
+
+            mock_pusher = MagicMock()
+            mock_pusher.push_single_markdown = AsyncMock(return_value=push_result)
+            mock_pusher_cls.return_value = mock_pusher
+
+            result = await run_pipeline(ctx, config)
+
+        assert result.status == "ok"
+        summarized_items = mock_llm.await_args.args[0]
+        assert [item["link"] for item in summarized_items] == ["https://example.com/ai"]

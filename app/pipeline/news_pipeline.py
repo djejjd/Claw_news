@@ -62,6 +62,8 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     candidates = ingestion_store.load_window_candidates(
         ctx.time_window_start, ctx.time_window_end, pushed_urls, pushed_keys
     )
+    if ctx.publish_scope == "ai_only":
+        candidates = [item for item in candidates if item.category == "ai"]
     if not candidates:
         return PublishResult(
             status="skipped", selected_count=0, pushed=False,

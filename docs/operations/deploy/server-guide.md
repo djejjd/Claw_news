@@ -197,17 +197,20 @@ TZ=Asia/Shanghai
 NEWS_RSS_URLS=https://www.qbitai.com/feed,https://sspai.com/feed
 ```
 
-### 5.2 创建 config.yaml（旧 CLI 备用）
+### 5.2 准备验证环境配置
+
+正式环境使用 `.env + docker-compose.yml`。  
+验证环境使用 `.env.verify + docker-compose.verify.yml`：
 
 ```bash
-cp config.example.yaml config.yaml
-# 编辑 webhook 或通过环境变量 PUSHER_WECOM_WEBHOOK 覆盖
+cp .env.example .env.verify
+# 编辑 .env.verify，填入验证环境使用的 LLM 与 WeCom 配置
 ```
 
 ### 5.3 权限
 
 ```bash
-chmod 600 .env config.yaml   # 防止其他用户读取密钥
+chmod 600 .env .env.verify   # 防止其他用户读取密钥
 ```
 
 ## 6. 启动服务
@@ -238,6 +241,12 @@ curl http://127.0.0.1:8000/
 
 # 手动触发一次
 curl -X POST http://127.0.0.1:8000/run/news
+```
+
+验证环境可用下面的组合命令单独启动：
+
+```bash
+docker compose --env-file .env.verify -f docker-compose.yml -f docker-compose.verify.yml up -d --build
 ```
 
 ## 8. 日常运维

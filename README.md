@@ -95,7 +95,7 @@ launchctl load ~/Library/LaunchAgents/com.lanser.clawnews.evening.plist
 
 ## Service Mode
 
-Claw_news also provides a long-running service mode with FastAPI + APScheduler for automated RSS news collection, OpenAI-compatible LLM summarization, and WeCom bot text push.
+Claw_news uses one formal publishing path: a long-running FastAPI + APScheduler service that performs high-frequency ingestion, structured LLM summarization, and a single WeCom markdown digest push.
 
 ### Environment Variables
 
@@ -120,7 +120,7 @@ cp .env.example .env
 |--------|------|-------------|
 | `GET` | `/` | Service status and description |
 | `GET` | `/health` | Health check |
-| `POST` | `/run/news` | Manually trigger a news collection + summarization + push cycle |
+| `POST` | `/run/news` | Manually trigger one publish cycle from the ingestion store |
 
 ### Docker Deployment
 
@@ -156,7 +156,7 @@ See the full deployment guide:
 
 **Mode A: Internal APScheduler (recommended)**
 
-The service schedules its own cron jobs at 09:00, 14:00, and 20:00. The container keeps a single process running with a built-in scheduler. This is the default mode.
+The service keeps one 09:00 publish job and one high-frequency ingest job that refreshes the candidate pool every 30 minutes. The container keeps a single process running with a built-in scheduler. This is the default mode.
 
 **Mode B: External HTTP trigger**
 
@@ -192,8 +192,8 @@ MIT — see [LICENSE](LICENSE)
 
 ```
 Claw_news/
-├── main.py                  # 旧 CLI 入口：--period morning|evening [--dry-run]
-├── config.example.yaml      # 旧 CLI 配置模板
+├── main.py                  # CLI 兼容壳，复用统一 pipeline
+├── config.example.yaml      # 历史兼容配置模板
 ├── pyproject.toml           # 项目元数据与依赖
 ├── Makefile                 # 统一命令入口
 ├── .env.example             # 环境变量模板（CLI + Service）
@@ -201,17 +201,17 @@ Claw_news/
 ├── Dockerfile               # Docker 镜像
 ├── docker-compose.yml       # Docker 服务编排
 ├── deploy.example.sh        # 部署参考模板
-├── app/                     # 新 AI 助手服务入口
+├── app/                     # 正式服务入口
 │   ├── main.py              # FastAPI 入口 + lifespan
 │   ├── config.py            # env 配置（AppConfig）
 │   ├── agents/
 │   │   └── news_agent.py    # 任务编排内核
 │   ├── tools/
-│   │   ├── crawler.py       # RSS 抓取与去重
+│   │   ├── crawler.py       # 历史兼容模块
 │   │   ├── llm.py           # OpenAI-compatible LLM 摘要
-│   │   └── wecom.py         # 企业微信 text 推送
+│   │   └── wecom.py         # 历史兼容文本推送模块
 │   └── scheduler/
-│       └── jobs.py          # APScheduler 09:00/14:00/20:00
+│       └── jobs.py          # 09:00 发布 + 高频 ingest
 ├── collectors/
 │   ├── base.py              # HotItem 数据模型 + time_modifier
 │   ├── rss_sources.py       # RSS 多源采集
@@ -221,7 +221,7 @@ Claw_news/
 ├── aggregator/
 │   └── merger.py            # 三维评分 + 关键词保底竞争
 ├── pusher/
-│   └── wecom.py             # 旧 CLI 企业微信推送
+│   └── wecom.py             # WeCom markdown 推送适配
 ├── infra/
 │   ├── config/
 │   │   └── settings.py      # 旧 CLI 配置

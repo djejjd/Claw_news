@@ -251,6 +251,33 @@ class TestLoadWindowCandidates:
         assert "yday" in summaries
         assert "old" not in summaries
 
+    def test_time_window_filter_excludes_same_day_items_after_window_end(self, tmp_path: Path):
+        """同一目录内，fetched_at 超出窗口结束时刻的候选也必须被排除。"""
+        store = IngestionStore(root_dir=tmp_path)
+        today = _today_str()
+        ing = tmp_path / "data" / "ingestion"
+
+        inside = _make_item(
+            url="https://inside.com/within-window",
+            summary="inside",
+            fetched_at=f"{today}T08:00:00",
+        )
+        outside = _make_item(
+            url="https://outside.com/after-window",
+            summary="outside",
+            fetched_at=f"{today}T12:00:00",
+        )
+        _write_jsonl(ing / today, [inside, outside])
+
+        candidates = store.load_window_candidates(
+            time_window_start=f"{today}T00:00:00",
+            time_window_end=f"{today}T09:00:00",
+        )
+
+        summaries = {c.summary for c in candidates}
+        assert "inside" in summaries
+        assert "outside" not in summaries
+
     def test_filters_pushed_urls(self, tmp_path: Path):
         store = IngestionStore(root_dir=tmp_path)
         store.append_or_merge([_make_item(url="https://keep.com/1")])
