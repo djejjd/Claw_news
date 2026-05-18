@@ -29,19 +29,24 @@ async def _translate_to_chinese(text: str) -> str:
 class HfDailyPapersCollector:
     """HuggingFace Daily Papers API collector. Uses curl_cffi for TLS fingerprint."""
 
-    def __init__(self, fetch_count: int = 10, client=None):
+    def __init__(self, fetch_count: int = 10, client=None, proxy: str | None = None):
         self._fetch_count = fetch_count
         self._client = client
+        self._proxy = proxy
 
     async def collect(self) -> List[HotItem]:
+        kwargs = {"timeout": 15.0}
+        if self._proxy:
+            kwargs["proxies"] = {"http": self._proxy, "https": self._proxy}
+
         if self._client is not None:
-            resp = await self._client.get(HF_API_URL, timeout=15.0)
+            resp = await self._client.get(HF_API_URL, **kwargs)
             resp.raise_for_status()
             papers = resp.json()
         else:
             session = curl_requests.AsyncSession(impersonate="chrome131")
             try:
-                resp = await session.get(HF_API_URL, timeout=15.0)
+                resp = await session.get(HF_API_URL, **kwargs)
                 resp.raise_for_status()
                 papers = resp.json()
             finally:

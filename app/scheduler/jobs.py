@@ -26,6 +26,8 @@ async def run_ingest():
     Each collector is wrapped independently — one failure never
     interrupts the rest of the round.
     """
+    import os
+
     from collectors.rss_sources import RssCollector
     from collectors.huggingface import HfDailyPapersCollector
     from collectors.utils import safe_collect
@@ -35,10 +37,12 @@ async def run_ingest():
     all_items: list = []
     source_failures: list[str] = []
 
+    hf_proxy = os.getenv("HF_PROXY", "").strip() or None
+
     # AI-relevant collectors only (TapTap is game-focused, skip)
     collector_specs = [
         ("rss", RssCollector()),
-        ("huggingface", HfDailyPapersCollector()),
+        ("huggingface", HfDailyPapersCollector(proxy=hf_proxy)),
     ]
 
     for name, collector in collector_specs:
