@@ -20,7 +20,8 @@ class GitHubStore:
         day_dir = self.github_dir / target_date
         day_dir.mkdir(parents=True, exist_ok=True)
         path = day_dir / "repos.json"
-        path.write_text(json.dumps([asdict(item) for item in items], ensure_ascii=False, indent=2), encoding="utf-8")
+        payload = json.dumps([asdict(item) for item in items], ensure_ascii=False, indent=2)
+        path.write_text(payload, encoding="utf-8")
         return path
 
     def load_latest_snapshot(self) -> list[GitHubRepoItem]:

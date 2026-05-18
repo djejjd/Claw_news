@@ -13,7 +13,6 @@ from app.config import AppConfig
 from app.pipeline.candidate import CandidateItem
 from app.pipeline.context import RunContext
 
-
 # ---------------------------------------------------------------------------
 # Shared helper
 # ---------------------------------------------------------------------------
@@ -252,7 +251,10 @@ class TestPipelinePublishScope:
         with (
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
-            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)) as mock_llm,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=llm_result),
+            ) as mock_llm,
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
         ):
@@ -286,14 +288,24 @@ class TestPipelineGitHubSupplement:
         llm_result = _make_llm_result()
         push_result = _make_push_result(success=True)
         repos = [
-            GitHubRepoItem("owner/repo", "https://github.com/owner/repo", "desc", 10, "Python", "2026-05-18T08:00:00")
+            GitHubRepoItem(
+                "owner/repo",
+                "https://github.com/owner/repo",
+                "desc",
+                10,
+                "Python",
+                "2026-05-18T08:00:00",
+            )
         ]
 
         with (
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
             patch("app.pipeline.news_pipeline.GitHubStore") as mock_github_store,
-            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)) as mock_llm,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=llm_result),
+            ) as mock_llm,
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
         ):
@@ -310,7 +322,12 @@ class TestPipelineGitHubSupplement:
 
         assert result.status == "ok"
         assert mock_llm.await_args.args[0] == [
-            {"title": "Test", "link": "https://example.com/ai", "summary": "Summary", "published_at": "2026-05-18"}
+            {
+                "title": "Test",
+                "link": "https://example.com/ai",
+                "summary": "Summary",
+                "published_at": "2026-05-18",
+            }
         ]
         pushed_markdown = mock_pusher.push_single_markdown.await_args.args[0]
         assert "今日值得看项目" in pushed_markdown

@@ -12,9 +12,9 @@ from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.storage.ingestion_store import IngestionStore
 from app.storage.github_store import GitHubStore
 from app.storage.ingest_status_store import IngestStatusStore
+from app.storage.ingestion_store import IngestionStore
 from collectors.base import hotitem_to_candidate
 
 # ------------------------------------------------------------------
@@ -30,10 +30,10 @@ async def run_ingest():
     """
     import os
 
-    from collectors.rss_sources import RssCollector
     from collectors.ai_rss import load_ai_rss_feeds
-    from collectors.huggingface import HfDailyPapersCollector
     from collectors.github import GitHubCollector
+    from collectors.huggingface import HfDailyPapersCollector
+    from collectors.rss_sources import RssCollector
 
     store = IngestionStore()
     ingest_run_id = uuid.uuid4().hex[:12]
