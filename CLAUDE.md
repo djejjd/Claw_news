@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 强制门禁
+
+**以下规则每次代码修改前必须逐条确认，不可跳过：**
+
+1. **分支隔离** — 任何代码修改前，必须确认不在 `main` 分支。如果在 `main`，必须先 `git checkout -b feature/xxx` 切到新分支。简单修复也不是例外。
+2. **diff 审核** — 任何 `git commit` 前，必须先展示 `git diff` 输出给用户审核，等待用户明确同意后再提交。
+3. **push 审核** — 任何 `git push` 必须用户明确同意。不因"简单"、"显然"而跳过。
+
 ## Commands
 
 All commands use the venv created by `make install`:
