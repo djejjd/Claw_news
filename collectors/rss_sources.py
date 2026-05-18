@@ -1,14 +1,17 @@
+import asyncio
 import re
 import time
 from calendar import timegm
 from typing import List
 
 import feedparser
+import httpx
 
 from collectors.base import BROWSER_HEADERS, HotItem
 
 # 设置 feedparser 的 User-Agent，防止被 RSS 源拦截
 feedparser.USER_AGENT = BROWSER_HEADERS["User-Agent"]
+HTTP_TIMEOUT = 15.0
 
 FEED_CONFIGS: List[dict] = [
     {"url": "https://www.qbitai.com/feed", "category": "ai", "source": "qbitai"},
@@ -40,24 +43,42 @@ class RssCollector:
         feed_configs: List[dict] | None = None,
         keywords: dict | None = None,
         fetch_count: int = 10,
+        client: httpx.AsyncClient | None = None,
     ):
         self.feeds = feed_configs or FEED_CONFIGS
         self._keywords = keywords or {}
         self._fetch_count = fetch_count
+        self._client = client
 
     async def collect(self) -> List["HotItem"]:
         import logging
 
         logger = logging.getLogger(__name__)
         items = []
-        for feed in self.feeds:
-            try:
-                parsed = feedparser.parse(feed["url"])
-                for entry in parsed.entries[: self._fetch_count]:
-                    items.append(self._parse_entry(entry, feed))
-            except Exception as e:
-                logger.warning("RSS feed %s failed: %s", feed["url"], e)
+        if self._client is not None:
+            for feed in self.feeds:
+                try:
+                    parsed = await self._fetch_and_parse(feed["url"], self._client)
+                    for entry in parsed.entries[: self._fetch_count]:
+                        items.append(self._parse_entry(entry, feed))
+                except Exception as e:
+                    logger.warning("RSS feed %s failed: %s", feed["url"], e)
+            return items
+
+        async with httpx.AsyncClient(headers=BROWSER_HEADERS, follow_redirects=True) as client:
+            for feed in self.feeds:
+                try:
+                    parsed = await self._fetch_and_parse(feed["url"], client)
+                    for entry in parsed.entries[: self._fetch_count]:
+                        items.append(self._parse_entry(entry, feed))
+                except Exception as e:
+                    logger.warning("RSS feed %s failed: %s", feed["url"], e)
         return items
+
+    async def _fetch_and_parse(self, url: str, client: httpx.AsyncClient):
+        response = await client.get(url, timeout=HTTP_TIMEOUT)
+        response.raise_for_status()
+        return await asyncio.to_thread(feedparser.parse, response.text)
 
     def _parse_entry(self, entry: dict, feed: dict) -> "HotItem":
         title = entry.get("title", "")

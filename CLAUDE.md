@@ -6,9 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **以下规则每次代码修改前必须逐条确认，不可跳过：**
 
-1. **分支隔离** — 任何代码修改前，必须确认不在 `main` 分支。如果在 `main`，必须先 `git checkout -b feature/xxx` 切到新分支。简单修复也不是例外。
-2. **diff 审核** — 任何 `git commit` 前，必须先展示 `git diff` 输出给用户审核，等待用户明确同意后再提交。
-3. **push 审核** — 任何 `git push` 必须用户明确同意。不因"简单"、"显然"而跳过。
+1. **中文文档优先** — 本仓库内所有设计、计划、开发说明、变更说明默认只写中文版；英文只能作为补充，不作为主版本。
+2. **分支隔离** — 任何代码修改前，必须确认不在 `main` 分支。如果在 `main`，必须先 `git checkout -b feature/xxx` 切到新分支。简单修复也不是例外。
+3. **工作区评估** — 多文件改动、功能开发、需要多轮 review 的迭代工作，默认先评估是否应该放到独立 worktree 或隔离工作区中，不要直接在当前主工作区长期叠加修改。
+4. **diff 审核** — 任何 `git commit` 前，必须先展示 `git diff` 输出给用户审核，等待用户明确同意后再提交。
+5. **push 审核** — 任何 `git push` 必须用户明确同意。不因"简单"、"显然"而跳过。
 
 ## Commands
 

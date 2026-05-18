@@ -177,6 +177,38 @@ class IngestionStore:
 
         return result
 
+    def load_recent_seen_canonical_keys(self, keep_days: int = 3) -> set[str]:
+        """加载最近 keep_days 天内已见过的 canonical_key。"""
+        keys: set[str] = set()
+        if not self.ingestion_dir.exists():
+            return keys
+
+        cutoff = date.today() - timedelta(days=keep_days)
+        for day_dir in self.ingestion_dir.iterdir():
+            if not day_dir.is_dir():
+                continue
+            try:
+                dir_date = date.fromisoformat(day_dir.name)
+            except ValueError:
+                continue
+            if dir_date <= cutoff:
+                continue
+
+            index_path = day_dir / "index.json"
+            if not index_path.exists():
+                continue
+
+            try:
+                payload = json.loads(index_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+
+            for key in payload.get("seen_keys", []):
+                if key:
+                    keys.add(key)
+
+        return keys
+
     # ------------------------------------------------------------------
     # prune_expired
     # ------------------------------------------------------------------

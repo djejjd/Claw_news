@@ -193,14 +193,14 @@ class TestLoadWindowCandidates:
         """published_at 相同或缺失时 fetched_at 更新的优先。"""
         store = IngestionStore(root_dir=tmp_path)
 
-        t1 = "2026-05-18T08:00:00"
-        t2 = "2026-05-18T09:00:00"
+        today = _today_str()
+        t1 = f"{today}T08:00:00"
+        t2 = f"{today}T09:00:00"
         early = _make_item(url="https://f.com/1", fetched_at=t1, summary="early")
         late = _make_item(url="https://f.com/1", fetched_at=t2, summary="late")
         store.append_or_merge([early])
         store.append_or_merge([late])
 
-        today = _today_str()
         candidates = store.load_window_candidates(
             time_window_start=f"{today}T00:00:00",
             time_window_end=f"{today}T23:59:59",
@@ -211,14 +211,14 @@ class TestLoadWindowCandidates:
     def test_priority_summary_length_fallback(self, tmp_path: Path):
         """published_at 和 fetched_at 都相同时按 summary 长度。"""
         store = IngestionStore(root_dir=tmp_path)
-        t = "2026-05-18T08:00:00"
+        today = _today_str()
+        t = f"{today}T08:00:00"
 
         short = _make_item(url="https://s.com/1", fetched_at=t, summary="sh")
         long_ = _make_item(url="https://s.com/1", fetched_at=t, summary="longer summary text")
         store.append_or_merge([short])
         store.append_or_merge([long_])
 
-        today = _today_str()
         candidates = store.load_window_candidates(
             time_window_start=f"{today}T00:00:00",
             time_window_end=f"{today}T23:59:59",

@@ -1,3 +1,7 @@
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from collectors.rss_sources import (
     FEED_CONFIGS,
     RssCollector,
@@ -84,3 +88,78 @@ def test_rss_collector_uses_injected_feeds():
 def test_rss_collector_defaults_to_feed_configs_when_none_provided():
     collector = RssCollector()
     assert collector.feeds == FEED_CONFIGS
+
+
+@pytest.mark.asyncio
+async def test_collect_fetches_feed_content_async_before_parsing():
+    collector = RssCollector(
+        feed_configs=[{"url": "https://example.com/feed", "category": "ai", "source": "example"}],
+        fetch_count=2,
+    )
+    response = AsyncMock()
+    response.text = "<rss></rss>"
+    response.raise_for_status = lambda: None
+    parsed = type("Parsed", (), {"entries": []})()
+
+    with (
+        patch("collectors.rss_sources.httpx.AsyncClient") as client_cls,
+        patch("collectors.rss_sources.feedparser.parse", return_value=parsed) as parse_mock,
+    ):
+        client = AsyncMock()
+        client.get.return_value = response
+        client_cls.return_value.__aenter__.return_value = client
+
+        await collector.collect()
+
+    client.get.assert_awaited_once_with("https://example.com/feed", timeout=15.0)
+    parse_mock.assert_called_once_with("<rss></rss>")
+
+
+@pytest.mark.asyncio
+async def test_collect_skips_feed_when_async_fetch_fails():
+    collector = RssCollector(
+        feed_configs=[{"url": "https://example.com/feed", "category": "ai", "source": "example"}],
+    )
+
+    with patch("collectors.rss_sources.httpx.AsyncClient") as client_cls:
+        client = AsyncMock()
+        client.get.side_effect = RuntimeError("timeout")
+        client_cls.return_value.__aenter__.return_value = client
+
+        items = await collector.collect()
+
+    assert items == []
+
+
+@pytest.mark.asyncio
+async def test_collect_respects_runtime_fetch_count_limit():
+    collector = RssCollector(
+        feed_configs=[{"url": "https://example.com/feed", "category": "ai", "source": "example"}],
+        fetch_count=2,
+    )
+    response = AsyncMock()
+    response.text = "<rss></rss>"
+    response.raise_for_status = lambda: None
+    parsed = type(
+        "Parsed",
+        (),
+        {
+            "entries": [
+                {"title": "1", "link": "https://example.com/1"},
+                {"title": "2", "link": "https://example.com/2"},
+                {"title": "3", "link": "https://example.com/3"},
+            ]
+        },
+    )()
+
+    with (
+        patch("collectors.rss_sources.httpx.AsyncClient") as client_cls,
+        patch("collectors.rss_sources.feedparser.parse", return_value=parsed),
+    ):
+        client = AsyncMock()
+        client.get.return_value = response
+        client_cls.return_value.__aenter__.return_value = client
+
+        items = await collector.collect()
+
+    assert len(items) == 2
