@@ -108,3 +108,20 @@
 
 历史来源：
 - 原契约：[spec/task005/attachments/spec.md](/Users/lanser/Code/Claw_news/spec/task005/attachments/spec.md)
+
+## task006
+
+状态：规划中
+
+目标：统一 AI 日报正式发布流程，收敛新旧链路为一套服务化发布系统，并完成主题桶、规则轻分类与关键词降级的评分增强。
+
+正式入口：
+- 契约：[spec/task006/contract.md](/Users/lanser/Code/Claw_news/spec/task006/contract.md)
+- 设计：[spec/task006/design.md](/Users/lanser/Code/Claw_news/spec/task006/design.md)
+- 计划：[spec/task006/plan.md](/Users/lanser/Code/Claw_news/spec/task006/plan.md)
+- 评审：[spec/task006/review.md](/Users/lanser/Code/Claw_news/spec/task006/review.md)
+- 归档：[spec/task006/done.md](/Users/lanser/Code/Claw_news/spec/task006/done.md)
+
+详细原文：
+- 设计：[docs/tasks/task006/design.md](/Users/lanser/Code/Claw_news/docs/tasks/task006/design.md)
+- 实施文档：[docs/tasks/task006/plan.md](/Users/lanser/Code/Claw_news/docs/tasks/task006/plan.md)
