@@ -35,13 +35,13 @@ class HfDailyPapersCollector:
 
     async def collect(self) -> List[HotItem]:
         if self._client is not None:
-            resp = await self._client.get(HF_API_URL, timeout=30.0)
+            resp = await self._client.get(HF_API_URL, timeout=15.0)
             resp.raise_for_status()
             papers = resp.json()
         else:
             session = curl_requests.AsyncSession(impersonate="chrome131")
             try:
-                resp = await session.get(HF_API_URL, timeout=30.0)
+                resp = await session.get(HF_API_URL, timeout=15.0)
                 resp.raise_for_status()
                 papers = resp.json()
             finally:
