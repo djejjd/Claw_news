@@ -7,15 +7,23 @@ plus a high-frequency ingest job that collects AI candidates every
 
 from __future__ import annotations
 
+import logging
 import uuid
+import time
 from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from app.ingest.source_policy import should_accept_candidate, update_fetch_count_from_metrics
+from app.pipeline.candidate import CandidateItem
 from app.storage.github_store import GitHubStore
 from app.storage.ingest_status_store import IngestStatusStore
 from app.storage.ingestion_store import IngestionStore
+from app.storage.source_metrics_store import SourceMetricsStore
+from app.storage.source_state_store import SourceStateStore
 from collectors.base import hotitem_to_candidate
+
+logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------
 # Ingest: high-frequency candidate collection (every 30 min)
@@ -36,39 +44,104 @@ async def run_ingest():
     from collectors.rss_sources import RssCollector
 
     store = IngestionStore()
+    metrics_store = SourceMetricsStore()
+    state_store = SourceStateStore()
     ingest_run_id = uuid.uuid4().hex[:12]
+    run_started_at = datetime.now().isoformat()
     all_items: list = []
     source_failures: list[str] = []
     successful_sources: list[str] = []
+    recent_seen_keys = set(store.load_recent_seen_canonical_keys())
 
     hf_proxy = os.getenv("HF_PROXY", "").strip() or None
 
     # AI-relevant collectors only (TapTap is game-focused, skip)
     collector_specs = [
-        ("rss", RssCollector(feed_configs=load_ai_rss_feeds())),
-        ("huggingface", HfDailyPapersCollector(proxy=hf_proxy)),
+        ("rss", RssCollector, {"feed_configs": load_ai_rss_feeds()}),
+        ("huggingface", HfDailyPapersCollector, {"proxy": hf_proxy}),
     ]
 
-    for name, collector in collector_specs:
+    for name, collector_cls, collector_kwargs in collector_specs:
+        started_at = time.perf_counter()
+        status = "ok"
+        raw_items = []
+        source_state = state_store.load_state(name, default_fetch_count=10)
         try:
+            logger.info("Ingest source start: %s", name)
+            collector = collector_cls(
+                fetch_count=source_state["fetch_count"], **collector_kwargs
+            )
             items = await collector.collect()
+            logger.info("Ingest source done: %s items=%s", name, len(items))
             successful_sources.append(name)
-            ai_items = [i for i in items if i.category == "ai"]
-            for item in ai_items:
-                candidate = hotitem_to_candidate(item, ingest_run_id=ingest_run_id)
-                all_items.append(candidate)
+            raw_items = [i for i in items if i.category == "ai"]
         except Exception as e:
+            logger.exception("Ingest source failed: %s", name)
             source_failures.append(f"{name}: {e}")
+            status = "error"
+
+        deduped_items: list[tuple[str, object]] = []
+        rejected_duplicate_count = 0
+        rejected_quality_count = 0
+        accepted_items = []
+        source_seen_keys = set(recent_seen_keys)
+        for item in raw_items:
+            canonical_key = CandidateItem.make_canonical_key(item.url) if item.url else ""
+            if not canonical_key or canonical_key in source_seen_keys:
+                rejected_duplicate_count += 1
+                continue
+
+            source_seen_keys.add(canonical_key)
+            deduped_items.append((canonical_key, item))
+
+        for canonical_key, item in deduped_items:
+            candidate = hotitem_to_candidate(item, ingest_run_id=ingest_run_id)
+            if not should_accept_candidate(candidate):
+                rejected_quality_count += 1
+                continue
+
+            accepted_items.append(candidate)
+            recent_seen_keys.add(canonical_key)
+
+        all_items.extend(accepted_items)
+
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
+        metrics_store.append_run_metric(
+            {
+                "source": name,
+                "run_id": ingest_run_id,
+                "run_started_at": run_started_at,
+                "raw_fetched_count": len(raw_items),
+                "deduped_new_count": len(deduped_items),
+                "accepted_count": len(accepted_items),
+                "selected_count": 0,
+                "rejected_duplicate_count": rejected_duplicate_count,
+                "rejected_quality_count": rejected_quality_count,
+                "duration_ms": duration_ms,
+                "status": status,
+            }
+        )
+
+        recent_metrics = metrics_store.aggregate_recent(name, limit=24)
+        updated_state = update_fetch_count_from_metrics(
+            source_state,
+            recent_metrics,
+            run_started_at,
+        )
+        state_store.save_state(name, updated_state)
 
     try:
+        logger.info("Ingest source start: github")
         github_items = await GitHubCollector().collect()
         GitHubStore().write_snapshot(github_items)
+        logger.info("Ingest source done: github items=%s", len(github_items))
         successful_sources.append("github")
     except Exception as e:
+        logger.exception("Ingest source failed: github")
         source_failures.append(f"github: {e}")
 
     status_payload = {
-        "last_ingest_at": datetime.now().isoformat(),
+        "last_ingest_at": run_started_at,
         "last_item_count": len(all_items),
         "successful_sources": successful_sources,
         "failed_sources": source_failures,
@@ -111,6 +184,13 @@ def create_scheduler(agent, tz: str = "Asia/Shanghai") -> AsyncIOScheduler:
     scheduler.add_job(agent.run_once, "cron", hour=9, minute=0, id="publish_0900")
 
     # High-frequency ingest: every 30 minutes, 00:00–23:59
-    scheduler.add_job(run_ingest_with_cleanup, "interval", minutes=30, id="ingest_30m")
+    scheduler.add_job(
+        run_ingest_with_cleanup,
+        "interval",
+        minutes=30,
+        id="ingest_30m",
+        max_instances=1,
+        coalesce=True,
+    )
 
     return scheduler

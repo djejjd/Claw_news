@@ -1,5 +1,7 @@
 """Tests for app/main.py — FastAPI entrypoints and scheduler."""
 
+import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -176,6 +178,162 @@ class TestRunNewsEndpoint:
         data = resp.json()
         assert data["status"] == "skipped"
 
+    def test_run_news_source_metrics_write_receives_source_counts(self):
+        """The publish chain groups selections by source and writes the counts back."""
+        from app.pipeline.context import RunContext
+        from app.pipeline.news_pipeline import run_pipeline
+
+        selected_items = [
+            SimpleNamespace(
+                title="A",
+                url="https://example.com/a",
+                summary="summary a",
+                published_at="2026-05-19",
+                source="qbitai",
+                category="ai",
+                canonical_key="example.com/a",
+            ),
+            SimpleNamespace(
+                title="B",
+                url="https://example.com/b",
+                summary="summary b",
+                published_at="2026-05-19",
+                source="huggingface",
+                category="ai",
+                canonical_key="example.com/b",
+            ),
+        ]
+        fake_metrics_store = MagicMock()
+        fake_metrics_store.write_selected_counts.return_value = 2
+
+        with (
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_ingestion_store,
+            patch("app.pipeline.news_pipeline.TopicClassifier"),
+            patch("app.pipeline.news_pipeline.Merger") as mock_merger_cls,
+            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value={
+                "headline_items": [
+                    {
+                        "title": "A",
+                        "url": "https://example.com/a",
+                        "core_summary": "a",
+                        "importance": "高",
+                        "trend": "up",
+                    }
+                ],
+                "daily_judgement": "ok",
+            })),
+            patch("app.pipeline.news_pipeline.GitHubStore") as mock_github_store,
+            patch("app.pipeline.news_pipeline.render_digest", return_value="markdown"),
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
+            patch("app.pipeline.news_pipeline.StateStore") as mock_state_store_cls,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore", return_value=fake_metrics_store),
+            patch("app.pipeline.news_pipeline._collect_source_failures", return_value=[]),
+        ):
+            mock_ingestion_store.return_value.load_window_candidates.return_value = selected_items
+            mock_merger_cls.return_value.merge.return_value = selected_items
+            mock_github_store.return_value.load_latest_snapshot.return_value = []
+            mock_pusher_cls.return_value.push_single_markdown = AsyncMock(return_value=MagicMock(success=True))
+            mock_state_store_cls.return_value.load_pushed_urls.return_value = set()
+            mock_state_store_cls.return_value.load_published_keys.return_value = set()
+
+            result = asyncio.run(
+                run_pipeline(
+                    RunContext(
+                        trigger_mode="http",
+                        time_window_start="2026-05-19T00:00:00",
+                        time_window_end="2026-05-19T09:00:00",
+                    ),
+                    MagicMock(
+                        llm_base_url="https://api.example.com",
+                        llm_api_key="sk-test",
+                        llm_model="test-model",
+                        wecom_webhook_url="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test",
+                    ),
+                )
+            )
+
+        assert result.status == "ok"
+        fake_metrics_store.write_selected_counts.assert_called_once_with(
+            {"qbitai": 1, "huggingface": 1}
+        )
+
+    def test_run_news_records_error_when_source_metrics_write_is_short(self):
+        """If the metrics store writes fewer sources than expected, the result carries an error."""
+        from app.pipeline.context import RunContext
+        from app.pipeline.news_pipeline import run_pipeline
+
+        selected_items = [
+            SimpleNamespace(
+                title="A",
+                url="https://example.com/a",
+                summary="summary a",
+                published_at="2026-05-19",
+                source="qbitai",
+                category="ai",
+                canonical_key="example.com/a",
+            ),
+            SimpleNamespace(
+                title="B",
+                url="https://example.com/b",
+                summary="summary b",
+                published_at="2026-05-19",
+                source="huggingface",
+                category="ai",
+                canonical_key="example.com/b",
+            ),
+        ]
+        fake_metrics_store = MagicMock()
+        fake_metrics_store.write_selected_counts.return_value = 1
+
+        with (
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_ingestion_store,
+            patch("app.pipeline.news_pipeline.TopicClassifier"),
+            patch("app.pipeline.news_pipeline.Merger") as mock_merger_cls,
+            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value={
+                "headline_items": [
+                    {
+                        "title": "A",
+                        "url": "https://example.com/a",
+                        "core_summary": "a",
+                        "importance": "高",
+                        "trend": "up",
+                    }
+                ],
+                "daily_judgement": "ok",
+            })),
+            patch("app.pipeline.news_pipeline.GitHubStore") as mock_github_store,
+            patch("app.pipeline.news_pipeline.render_digest", return_value="markdown"),
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
+            patch("app.pipeline.news_pipeline.StateStore") as mock_state_store_cls,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore", return_value=fake_metrics_store),
+            patch("app.pipeline.news_pipeline._collect_source_failures", return_value=[]),
+        ):
+            mock_ingestion_store.return_value.load_window_candidates.return_value = selected_items
+            mock_merger_cls.return_value.merge.return_value = selected_items
+            mock_github_store.return_value.load_latest_snapshot.return_value = []
+            mock_pusher_cls.return_value.push_single_markdown = AsyncMock(return_value=MagicMock(success=True))
+            mock_state_store_cls.return_value.load_pushed_urls.return_value = set()
+            mock_state_store_cls.return_value.load_published_keys.return_value = set()
+
+            result = asyncio.run(
+                run_pipeline(
+                    RunContext(
+                        trigger_mode="http",
+                        time_window_start="2026-05-19T00:00:00",
+                        time_window_end="2026-05-19T09:00:00",
+                    ),
+                    MagicMock(
+                        llm_base_url="https://api.example.com",
+                        llm_api_key="sk-test",
+                        llm_model="test-model",
+                        wecom_webhook_url="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test",
+                    ),
+                )
+            )
+
+        assert result.status == "ok"
+        assert "source_metrics_write_failed" in result.errors
+
 
 
 class TestScheduler:
@@ -230,3 +388,15 @@ class TestScheduler:
         assert len(sched1.get_jobs()) == 2
         assert len(sched2.get_jobs()) == 2
         assert sched1 is not sched2
+
+    def test_ingest_scheduler_job_prevents_overlap(self):
+        """The ingest interval job should coalesce and disallow overlap."""
+        from app.scheduler.jobs import create_scheduler
+
+        mock_agent = _make_mock_agent()
+        sched = create_scheduler(mock_agent, "Asia/Shanghai")
+
+        ingest_jobs = [j for j in sched.get_jobs() if j.id == "ingest_30m"]
+        assert len(ingest_jobs) == 1
+        assert ingest_jobs[0].max_instances == 1
+        assert ingest_jobs[0].coalesce is True

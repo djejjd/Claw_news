@@ -12,6 +12,7 @@ from app.pipeline.context import RunContext
 from app.renderers.wecom_markdown import make_preview, render_digest
 from app.storage.github_store import GitHubStore
 from app.storage.ingestion_store import IngestionStore
+from app.storage.source_metrics_store import SourceMetricsStore
 from app.tools.llm import summarize_news
 from app.tools.summary_result import DigestPayload, PublishResult, SummaryItem, SummaryResult
 from infra.storage.state_store import StateStore
@@ -58,6 +59,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     pushed_urls = state_store.load_pushed_urls()
     pushed_keys = state_store.load_published_keys()
     ingestion_store = IngestionStore()
+    metrics_store = SourceMetricsStore()
 
     # 1. 读池
     candidates = ingestion_store.load_window_candidates(
@@ -136,6 +138,18 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     # 8. 状态持久化
     published_urls = [it.url for it in selected]
     published_keys_list = [it.canonical_key for it in selected]
+    selected_counts_by_source: dict[str, int] = {}
+    for item in selected:
+        selected_counts_by_source[item.source] = selected_counts_by_source.get(item.source, 0) + 1
+
+    errors: list[str] = []
+    try:
+        written_sources = metrics_store.write_selected_counts(selected_counts_by_source)
+        if written_sources < len(selected_counts_by_source):
+            errors.append("source_metrics_write_failed")
+    except Exception:
+        errors.append("source_metrics_write_failed")
+
     try:
         state_store.merge_pushed_urls(set(published_urls))
         state_store.merge_published_keys(published_keys_list)
@@ -155,13 +169,10 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             published_keys=published_keys_list,
         ))
     except Exception:
-        return PublishResult(
-            status="ok", selected_count=len(selected), pushed=True,
-            message_type="markdown", summary_preview=make_preview(markdown),
-            errors=["state_write_failed"],
-        )
+        errors.append("state_write_failed")
 
     return PublishResult(
         status="ok", selected_count=len(selected), pushed=True,
         message_type="markdown", summary_preview=make_preview(markdown),
+        errors=errors,
     )

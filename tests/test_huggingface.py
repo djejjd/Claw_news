@@ -1,5 +1,6 @@
 import httpx
 import pytest
+from unittest.mock import AsyncMock, patch
 
 from collectors.huggingface import HF_API_URL, HfDailyPapersCollector
 
@@ -60,3 +61,18 @@ async def test_collect_returns_list(httpx_mock):
     assert len(items) == 5
     assert all(item.category == "ai" for item in items)
     assert items[0].source_score >= items[-1].source_score
+
+
+@pytest.mark.asyncio
+async def test_collect_respects_runtime_fetch_count_limit(httpx_mock):
+    mock_papers = [
+        {"title": f"Paper {i}", "paper": {"id": f"id{i}"}, "upvotes": 100 - i * 10}
+        for i in range(5)
+    ]
+    httpx_mock.add_response(url=HF_API_URL, json=mock_papers)
+
+    collector = HfDailyPapersCollector(fetch_count=2, client=httpx.AsyncClient())
+    with patch("collectors.huggingface._translate_to_chinese", new=AsyncMock(side_effect=lambda text: text)):
+        items = await collector.collect()
+
+    assert len(items) == 2

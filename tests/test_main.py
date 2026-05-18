@@ -108,6 +108,7 @@ class TestPipelineSuccess:
             patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)),
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
         ):
             # IngestionStore returns one candidate
             mock_is_inst = MagicMock()
@@ -122,6 +123,8 @@ class TestPipelineSuccess:
             mock_pusher = MagicMock()
             mock_pusher.push_single_markdown = AsyncMock(return_value=push_result)
             mock_pusher_cls.return_value = mock_pusher
+
+            mock_metrics_store_cls.return_value.write_selected_counts.return_value = 1
 
             result = await run_pipeline(ctx, config)
 
