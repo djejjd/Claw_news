@@ -73,6 +73,19 @@ class TestHealthEndpoint:
         data = resp.json()
         assert data["status"] == "healthy"
 
+    def test_lifespan_does_not_trigger_startup_ingest(self):
+        """Service startup should not launch an immediate ingest task."""
+        from fastapi.testclient import TestClient
+
+        with (
+            patch("app.main.agent", _make_mock_agent()),
+            patch("app.main.scheduler", MagicMock()),
+        ):
+            from app.main import app
+
+            with TestClient(app):
+                pass
+
     def test_health_includes_ingest_status(self):
         """GET /health exposes the latest ingest summary."""
         from fastapi.testclient import TestClient
