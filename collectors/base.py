@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 Category = Literal["ai", "game", "device"]
@@ -72,3 +72,20 @@ def normalize_rank_score(rank: int, total: int = 10) -> float:
     if total <= 1:
         return 10.0
     return max(0.0, 10.0 - (rank - 1) * (10.0 / (total - 1)))
+
+
+def hotitem_to_candidate(item: HotItem, ingest_run_id: str = "") -> "CandidateItem":
+    """将旧的 HotItem 转换为统一的 CandidateItem"""
+    from app.pipeline.candidate import CandidateItem
+
+    return CandidateItem(
+        title=item.title,
+        url=item.url,
+        summary=item.summary,
+        source=item.source,
+        category=item.category,
+        published_at=item.pub_date,
+        fetched_at=datetime.fromtimestamp(item.timestamp).isoformat(),
+        canonical_key=CandidateItem.make_canonical_key(item.url) if item.url else "",
+        ingest_run_id=ingest_run_id,
+    )

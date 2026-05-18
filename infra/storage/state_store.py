@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.tools.summary_result import DigestPayload
 
 
 class StateStore:
     def __init__(self, data_dir: Path):
         self.data_dir = data_dir
         self.pushed_urls_path = data_dir / "pushed_urls.json"
+        self.published_keys_path = data_dir / "published_keys.json"
 
     def today_str(self) -> str:
         return date.today().isoformat()
@@ -45,6 +51,36 @@ class StateStore:
 
         payload[category] = items
         self._atomic_write_json(digest_path, payload)
+
+    # ------------------------------------------------------------------
+    # Phase 7: digest-shaped persistence
+    # ------------------------------------------------------------------
+
+    def write_digest(self, digest: DigestPayload) -> None:
+        """写入 digest-shaped JSON：data/{digest.date}/ai_digest.json."""
+        day_dir = self.data_dir / digest.date
+        digest_path = day_dir / "ai_digest.json"
+        payload = asdict(digest)
+        self._atomic_write_json(digest_path, payload)
+
+    def load_published_keys(self) -> set[str]:
+        """加载已发布的 canonical_keys."""
+        if not self.published_keys_path.exists():
+            return set()
+        try:
+            with open(self.published_keys_path, "r", encoding="utf-8") as f:
+                return set(json.load(f))
+        except (OSError, json.JSONDecodeError):
+            return set()
+
+    def merge_published_keys(self, keys: list[str]) -> set[str]:
+        """合并 published_keys 到持久化存储."""
+        current = self.load_published_keys()
+        merged = current | set(keys)
+        self._atomic_write_json(self.published_keys_path, sorted(merged))
+        return merged
+
+    # ------------------------------------------------------------------
 
     def _atomic_write_json(self, path: Path, payload) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

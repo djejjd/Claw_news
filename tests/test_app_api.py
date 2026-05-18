@@ -94,13 +94,20 @@ class TestHealthEndpoint:
 
 class TestRunNewsEndpoint:
     def test_run_news_triggers_agent(self):
-        """POST /run/news calls agent.run_once() and returns its result."""
+        """POST /run/news calls run_pipeline() and returns its result."""
         from fastapi.testclient import TestClient
 
-        mock_agent = _make_mock_agent()
+        from app.tools.summary_result import PublishResult
+
+        mock_result = PublishResult(
+            status="ok", selected_count=8, pushed=True,
+            message_type="markdown", summary_preview="今日 AI 新闻摘要...",
+            errors=[],
+        )
 
         with (
-            patch("app.main.agent", mock_agent),
+            patch("app.main.run_pipeline", new=AsyncMock(return_value=mock_result)),
+            patch("app.main.agent", _make_mock_agent()),
             patch("app.main.scheduler", MagicMock()),
         ):
             from app.main import app
@@ -113,7 +120,6 @@ class TestRunNewsEndpoint:
         assert data["status"] == "ok"
         assert data["fetched_count"] == 8
         assert data["pushed"] is True
-        mock_agent.run_once.assert_awaited_once()
 
     def test_run_news_when_skipped(self):
         """POST /run/news returns skipped status when lock held."""
@@ -137,30 +143,34 @@ class TestRunNewsEndpoint:
 
 class TestScheduler:
     def test_scheduler_registers_three_cron_jobs(self):
-        """The scheduler has exactly 3 jobs at 09:00, 14:00, 20:00."""
+        """The scheduler has exactly 2 jobs: 1 publish (09:00 cron) + 1 ingest (30m interval)."""
         from app.scheduler.jobs import create_scheduler
 
         mock_agent = _make_mock_agent()
         sched = create_scheduler(mock_agent, "Asia/Shanghai")
 
         jobs = sched.get_jobs()
-        assert len(jobs) == 3
+        assert len(jobs) == 2
 
-        hours = sorted(j.trigger.fields[5].expressions[0].first for j in jobs)
-        assert hours == [9, 14, 20]
+        # The publish job runs at 09:00 cron
+        cron_jobs = [j for j in jobs if j.id == "publish_0900"]
+        assert len(cron_jobs) == 1
+        assert cron_jobs[0].trigger.fields[5].expressions[0].first == 9
 
         for job in jobs:
             assert str(job.trigger.timezone) == "Asia/Shanghai"
 
     def test_scheduler_jobs_call_agent_run_once(self):
-        """Jobs are bound to agent.run_once."""
+        """The publish job is bound to agent.run_once."""
         from app.scheduler.jobs import create_scheduler
 
         mock_agent = _make_mock_agent()
         sched = create_scheduler(mock_agent, "Asia/Shanghai")
 
-        for job in sched.get_jobs():
-            assert job.func == mock_agent.run_once
+        # The publish job calls agent.run_once
+        publish_jobs = [j for j in sched.get_jobs() if j.id == "publish_0900"]
+        assert len(publish_jobs) == 1
+        assert publish_jobs[0].func == mock_agent.run_once
 
     def test_scheduler_uses_configured_timezone(self):
         """TZ from config is respected."""
@@ -180,6 +190,6 @@ class TestScheduler:
         sched1 = create_scheduler(mock_agent, "Asia/Shanghai")
         sched2 = create_scheduler(mock_agent, "Asia/Shanghai")
 
-        assert len(sched1.get_jobs()) == 3
-        assert len(sched2.get_jobs()) == 3
+        assert len(sched1.get_jobs()) == 2
+        assert len(sched2.get_jobs()) == 2
         assert sched1 is not sched2

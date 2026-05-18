@@ -79,20 +79,26 @@ class TestSummarizeNews:
 
     @pytest.mark.asyncio
     async def test_normal_summary_returns_chinese(self):
-        """A valid API response produces a Chinese summary string."""
+        """A valid API response produces a Chinese summary dict with headline_items and daily_judgement."""
         from app.tools.llm import summarize_news
 
         items = _make_news_items(3)
-        expected_summary = (
-            "今日 AI 新闻摘要\n\n"
-            "1. [AI打破了0项纪录](https://example.com/news/0)\n"
-            "   - 核心内容：测试\n"
-            "   - 重要性：高\n"
-            "   - 趋势判断：利好\n\n"
-            "今日一句话判断：AI行业持续火热"
-        )
 
-        mock_client = _build_mock_client(_make_valid_response(expected_summary))
+        import json
+        llm_json_output = json.dumps({
+            "headline_items": [
+                {
+                    "title": "AI打破了0项纪录",
+                    "url": "https://example.com/news/0",
+                    "core_summary": "测试核心内容",
+                    "importance": "高",
+                    "trend": "利好",
+                }
+            ],
+            "daily_judgement": "AI行业持续火热",
+        }, ensure_ascii=False)
+
+        mock_client = _build_mock_client(_make_valid_response(llm_json_output))
 
         with patch("app.tools.llm.httpx.AsyncClient", return_value=mock_client):
             result = await summarize_news(
@@ -102,9 +108,12 @@ class TestSummarizeNews:
                 model="test-model",
             )
 
-        assert isinstance(result, str)
-        assert "今日 AI 新闻摘要" in result
-        assert "[AI打破了0项纪录](https://example.com/news/0)" in result
+        assert isinstance(result, dict)
+        assert "headline_items" in result
+        assert len(result["headline_items"]) > 0
+        assert result["headline_items"][0]["title"] == "AI打破了0项纪录"
+        assert result["headline_items"][0]["url"] == "https://example.com/news/0"
+        assert result["daily_judgement"] == "AI行业持续火热"
 
     @pytest.mark.asyncio
     async def test_normal_summary_includes_links(self):
@@ -149,7 +158,7 @@ class TestSummarizeNews:
 
     @pytest.mark.asyncio
     async def test_empty_items_returns_fallback(self):
-        """When items list is empty, return a deterministic Chinese message without calling API."""
+        """When items list is empty, return a deterministic dict without calling API."""
         from app.tools.llm import summarize_news
 
         mock_client = AsyncMock()
@@ -161,8 +170,9 @@ class TestSummarizeNews:
                 model="test-model",
             )
 
-        assert isinstance(result, str)
-        assert "暂无" in result or "无" in result or "没有" in result
+        assert isinstance(result, dict)
+        assert result["headline_items"] == []
+        assert "暂无" in result["daily_judgement"]
         # Must NOT have called the API
         mock_client.post.assert_not_called()
 
