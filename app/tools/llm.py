@@ -19,16 +19,26 @@ logger = logging.getLogger(__name__)
 _SYSTEM_PROMPT = """\
 你是一个专业的AI新闻分析师。请根据提供的新闻列表，生成一份中文的《今日 AI 新闻摘要》。
 
-输出格式要求：
-- 标题为「今日 AI 新闻摘要」
-- 每条新闻必须包含：
-  - 标题（使用 Markdown 链接格式：[标题](原文链接)）
-  - 核心内容：该新闻的核心内容，1-2 句话
-  - 重要性：该新闻对AI行业的重要性判断（高/中/低）
-  - 趋势判断：该新闻反映的行业趋势
-- 文末包含「今日一句话判断」，用一句话总结今天的AI新闻整体态势
-- 必须使用中文输出
-- 每条新闻的标题必须保留原文链接"""
+你必须严格按照以下 JSON 格式输出，不要输出任何其他内容：
+
+{
+  "headline_items": [
+    {
+      "title": "新闻标题（原文标题）",
+      "url": "原文链接",
+      "core_summary": "该新闻的核心内容，1-2句话",
+      "importance": "高/中/低",
+      "trend": "该新闻反映的行业趋势"
+    }
+  ],
+  "daily_judgement": "用一句话总结今天的AI新闻整体态势"
+}
+
+要求：
+- 只输出 JSON，不要用 ```json``` 包裹
+- 每条新闻的 url 必须保留原文链接
+- importance 只能是 高、中、低 三个值
+- headline_items 按重要性从高到低排列"""
 
 _USER_PROMPT_TEMPLATE = """请总结以下新闻：
 
@@ -36,8 +46,44 @@ _USER_PROMPT_TEMPLATE = """请总结以下新闻：
 
 请按照格式要求生成摘要。"""
 
-_FALLBACK_MESSAGE = "今日暂无 AI 相关新闻，请稍后再关注。"
+_FALLBACK_RESULT = {
+    "headline_items": [],
+    "daily_judgement": "今日暂无 AI 相关新闻，请稍后再关注。",
+}
 _LLM_TIMEOUT = httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=60.0)
+
+
+# ---------------------------------------------------------------------------
+# Parsing helpers
+# ---------------------------------------------------------------------------
+
+
+def parse_summary_result(raw_text: str) -> dict:
+    """Parse LLM JSON output into structured dict, with fallback on failure.
+
+    Returns a dict containing ``headline_items`` and ``daily_judgement``.
+    On parse failure a degraded structure with ``_parse_error`` is returned;
+    this function never raises.
+    """
+    text = raw_text.strip()
+    # Strip ```json ... ``` fences if present
+    if text.startswith("```"):
+        lines = text.split("\n")
+        text = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
+
+    try:
+        data = json.loads(text)
+        if "headline_items" not in data:
+            raise ValueError("missing headline_items")
+        if "daily_judgement" not in data:
+            raise ValueError("missing daily_judgement")
+        return data
+    except (json.JSONDecodeError, ValueError) as e:
+        return {
+            "headline_items": [],
+            "daily_judgement": raw_text[:500].strip(),
+            "_parse_error": str(e),
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -51,8 +97,8 @@ async def summarize_news(
     base_url: str,
     api_key: str,
     model: str,
-) -> str:
-    """Summarize a list of news items into a Chinese AI news digest.
+) -> dict:
+    """Summarize a list of news items into a structured Chinese AI news digest.
 
     Args:
         items: List of news dicts with keys: title, link, summary, published_at.
@@ -61,7 +107,8 @@ async def summarize_news(
         model: Model name to use for completion.
 
     Returns:
-        A Chinese summary string in the prescribed format.
+        A dict with ``headline_items`` (list of news summaries) and
+        ``daily_judgement`` (one-line overall assessment).
 
     Raises:
         httpx.HTTPStatusError: On upstream HTTP error responses.
@@ -69,7 +116,7 @@ async def summarize_news(
         RuntimeError: On malformed / unexpected API response structure.
     """
     if not items:
-        return _FALLBACK_MESSAGE
+        return _FALLBACK_RESULT
 
     # Build user message — embed news as compact JSON
     news_for_prompt = [
@@ -131,4 +178,5 @@ async def summarize_news(
     if not isinstance(content, str) or not content.strip():
         raise RuntimeError("LLM API returned empty content")
 
-    return content.strip()
+    result = parse_summary_result(content)
+    return result

@@ -1,14 +1,12 @@
 """Tests for app/agents/news_agent.py — NewsAgent orchestration layer.
 
 Covers:
-- Full pipeline success (crawl -> score -> summarize -> push)
-- No news path (empty items -> skipped)
-- Crawl failure path (error -> error summary pushed)
-- LLM failure path (error -> error summary pushed)
-- Push failure path (push error -> failed status)
+- Full pipeline success (delegates to run_pipeline)
+- No news path (pipeline returns skipped)
+- Pipeline exception path (error -> error summary pushed)
+- Push failure path (pipeline returns failed)
 - Lock conflict (concurrent call -> skipped)
-- Top 5 selection (10 candidates -> score/sort -> top 5)
-- Links preserved in final output
+- Agent result mapping (summary_preview, selected_count, etc.)
 """
 
 from unittest.mock import AsyncMock, patch
@@ -16,6 +14,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.config import AppConfig
+from app.tools.summary_result import PublishResult
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -36,19 +35,6 @@ def _make_config(**kwargs) -> AppConfig:
     )
 
 
-def _make_items(count: int = 5, *, pub_date: str = "2026-05-17") -> list[dict]:
-    """Return fake news items matching fetch_news output format."""
-    return [
-        {
-            "title": f"AI 新闻标题 {i}",
-            "link": f"https://example.com/news/{i}",
-            "summary": f"这是第 {i} 条 AI 新闻摘要",
-            "published_at": pub_date,
-        }
-        for i in range(count)
-    ]
-
-
 SUMMARY = (
     "今日 AI 新闻摘要\n\n"
     "1. [AI新闻标题 0](https://example.com/news/0)\n"
@@ -58,6 +44,28 @@ SUMMARY = (
     "今日一句话判断：AI行业持续发展"
 )
 
+SUMMARY_PREVIEW = SUMMARY[:200]
+
+
+def _make_publish_result(
+    *,
+    status: str = "ok",
+    selected_count: int = 8,
+    pushed: bool = True,
+    summary_preview: str = SUMMARY_PREVIEW,
+    errors: list | None = None,
+) -> PublishResult:
+    if errors is None:
+        errors = []
+    return PublishResult(
+        status=status,
+        selected_count=selected_count,
+        pushed=pushed,
+        message_type="markdown",
+        summary_preview=summary_preview,
+        errors=errors,
+    )
+
 
 # ===================================================================
 # 1. Successful full pipeline
@@ -65,66 +73,47 @@ SUMMARY = (
 
 
 class TestNewsAgentSuccess:
-    """Happy path: crawl -> score -> summarize -> push all succeed."""
+    """Happy path: run_pipeline returns ok."""
 
     @pytest.mark.asyncio
     async def test_full_pipeline_ok(self):
         from app.agents.news_agent import NewsAgent
 
         config = _make_config()
-        items = _make_items(8)
+        mock_result = _make_publish_result()
 
-        with (
-            patch(
-                "app.agents.news_agent.fetch_news", new=AsyncMock(return_value=items)
-            ) as mock_fetch,
-            patch(
-                "app.agents.news_agent.summarize_news",
-                new=AsyncMock(return_value=SUMMARY),
-            ) as mock_llm,
-            patch(
-                "app.agents.news_agent.send_text",
-                new=AsyncMock(return_value={"errcode": 0, "errmsg": "ok"}),
-            ) as mock_push,
-        ):
+        with patch(
+            "app.pipeline.news_pipeline.run_pipeline",
+            new=AsyncMock(return_value=mock_result),
+        ) as mock_pipeline:
             agent = NewsAgent(config)
             result = await agent.run_once()
 
         assert result["status"] == "ok"
         assert result["fetched_count"] == 8
         assert result["pushed"] is True
-        assert SUMMARY in result["summary_preview"]
+        assert SUMMARY_PREVIEW in result["summary_preview"]
         assert result["errors"] == []
 
-        mock_fetch.assert_called_once_with(config.news_rss_urls, limit=10)
-        mock_llm.assert_called_once()
-        mock_push.assert_called_once()
+        mock_pipeline.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_llm_receives_top_5_items(self):
-        """When 8 items are fetched, LLM receives exactly 5 after scoring."""
+    async def test_selected_count_reflects_pipeline_result(self):
+        """When pipeline selects 5 items, agent reports 5."""
         from app.agents.news_agent import NewsAgent
 
         config = _make_config()
-        items = _make_items(8)
+        mock_result = _make_publish_result(selected_count=5)
 
-        with (
-            patch("app.agents.news_agent.fetch_news", new=AsyncMock(return_value=items)),
-            patch(
-                "app.agents.news_agent.summarize_news",
-                new=AsyncMock(return_value=SUMMARY),
-            ) as mock_llm,
-            patch(
-                "app.agents.news_agent.send_text",
-                new=AsyncMock(return_value={"errcode": 0, "errmsg": "ok"}),
-            ),
+        with patch(
+            "app.pipeline.news_pipeline.run_pipeline",
+            new=AsyncMock(return_value=mock_result),
         ):
             agent = NewsAgent(config)
-            await agent.run_once()
+            result = await agent.run_once()
 
-        call_args = mock_llm.call_args
-        items_sent_to_llm = call_args[0][0]
-        assert len(items_sent_to_llm) == 5
+        assert result["status"] == "ok"
+        assert result["fetched_count"] == 5
 
 
 # ===================================================================
@@ -133,21 +122,22 @@ class TestNewsAgentSuccess:
 
 
 class TestNoNews:
-    """When fetch_news returns no items, pipeline should stop early."""
+    """When pipeline returns skipped, agent should report skipped."""
 
     @pytest.mark.asyncio
     async def test_no_items_skips_pipeline(self):
         from app.agents.news_agent import NewsAgent
 
         config = _make_config()
+        mock_result = _make_publish_result(
+            status="skipped", selected_count=0, pushed=False,
+            summary_preview="", errors=[],
+        )
 
-        with (
-            patch(
-                "app.agents.news_agent.fetch_news", new=AsyncMock(return_value=[])
-            ) as mock_fetch,
-            patch("app.agents.news_agent.summarize_news") as mock_llm,
-            patch("app.agents.news_agent.send_text") as mock_push,
-        ):
+        with patch(
+            "app.pipeline.news_pipeline.run_pipeline",
+            new=AsyncMock(return_value=mock_result),
+        ) as mock_pipeline:
             agent = NewsAgent(config)
             result = await agent.run_once()
 
@@ -157,18 +147,16 @@ class TestNoNews:
         assert result["summary_preview"] == ""
         assert result["errors"] == []
 
-        mock_fetch.assert_called_once()
-        mock_llm.assert_not_called()
-        mock_push.assert_not_called()
+        mock_pipeline.assert_called_once()
 
 
 # ===================================================================
-# 3. Crawl failure path
+# 3. Pipeline exception path (covers both crawl & LLM errors)
 # ===================================================================
 
 
 class TestCrawlFailure:
-    """When fetch_news raises, error is logged and error summary pushed."""
+    """When run_pipeline raises, error is logged and error summary pushed."""
 
     @pytest.mark.asyncio
     async def test_crawl_error_pushes_error_summary(self, caplog):
@@ -178,7 +166,7 @@ class TestCrawlFailure:
 
         with (
             patch(
-                "app.agents.news_agent.fetch_news",
+                "app.pipeline.news_pipeline.run_pipeline",
                 side_effect=RuntimeError("RSS feed down"),
             ),
             patch(
@@ -193,7 +181,7 @@ class TestCrawlFailure:
         assert result["fetched_count"] == 0
         assert result["pushed"] is True  # error summary was pushed
         assert len(result["errors"]) > 0
-        assert any("crawl" in e for e in result["errors"])
+        assert any("pipeline" in e for e in result["errors"])
 
         # Verify error was pushed
         mock_push.assert_called_once()
@@ -203,31 +191,29 @@ class TestCrawlFailure:
 
         # Verify error was logged
         assert any(
-            "抓取失败" in r.message or "RSS feed down" in r.message
+            "抓取失败" in r.message or "RSS feed down" in r.message or "Pipeline" in r.message
             for r in caplog.records
             if r.levelname in ("ERROR", "WARNING")
         )
 
 
 # ===================================================================
-# 4. LLM failure path
+# 4. LLM failure path (pipeline raises)
 # ===================================================================
 
 
 class TestLLMFailure:
-    """When LLM summarization fails, error is logged and error summary pushed."""
+    """When run_pipeline raises (e.g. LLM fails), error is pushed."""
 
     @pytest.mark.asyncio
     async def test_llm_error_pushes_error_summary(self):
         from app.agents.news_agent import NewsAgent
 
         config = _make_config()
-        items = _make_items(5)
 
         with (
-            patch("app.agents.news_agent.fetch_news", new=AsyncMock(return_value=items)),
             patch(
-                "app.agents.news_agent.summarize_news",
+                "app.pipeline.news_pipeline.run_pipeline",
                 side_effect=RuntimeError("LLM API 500"),
             ),
             patch(
@@ -239,10 +225,10 @@ class TestLLMFailure:
             result = await agent.run_once()
 
         assert result["status"] == "failed"
-        assert result["fetched_count"] == 5
+        assert result["fetched_count"] == 0
         assert result["pushed"] is True  # error summary was pushed
         assert len(result["errors"]) > 0
-        assert any("llm" in e for e in result["errors"])
+        assert any("pipeline" in e for e in result["errors"])
 
         # Verify error was pushed
         mock_push.assert_called_once()
@@ -252,16 +238,14 @@ class TestLLMFailure:
 
     @pytest.mark.asyncio
     async def test_llm_error_does_not_attempt_primary_push(self):
-        """After LLM fails, the primary summary is never pushed — only the error."""
+        """After pipeline raises, only the error notification is pushed."""
         from app.agents.news_agent import NewsAgent
 
         config = _make_config()
-        items = _make_items(5)
 
         with (
-            patch("app.agents.news_agent.fetch_news", new=AsyncMock(return_value=items)),
             patch(
-                "app.agents.news_agent.summarize_news",
+                "app.pipeline.news_pipeline.run_pipeline",
                 side_effect=RuntimeError("LLM API 500"),
             ),
             patch(
@@ -288,12 +272,10 @@ class TestLLMFailure:
                 return ""
 
         config = _make_config()
-        items = _make_items(5)
 
         with (
-            patch("app.agents.news_agent.fetch_news", new=AsyncMock(return_value=items)),
             patch(
-                "app.agents.news_agent.summarize_news",
+                "app.pipeline.news_pipeline.run_pipeline",
                 side_effect=SilentLLMError(),
             ),
             patch(
@@ -305,35 +287,30 @@ class TestLLMFailure:
             result = await agent.run_once()
 
         assert result["status"] == "failed"
-        assert result["errors"] == ["llm: SilentLLMError"]
+        assert result["errors"] == ["pipeline: SilentLLMError"]
 
 
 # ===================================================================
-# 5. Push failure path
+# 5. Push failure path (pipeline returns failed)
 # ===================================================================
 
 
 class TestPushFailure:
-    """When the WeCom push itself fails, the result reports 'failed'."""
+    """When pipeline returns status='failed', the agent reports it."""
 
     @pytest.mark.asyncio
     async def test_push_failure_returns_failed(self):
         from app.agents.news_agent import NewsAgent
-        from app.tools.wecom import WeComError
 
         config = _make_config()
-        items = _make_items(5)
+        mock_result = _make_publish_result(
+            status="failed", selected_count=5, pushed=False,
+            errors=["push_failed"],
+        )
 
-        with (
-            patch("app.agents.news_agent.fetch_news", new=AsyncMock(return_value=items)),
-            patch(
-                "app.agents.news_agent.summarize_news",
-                new=AsyncMock(return_value=SUMMARY),
-            ),
-            patch(
-                "app.agents.news_agent.send_text",
-                side_effect=WeComError(errcode=45009, errmsg="api freq out of limit"),
-            ),
+        with patch(
+            "app.pipeline.news_pipeline.run_pipeline",
+            new=AsyncMock(return_value=mock_result),
         ):
             agent = NewsAgent(config)
             result = await agent.run_once()
@@ -374,135 +351,71 @@ class TestLockConflict:
 
 
 # ===================================================================
-# 7. Top 5 selection (10 candidates -> score/sort -> top 5)
+# 7. Top 5 selection (delegated to pipeline)
 # ===================================================================
 
 
 class TestTop5Selection:
-    """Verify that only the top-5 scoring items are passed to the LLM."""
+    """Verify that the agent correctly reports pipeline-selected counts.
+
+    Note: actual scoring/ranking logic is now in Merger (tested in test_merger.py).
+    """
 
     @pytest.mark.asyncio
-    async def test_recent_items_ranked_higher_than_old(self):
-        """Recent items (today) score higher due to time_modifier = 0 vs -2.0 for old."""
+    async def test_selected_count_reflects_pipeline_output(self):
+        """Agent reports the selected_count from the pipeline result."""
         from app.agents.news_agent import NewsAgent
 
         config = _make_config()
+        mock_result = _make_publish_result(selected_count=5)
 
-        # Build 10 items: 5 recent (today), 5 old (months ago)
-        items: list[dict] = []
-        for i in range(5):
-            items.append(
-                {
-                    "title": f"Recent 新闻 {i}",
-                    "link": f"https://example.com/recent/{i}",
-                    "summary": f"Recent summary {i}",
-                    "published_at": "2026-05-17",  # today -> time_modifier=0
-                }
-            )
-        for i in range(5):
-            items.append(
-                {
-                    "title": f"Old 新闻 {i}",
-                    "link": f"https://example.com/old/{i}",
-                    "summary": f"Old summary {i}",
-                    "published_at": "2026-01-01",  # old -> time_modifier=-2.0
-                }
-            )
-
-        with (
-            patch("app.agents.news_agent.fetch_news", new=AsyncMock(return_value=items)),
-            patch(
-                "app.agents.news_agent.summarize_news",
-                new=AsyncMock(return_value=SUMMARY),
-            ) as mock_llm,
-            patch(
-                "app.agents.news_agent.send_text",
-                new=AsyncMock(return_value={"errcode": 0, "errmsg": "ok"}),
-            ),
+        with patch(
+            "app.pipeline.news_pipeline.run_pipeline",
+            new=AsyncMock(return_value=mock_result),
         ):
             agent = NewsAgent(config)
             result = await agent.run_once()
 
         assert result["status"] == "ok"
-        assert result["fetched_count"] == 10
-
-        # LLM should receive exactly 5 items
-        call_args = mock_llm.call_args
-        items_for_llm = call_args[0][0]
-        assert len(items_for_llm) == 5
-
-        # All 5 should be recent (higher score)
-        for item in items_for_llm:
-            assert "Recent" in item["title"]
+        assert result["fetched_count"] == 5
 
     @pytest.mark.asyncio
-    async def test_position_affects_sorting(self):
-        """Items earlier in the feed (lower position) get higher position_score."""
+    async def test_pipeline_with_fewer_than_5(self):
+        """When pipeline selects fewer than 5, agent reports the actual count."""
         from app.agents.news_agent import NewsAgent
 
         config = _make_config()
+        mock_result = _make_publish_result(selected_count=3)
 
-        # Two items, same date, but first has better position
-        items = [
-            {
-                "title": "First item (pos 1)",
-                "link": "https://example.com/1",
-                "summary": "First",
-                "published_at": "2026-05-17",
-            },
-            {
-                "title": "Second item (pos 2)",
-                "link": "https://example.com/2",
-                "summary": "Second",
-                "published_at": "2026-05-17",
-            },
-        ]
-
-        with (
-            patch("app.agents.news_agent.fetch_news", new=AsyncMock(return_value=items)),
-            patch(
-                "app.agents.news_agent.summarize_news",
-                new=AsyncMock(return_value=SUMMARY),
-            ) as mock_llm,
-            patch(
-                "app.agents.news_agent.send_text",
-                new=AsyncMock(return_value={"errcode": 0, "errmsg": "ok"}),
-            ),
+        with patch(
+            "app.pipeline.news_pipeline.run_pipeline",
+            new=AsyncMock(return_value=mock_result),
         ):
+            agent = NewsAgent(config)
+            result = await agent.run_once()
+
+        assert result["status"] == "ok"
+        assert result["fetched_count"] == 3
+
+    @pytest.mark.asyncio
+    async def test_pipeline_run_context_is_passed(self):
+        """The pipeline receives correct RunContext and config."""
+        from app.agents.news_agent import NewsAgent
+
+        config = _make_config()
+        mock_result = _make_publish_result()
+
+        with patch(
+            "app.pipeline.news_pipeline.run_pipeline",
+            new=AsyncMock(return_value=mock_result),
+        ) as mock_pipeline:
             agent = NewsAgent(config)
             await agent.run_once()
 
-        call_args = mock_llm.call_args
-        items_for_llm = call_args[0][0]
-        # First positional item should appear first in the sorted list
-        assert items_for_llm[0]["title"] == "First item (pos 1)"
-
-    @pytest.mark.asyncio
-    async def test_less_than_5_items_all_passed(self):
-        """When fewer than 5 items are fetched, all are passed to LLM."""
-        from app.agents.news_agent import NewsAgent
-
-        config = _make_config()
-        items = _make_items(3)
-
-        with (
-            patch("app.agents.news_agent.fetch_news", new=AsyncMock(return_value=items)),
-            patch(
-                "app.agents.news_agent.summarize_news",
-                new=AsyncMock(return_value=SUMMARY),
-            ) as mock_llm,
-            patch(
-                "app.agents.news_agent.send_text",
-                new=AsyncMock(return_value={"errcode": 0, "errmsg": "ok"}),
-            ),
-        ):
-            agent = NewsAgent(config)
-            result = await agent.run_once()
-
-        assert result["status"] == "ok"
-        call_args = mock_llm.call_args
-        items_for_llm = call_args[0][0]
-        assert len(items_for_llm) == 3
+        # Verify pipeline was called with context and config
+        mock_pipeline.assert_called_once()
+        call_args = mock_pipeline.call_args
+        assert call_args[0][1] is config  # second arg is config
 
 
 # ===================================================================
@@ -511,49 +424,30 @@ class TestTop5Selection:
 
 
 class TestLinksPreserved:
-    """Verify that the final pushed content contains original article links."""
+    """Verify that the agent passes through summary_preview and handles results correctly."""
 
     @pytest.mark.asyncio
-    async def test_pushed_content_contains_original_links(self):
+    async def test_summary_preview_is_passed_through(self):
+        """summary_preview from pipeline is reflected in agent result."""
         from app.agents.news_agent import NewsAgent
 
         config = _make_config()
-        items = _make_items(3)
+        preview = "# 今日 AI 新闻摘要\n有3条重要新闻"
 
-        summary_with_links = (
-            "今日 AI 新闻摘要\n\n"
-            "1. [AI新闻标题 0](https://example.com/news/0)\n"
-            "   - 核心内容：摘要内容\n"
-            "   - 重要性：高\n"
-            "   - 趋势判断：利好\n\n"
-            "2. [AI新闻标题 1](https://example.com/news/1)\n"
-            "   - 核心内容：摘要内容\n"
-            "   - 重要性：中\n"
-            "   - 趋势判断：中性\n\n"
-            "今日一句话判断：AI行业稳步前进"
+        mock_result = _make_publish_result(
+            summary_preview=preview, selected_count=3,
         )
 
-        with (
-            patch("app.agents.news_agent.fetch_news", new=AsyncMock(return_value=items)),
-            patch(
-                "app.agents.news_agent.summarize_news",
-                new=AsyncMock(return_value=summary_with_links),
-            ),
-            patch(
-                "app.agents.news_agent.send_text",
-                new=AsyncMock(return_value={"errcode": 0, "errmsg": "ok"}),
-            ) as mock_push,
+        with patch(
+            "app.pipeline.news_pipeline.run_pipeline",
+            new=AsyncMock(return_value=mock_result),
         ):
             agent = NewsAgent(config)
             result = await agent.run_once()
 
         assert result["status"] == "ok"
-
-        # Verify the pushed content contains the original links
-        call_args = mock_push.call_args
-        pushed_content = call_args[0][1]
-        assert "https://example.com/news/0" in pushed_content
-        assert "https://example.com/news/1" in pushed_content
+        assert preview in result["summary_preview"]
+        assert result["fetched_count"] == 3
 
     @pytest.mark.asyncio
     async def test_summary_preview_is_truncated(self):
@@ -561,23 +455,41 @@ class TestLinksPreserved:
         from app.agents.news_agent import NewsAgent
 
         config = _make_config()
-        items = _make_items(3)
+        long_summary = "A" * 500  # 500 chars — truncated to 200
 
-        long_summary = "A" * 500  # 500 chars
+        mock_result = _make_publish_result(
+            summary_preview=long_summary[:200],
+        )
 
-        with (
-            patch("app.agents.news_agent.fetch_news", new=AsyncMock(return_value=items)),
-            patch(
-                "app.agents.news_agent.summarize_news",
-                new=AsyncMock(return_value=long_summary),
-            ),
-            patch(
-                "app.agents.news_agent.send_text",
-                new=AsyncMock(return_value={"errcode": 0, "errmsg": "ok"}),
-            ),
+        with patch(
+            "app.pipeline.news_pipeline.run_pipeline",
+            new=AsyncMock(return_value=mock_result),
         ):
             agent = NewsAgent(config)
             result = await agent.run_once()
 
+        # Verify the preview is exactly 200 chars (pipeline's make_preview truncates)
         assert len(result["summary_preview"]) == 200
-        assert result["summary_preview"] == long_summary[:200]
+
+    @pytest.mark.asyncio
+    async def test_pipeline_error_propagates_to_agent_result(self):
+        """When pipeline returns errors, they appear in the agent result."""
+        from app.agents.news_agent import NewsAgent
+
+        config = _make_config()
+        mock_result = _make_publish_result(
+            status="failed", pushed=False,
+            errors=["llm_parse: bad JSON", "push: rate limited"],
+        )
+
+        with patch(
+            "app.pipeline.news_pipeline.run_pipeline",
+            new=AsyncMock(return_value=mock_result),
+        ):
+            agent = NewsAgent(config)
+            result = await agent.run_once()
+
+        assert result["status"] == "failed"
+        assert len(result["errors"]) == 2
+        assert "llm_parse" in result["errors"][0]
+        assert "push" in result["errors"][1]

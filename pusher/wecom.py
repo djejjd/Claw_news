@@ -158,6 +158,32 @@ class WeComPusher:
             if self._client is None:
                 await client.aclose()
 
+    async def push_single_markdown(self, content: str) -> PushResult:
+        """推送单条 markdown 消息，不复用逐 category 多消息语义"""
+        payload = {"msgtype": "markdown", "markdown": {"content": content}}
+
+        client = self._client or httpx.AsyncClient()
+        try:
+            resp = await client.post(self.webhook_url, json=payload, timeout=15.0)
+            resp.raise_for_status()
+            body = resp.json()
+            if body.get("errcode") != 0:
+                raise WeComError(
+                    category="ai_digest",
+                    errcode=body.get("errcode"),
+                    errmsg=body.get("errmsg"),
+                )
+            return PushResult(
+                category="ai_digest",
+                success=True,
+                urls=[],
+                errcode=0,
+                errmsg=body.get("errmsg"),
+            )
+        finally:
+            if self._client is None:
+                await client.aclose()
+
     async def push(self, items_by_category, period="morning", pushed_urls=None):
         results = []
         for category in ("ai", "game", "device"):

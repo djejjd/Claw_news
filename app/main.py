@@ -1,19 +1,22 @@
 """FastAPI entrypoint for the AI News Assistant service.
 
 Provides health-check, service info, and a manual trigger endpoint.
-An APScheduler runs the news pipeline at 09:00, 14:00, and 20:00 daily.
+An APScheduler runs the news pipeline at 09:00 daily.
 """
 
 from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI
 
 from app.agents.news_agent import NewsAgent
 from app.config import load_config
-from app.scheduler.jobs import create_scheduler
+from app.pipeline.context import RunContext
+from app.pipeline.news_pipeline import run_pipeline
+from app.scheduler.jobs import create_scheduler, run_ingest
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,6 +30,11 @@ scheduler = create_scheduler(agent, config.tz)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 启动时先跑一次 ingest 初始化候选池
+    try:
+        await run_ingest()
+    except Exception:
+        pass  # ingest 失败不阻止服务启动
     scheduler.start()
     yield
     scheduler.shutdown(wait=False)
@@ -45,7 +53,7 @@ async def root():
     return {
         "service": "Claw_news AI Assistant",
         "version": "0.2.0",
-        "scheduler": "APScheduler — 09:00 / 14:00 / 20:00 daily",
+        "scheduler": "APScheduler — 09:00 daily",
         "endpoints": {
             "health": "/health",
             "run_news": "POST /run/news",
@@ -60,5 +68,17 @@ async def health():
 
 @app.post("/run/news")
 async def run_news():
-    result = await agent.run_once()
-    return result
+    now = datetime.now()
+    ctx = RunContext(
+        trigger_mode="http",
+        time_window_start=now.strftime("%Y-%m-%dT00:00:00"),
+        time_window_end=now.strftime("%Y-%m-%dT%H:%M:%S"),
+    )
+    result = await run_pipeline(ctx, config)
+    return {
+        "status": result.status,
+        "fetched_count": result.selected_count,
+        "pushed": result.pushed,
+        "summary_preview": result.summary_preview,
+        "errors": result.errors,
+    }
