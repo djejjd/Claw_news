@@ -73,6 +73,29 @@ class TestHealthEndpoint:
         data = resp.json()
         assert data["status"] == "healthy"
 
+    def test_health_includes_ingest_status(self):
+        """GET /health exposes the latest ingest summary."""
+        from fastapi.testclient import TestClient
+
+        with (
+            patch("app.main.agent", _make_mock_agent()),
+            patch("app.main.scheduler", MagicMock()),
+            patch("app.main.IngestStatusStore") as mock_store,
+        ):
+            from app.main import app
+
+            mock_store.return_value.load_status.return_value = {
+                "last_ingest_at": "2026-05-18T08:00:00",
+                "last_item_count": 3,
+                "successful_sources": ["rss"],
+                "failed_sources": [],
+            }
+            client = TestClient(app)
+            resp = client.get("/health")
+
+        assert resp.status_code == 200
+        assert resp.json()["ingest"]["last_item_count"] == 3
+
     def test_root_returns_200(self):
         """GET / returns 200 with service info."""
         from fastapi.testclient import TestClient
@@ -139,6 +162,7 @@ class TestRunNewsEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "skipped"
+
 
 
 class TestScheduler:

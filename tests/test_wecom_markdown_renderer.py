@@ -8,8 +8,7 @@ import pytest
 
 from app.renderers.wecom_markdown import make_preview, render_digest
 from app.tools.summary_result import SummaryItem, SummaryResult
-from pusher.wecom import WeComError, WeComPusher, PushResult
-
+from pusher.wecom import PushResult, WeComError, WeComPusher
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -333,3 +332,42 @@ class TestPushSingleMarkdown:
             assert result.success is True
             # Client should still be usable after the call
             assert not client.is_closed
+
+
+def test_render_digest_with_github_supplement():
+    from collectors.github import GitHubRepoItem
+
+    result = SummaryResult(
+        headline_items=[
+            SummaryItem(
+                title="News",
+                url="https://example.com/news",
+                core_summary="summary",
+                importance="高",
+                trend="up",
+            )
+        ],
+        daily_judgement="steady",
+    )
+    repos = [
+        GitHubRepoItem(
+            "owner/a", "https://github.com/owner/a", "desc a", 10, "Python", "2026-05-18T08:00:00"
+        ),
+        GitHubRepoItem(
+            "owner/b",
+            "https://github.com/owner/b",
+            "desc b",
+            9,
+            "TypeScript",
+            "2026-05-18T08:00:00",
+        ),
+        GitHubRepoItem(
+            "owner/c", "https://github.com/owner/c", "desc c", 8, "Go", "2026-05-18T08:00:00"
+        ),
+    ]
+
+    markdown = render_digest(result, github_items=repos)
+
+    assert "## 今日值得看项目" in markdown
+    assert "[owner/a](https://github.com/owner/a)" in markdown
+    assert "⭐ 10" in markdown

@@ -195,6 +195,8 @@ LLM_MODEL=deepseek-chat
 WECOM_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY_HERE
 TZ=Asia/Shanghai
 NEWS_RSS_URLS=https://www.qbitai.com/feed,https://sspai.com/feed
+AI_RSS_MODE=append
+AI_RSS_FEEDS=openai_blog|https://openai.com/news/rss.xml
 ```
 
 ### 5.2 准备验证环境配置
@@ -233,7 +235,7 @@ docker compose up -d --build
 ```bash
 # 健康检查
 curl http://127.0.0.1:8000/health
-# 预期: {"status":"healthy"}
+# 预期: 返回 status=healthy，并带有最近一次 ingest 的时间、条数、成功源、失败源
 
 # 服务信息
 curl http://127.0.0.1:8000/

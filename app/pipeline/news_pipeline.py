@@ -10,6 +10,7 @@ from aggregator.merger import Merger
 from app.classifiers.topic_classifier import TopicClassifier
 from app.pipeline.context import RunContext
 from app.renderers.wecom_markdown import make_preview, render_digest
+from app.storage.github_store import GitHubStore
 from app.storage.ingestion_store import IngestionStore
 from app.tools.llm import summarize_news
 from app.tools.summary_result import DigestPayload, PublishResult, SummaryItem, SummaryResult
@@ -110,7 +111,8 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     )
 
     # 6. 渲染 & 收集 source_failures
-    markdown = render_digest(summary)
+    github_items = GitHubStore().load_latest_snapshot()
+    markdown = render_digest(summary, github_items=github_items)
     source_failures = _collect_source_failures(
         ingestion_store, ctx.time_window_start, ctx.time_window_end,
     )

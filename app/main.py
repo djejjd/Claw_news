@@ -18,6 +18,7 @@ from app.config import load_config
 from app.pipeline.context import RunContext
 from app.pipeline.news_pipeline import run_pipeline
 from app.scheduler.jobs import create_scheduler, run_ingest
+from app.storage.ingest_status_store import IngestStatusStore
 
 logging.basicConfig(
     level=logging.INFO,
@@ -61,7 +62,7 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy"}
+    return {"status": "healthy", "ingest": IngestStatusStore().load_status()}
 
 
 @app.post("/run/news")

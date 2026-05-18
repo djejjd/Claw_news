@@ -12,3 +12,5 @@ data/.task.lock
 docs/superpowers/
 spec/
 docs/*.plist
+
+.worktrees/

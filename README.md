@@ -112,14 +112,16 @@ cp .env.example .env
 | `LLM_MODEL` | Yes | Model name to use |
 | `WECOM_WEBHOOK_URL` | Yes | WeCom bot webhook URL |
 | `TZ` | No | Timezone (default: `Asia/Shanghai`) |
-| `NEWS_RSS_URLS` | Yes | Comma-separated RSS feed URLs, e.g. `https://www.qbitai.com/feed,https://sspai.com/feed` |
+| `NEWS_RSS_URLS` | Legacy | Historical URL-only RSS config; formal AI ingest uses `AI_RSS_*` below |
+| `AI_RSS_MODE` | No | `append` (default) keeps built-ins; `replace` uses only `AI_RSS_FEEDS` |
+| `AI_RSS_FEEDS` | No | Comma-separated `source|url` AI RSS feeds, e.g. `openai_blog|https://openai.com/news/rss.xml` |
 
 ### HTTP Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/` | Service status and description |
-| `GET` | `/health` | Health check |
+| `GET` | `/health` | Health check plus latest ingest status |
 | `POST` | `/run/news` | Manually trigger one publish cycle from the ingestion store |
 
 ### Docker Deployment
@@ -156,7 +158,7 @@ See the full deployment guide:
 
 **Mode A: Internal APScheduler (recommended)**
 
-The service keeps one 09:00 publish job and one high-frequency ingest job that refreshes the candidate pool every 30 minutes. The container keeps a single process running with a built-in scheduler. This is the default mode.
+The service keeps one 09:00 publish job and one high-frequency ingest job that refreshes the candidate pool every 30 minutes. The digest can also append a three-item GitHub project supplement when a recent snapshot is available. The container keeps a single process running with a built-in scheduler. This is the default mode.
 
 **Mode B: External HTTP trigger**
 

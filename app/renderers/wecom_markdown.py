@@ -23,7 +23,7 @@ def _escape_title(text: str) -> str:
     return _MARKDOWN_SPECIAL.sub(r"\\\1", text)
 
 
-def render_digest(result: SummaryResult) -> str:
+def render_digest(result: SummaryResult, github_items: list | None = None) -> str:
     """Consume *result* and produce a single WeCom markdown string.
 
     The output follows the project's WeCom markdown convention:
@@ -58,6 +58,19 @@ def render_digest(result: SummaryResult) -> str:
     if result.daily_judgement:
         lines.append("")
         lines.append(f"> 今日一句话判断：{result.daily_judgement}")
+
+    if github_items:
+        lines.append("")
+        lines.append("## 今日值得看项目")
+        lines.append("")
+        for i, item in enumerate(github_items[:3], 1):
+            language = f" · {item.language}" if item.language else ""
+            description = item.description or "暂无简介"
+            lines.append(f"**{i}.** [{item.full_name}]({item.url})")
+            lines.append(f"> {description}")
+            lines.append(f"> ⭐ {item.stars}{language}")
+            if i < min(len(github_items), 3):
+                lines.append("")
 
     return "\n".join(lines)
 

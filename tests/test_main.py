@@ -13,7 +13,6 @@ from app.config import AppConfig
 from app.pipeline.candidate import CandidateItem
 from app.pipeline.context import RunContext
 
-
 # ---------------------------------------------------------------------------
 # Shared helper
 # ---------------------------------------------------------------------------
@@ -252,7 +251,10 @@ class TestPipelinePublishScope:
         with (
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
-            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)) as mock_llm,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=llm_result),
+            ) as mock_llm,
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
         ):
@@ -272,3 +274,61 @@ class TestPipelinePublishScope:
         assert result.status == "ok"
         summarized_items = mock_llm.await_args.args[0]
         assert [item["link"] for item in summarized_items] == ["https://example.com/ai"]
+
+
+class TestPipelineGitHubSupplement:
+    @pytest.mark.asyncio
+    async def test_github_items_rendered_but_not_sent_to_llm(self, tmp_path: Path):
+        from app.pipeline.news_pipeline import run_pipeline
+        from collectors.github import GitHubRepoItem
+
+        config = _make_config()
+        ctx = _make_ctx()
+        candidate = _make_candidate(url="https://example.com/ai", category="ai")
+        llm_result = _make_llm_result()
+        push_result = _make_push_result(success=True)
+        repos = [
+            GitHubRepoItem(
+                "owner/repo",
+                "https://github.com/owner/repo",
+                "desc",
+                10,
+                "Python",
+                "2026-05-18T08:00:00",
+            )
+        ]
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch("app.pipeline.news_pipeline.GitHubStore") as mock_github_store,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=llm_result),
+            ) as mock_llm,
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
+            patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
+        ):
+            mock_is_inst = MagicMock()
+            mock_is_inst.load_window_candidates.return_value = [candidate]
+            mock_is.return_value = mock_is_inst
+            mock_github_store.return_value.load_latest_snapshot.return_value = repos
+            mock_cls.return_value = MagicMock()
+            mock_pusher = MagicMock()
+            mock_pusher.push_single_markdown = AsyncMock(return_value=push_result)
+            mock_pusher_cls.return_value = mock_pusher
+
+            result = await run_pipeline(ctx, config)
+
+        assert result.status == "ok"
+        assert mock_llm.await_args.args[0] == [
+            {
+                "title": "Test",
+                "link": "https://example.com/ai",
+                "summary": "Summary",
+                "published_at": "2026-05-18",
+            }
+        ]
+        pushed_markdown = mock_pusher.push_single_markdown.await_args.args[0]
+        assert "今日值得看项目" in pushed_markdown
+        assert "owner/repo" in pushed_markdown
