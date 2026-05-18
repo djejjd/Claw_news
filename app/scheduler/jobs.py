@@ -29,6 +29,7 @@ async def run_ingest():
     import os
 
     from collectors.rss_sources import RssCollector
+    from collectors.ai_rss import load_ai_rss_feeds
     from collectors.huggingface import HfDailyPapersCollector
     from collectors.utils import safe_collect
 
@@ -41,7 +42,7 @@ async def run_ingest():
 
     # AI-relevant collectors only (TapTap is game-focused, skip)
     collector_specs = [
-        ("rss", RssCollector()),
+        ("rss", RssCollector(feed_configs=load_ai_rss_feeds())),
         ("huggingface", HfDailyPapersCollector(proxy=hf_proxy)),
     ]
 
