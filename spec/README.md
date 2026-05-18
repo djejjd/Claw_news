@@ -125,3 +125,18 @@
 详细原文：
 - 设计：[docs/tasks/task006/design.md](/Users/lanser/Code/Claw_news/docs/tasks/task006/design.md)
 - 实施文档：[docs/tasks/task006/plan.md](/Users/lanser/Code/Claw_news/docs/tasks/task006/plan.md)
+
+## task007
+
+状态：规划中
+
+目标：通过 SSH 反向隧道解决国内服务器无法访问 HuggingFace/GitHub 等境外源的问题，利用本地 Clash Verge 代理出口，不改项目代码。
+
+正式入口：
+- 契约：[spec/task007/contract.md](/Users/lanser/Code/Claw_news/spec/task007/contract.md)
+- 设计：[spec/task007/design.md](/Users/lanser/Code/Claw_news/spec/task007/design.md)
+- 计划：[spec/task007/plan.md](/Users/lanser/Code/Claw_news/spec/task007/plan.md)
+
+详细原文：
+- 设计：[docs/tasks/task007/design.md](/Users/lanser/Code/Claw_news/docs/tasks/task007/design.md)
+- 实施文档：[docs/tasks/task007/plan.md](/Users/lanser/Code/Claw_news/docs/tasks/task007/plan.md)
