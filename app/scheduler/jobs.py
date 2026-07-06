@@ -50,10 +50,12 @@ async def run_ingest():
     run_started_at = datetime.now().isoformat()
     all_items: list = []
     source_failures: list[str] = []
+    skipped_sources: list[str] = []
     successful_sources: list[str] = []
     recent_seen_keys = set(store.load_recent_seen_canonical_keys())
 
     hf_proxy = os.getenv("HF_PROXY", "").strip() or None
+    hf_optional = os.getenv("HF_OPTIONAL", "").strip().lower() in {"1", "true", "yes", "on"}
 
     # AI-relevant collectors only (TapTap is game-focused, skip)
     collector_specs = [
@@ -74,9 +76,14 @@ async def run_ingest():
             successful_sources.append(name)
             raw_items = [i for i in items if i.category == "ai"]
         except Exception as e:
-            logger.exception("Ingest source failed: %s", name)
-            source_failures.append(f"{name}: {e}")
-            status = "error"
+            if name == "huggingface" and hf_optional:
+                logger.warning("Ingest source skipped: %s (%s)", name, e)
+                skipped_sources.append(f"{name}: {e}")
+                status = "skipped"
+            else:
+                logger.exception("Ingest source failed: %s", name)
+                source_failures.append(f"{name}: {e}")
+                status = "error"
 
         deduped_items: list[tuple[str, object]] = []
         rejected_duplicate_count = 0
@@ -143,6 +150,7 @@ async def run_ingest():
         "last_item_count": len(all_items),
         "successful_sources": successful_sources,
         "failed_sources": source_failures,
+        "skipped_sources": skipped_sources,
     }
     IngestStatusStore().write_status(status_payload)
 

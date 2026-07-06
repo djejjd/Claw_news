@@ -115,6 +115,8 @@ cp .env.example .env
 | `WECOM_WEBHOOK_URL` | Yes | WeCom bot webhook URL |
 | `TZ` | No | Timezone (default: `Asia/Shanghai`) |
 | `NEWS_RSS_URLS` | Legacy | Historical URL-only RSS config; formal AI ingest uses `AI_RSS_*` below |
+| `HF_PROXY` | No | HuggingFace collector proxy URL, mainly for restricted network environments |
+| `HF_OPTIONAL` | No | `1` means HuggingFace failures are recorded as skipped instead of failed |
 | `AI_RSS_MODE` | No | `append` (default) keeps built-ins; `replace` uses only `AI_RSS_FEEDS` |
 | `AI_RSS_FEEDS` | No | Comma-separated `source|url` AI RSS feeds, e.g. `openai_blog|https://openai.com/news/rss.xml` |
 

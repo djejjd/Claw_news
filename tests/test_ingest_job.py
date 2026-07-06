@@ -53,6 +53,34 @@ async def test_run_ingest_records_failed_sources_when_collector_raises():
     payload = status_store.return_value.write_status.call_args.args[0]
     assert payload["successful_sources"] == ["huggingface", "github"]
     assert payload["failed_sources"] == ["rss: rss down"]
+    assert payload["skipped_sources"] == []
+
+
+@pytest.mark.asyncio
+async def test_run_ingest_skips_optional_huggingface_failures(monkeypatch):
+    from app.scheduler.jobs import run_ingest
+
+    monkeypatch.setenv("HF_OPTIONAL", "1")
+
+    ok_rss = MagicMock()
+    ok_rss.collect = AsyncMock(return_value=[])
+    failing_hf = MagicMock()
+    failing_hf.collect = AsyncMock(side_effect=RuntimeError("hf timeout"))
+
+    with (
+        patch("collectors.rss_sources.RssCollector", return_value=ok_rss),
+        patch("collectors.huggingface.HfDailyPapersCollector", return_value=failing_hf),
+        patch("collectors.github.GitHubCollector.collect", new=AsyncMock(return_value=[])),
+        patch("app.scheduler.jobs.IngestionStore"),
+        patch("app.scheduler.jobs.GitHubStore"),
+        patch("app.scheduler.jobs.IngestStatusStore") as status_store,
+    ):
+        await run_ingest()
+
+    payload = status_store.return_value.write_status.call_args.args[0]
+    assert payload["successful_sources"] == ["rss", "github"]
+    assert payload["failed_sources"] == []
+    assert payload["skipped_sources"] == ["huggingface: hf timeout"]
 
 
 @pytest.mark.asyncio

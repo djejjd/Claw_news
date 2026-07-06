@@ -98,6 +98,19 @@ sudo firewall-cmd --add-port=8000/tcp --permanent && sudo firewall-cmd --reload 
 2. 不会因为云主机网络波动卡在 `git pull`
 3. 可以明确区分“代码同步”和“运行配置恢复”
 
+如果你已经确认正式环境固定使用当前这台腾讯云主机，可以直接使用仓库里的正式部署脚本：
+
+```bash
+bash deploy-prod.sh
+```
+
+脚本会做四件事：
+
+1. 检查本地工作区是否干净
+2. 用 `rsync` 同步代码到 `/home/ubuntu/code/Claw_news`
+3. 在远端用 `DOCKER_CONFIG=/tmp/docker-no-proxy` 构建并重启 `claw-news`
+4. 用 `/health` 验证服务状态
+
 ### 4.1 方案 A：`scp/rsync` 同步代码到服务器（推荐）
 
 适用场景：

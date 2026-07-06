@@ -104,6 +104,7 @@ class TestHealthEndpoint:
                 "last_item_count": 3,
                 "successful_sources": ["rss"],
                 "failed_sources": [],
+                "skipped_sources": [],
             }
             client = TestClient(app)
             resp = client.get("/health")
