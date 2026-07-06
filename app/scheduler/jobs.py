@@ -8,8 +8,8 @@ plus a high-frequency ingest job that collects AI candidates every
 from __future__ import annotations
 
 import logging
-import uuid
 import time
+import uuid
 from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -68,9 +68,7 @@ async def run_ingest():
         source_state = state_store.load_state(name, default_fetch_count=10)
         try:
             logger.info("Ingest source start: %s", name)
-            collector = collector_cls(
-                fetch_count=source_state["fetch_count"], **collector_kwargs
-            )
+            collector = collector_cls(fetch_count=source_state["fetch_count"], **collector_kwargs)
             items = await collector.collect()
             logger.info("Ingest source done: %s items=%s", name, len(items))
             successful_sources.append(name)

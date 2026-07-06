@@ -239,9 +239,7 @@ class TopicClassifier:
 
         # ---- special case: model_release has two sub-conditions ----
         if topic == "model_release":
-            return self._match_model_release(
-                item, title_lower, summary_lower, source_hit, rule
-            )
+            return self._match_model_release(item, title_lower, summary_lower, source_hit, rule)
 
         # ---- generic: any title, summary, or source hit ----
         title_hit_count = sum(1 for kw in title_kws if kw in title_lower)
@@ -281,9 +279,7 @@ class TopicClassifier:
             title_hit_count = sum(1 for kw in title_kws if kw in title_lower)
             # Count summary hits from condition B keywords only when cond_b is true
             summary_hit_count = (
-                sum(1 for kw in and_summary_kws if kw in summary_lower)
-                if cond_b
-                else 0
+                sum(1 for kw in and_summary_kws if kw in summary_lower) if cond_b else 0
             )
             return _MatchResult(
                 topic="model_release",

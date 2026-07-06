@@ -81,6 +81,23 @@ sudo firewall-cmd --add-port=8000/tcp --permanent && sudo firewall-cmd --reload 
 2. **方案 B：GitHub Actions 构建后交付到服务器**（进阶）
 3. **方案 C：服务器直接 `git pull`**（仅作备选）
 
+### 4.0 本次推荐流程
+
+如果你采用“本地 pull，然后上传到服务器”的方式，建议固定为下面这条链路：
+
+1. 本地仓库切到 `main`
+2. 本地执行 `git pull --ff-only origin main`
+3. 用 `rsync` 同步工作区到服务器
+4. 服务器恢复 `.env`
+5. 服务器执行 `docker compose up -d --build`
+6. 用 `/health` 验证服务状态
+
+这条流程的优点是：
+
+1. 不依赖服务器直接访问 GitHub
+2. 不会因为云主机网络波动卡在 `git pull`
+3. 可以明确区分“代码同步”和“运行配置恢复”
+
 ### 4.1 方案 A：`scp/rsync` 同步代码到服务器（推荐）
 
 适用场景：
@@ -124,6 +141,14 @@ scp -r /path/to/Claw_news user@your-server:/opt/Claw_news
 
 ```bash
 cd /opt/Claw_news
+docker compose up -d --build
+```
+
+如果服务器上原本依赖一个备份 `.env`，先恢复配置再启动：
+
+```bash
+cp /path/to/backup/.env /opt/Claw_news/.env
+chmod 600 /opt/Claw_news/.env
 docker compose up -d --build
 ```
 
@@ -198,6 +223,8 @@ NEWS_RSS_URLS=https://www.qbitai.com/feed,https://sspai.com/feed
 AI_RSS_MODE=append
 AI_RSS_FEEDS=openai_blog|https://openai.com/news/rss.xml
 ```
+
+如果服务器上有历史 `.env` 备份，优先恢复备份，再按需补差异字段，而不是直接从模板重建。这样可以避免把已有的 LLM / WeCom / RSS 配置误删。
 
 ### 5.2 准备验证环境配置
 
@@ -281,15 +308,23 @@ cd /opt/Claw_news
 docker compose up -d --build
 ```
 
-如果你使用方案 C，再先执行：
+如果你使用方案 A，再先在本地同步代码到服务器；如果你使用方案 C，再先执行：
 
 ```bash
 git pull
 ```
 
+建议把更新流程固定成：
+
+1. 本地拉最新 `main`
+2. 本地同步到服务器
+3. 服务器恢复 `.env`
+4. 服务器重建容器
+5. 检查 `/health`
+
 ### 定时触发验证
 
-APScheduler 在服务内自动运行（09:00 / 14:00 / 20:00），无需外部 cron。要确认定时任务在运行，看日志中是否有：
+APScheduler 在服务内自动运行：09:00 发布，每 30 分钟采集候选池，无需外部 cron。要确认定时任务在运行，看日志中是否有：
 
 ```text
 Added job "NewsAgent.run_once" to job store "default"

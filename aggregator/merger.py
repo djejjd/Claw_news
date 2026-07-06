@@ -2,7 +2,6 @@ from typing import Dict, List, Union
 
 from collectors.base import Category, HotItem, time_modifier
 
-
 # =============================================================================
 # Phase 4: 统一评分常量
 # =============================================================================
@@ -34,14 +33,10 @@ def compute_final_score(item) -> float:
     """
     sw = getattr(item, "source_weight", None)
     if sw is None:
-        sw = SOURCE_WEIGHTS.get(
-            getattr(item, "source", ""), DEFAULT_AI_SOURCE_WEIGHT
-        )
+        sw = SOURCE_WEIGHTS.get(getattr(item, "source", ""), DEFAULT_AI_SOURCE_WEIGHT)
     tw = getattr(item, "topic_weight", None)
     if tw is None:
-        tw = TOPIC_WEIGHTS.get(
-            getattr(item, "topic", ""), DEFAULT_TOPIC_WEIGHT
-        )
+        tw = TOPIC_WEIGHTS.get(getattr(item, "topic", ""), DEFAULT_TOPIC_WEIGHT)
     kb = (
         KEYWORD_BONUS
         if getattr(item, "keyword_bonus", None) or getattr(item, "keyword_hit", False)

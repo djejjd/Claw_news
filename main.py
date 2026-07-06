@@ -65,12 +65,6 @@ async def main(period: str = "morning", dry_run: bool = False):
         ],
     )
 
-    config = load_config()
-
-    if not dry_run and not config.wecom_webhook_url:
-        logger.error("未配置 wecom_webhook")
-        sys.exit(1)
-
     lock_path = DATA_DIR / ".task.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     lock_fd = open(lock_path, "w", encoding="utf-8")
@@ -85,6 +79,11 @@ async def main(period: str = "morning", dry_run: bool = False):
     if dry_run:
         logger.info("Dry-run 模式: 跳过推送")
         return
+
+    config = load_config()
+    if not config.wecom_webhook_url:
+        logger.error("未配置 wecom_webhook")
+        sys.exit(1)
 
     result = await _run_pipeline()
 

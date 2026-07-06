@@ -10,6 +10,7 @@ import logging
 from datetime import datetime
 
 from app.config import AppConfig
+from app.pipeline.context import TriggerMode
 from app.tools.wecom import send_text
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,7 @@ class NewsAgent:
     # Public API
     # ------------------------------------------------------------------
 
-    async def run_once(self) -> dict:
+    async def run_once(self, trigger_mode: TriggerMode = "scheduler") -> dict:
         """Execute one full news pipeline run.
 
         Returns a dict with keys:
@@ -67,19 +68,19 @@ class NewsAgent:
             }
 
         async with self._lock:
-            return await self._run()
+            return await self._run(trigger_mode)
 
     # ------------------------------------------------------------------
     # Internal run — delegates to unified pipeline
     # ------------------------------------------------------------------
 
-    async def _run(self) -> dict:
+    async def _run(self, trigger_mode: TriggerMode) -> dict:
         from app.pipeline.context import RunContext
         from app.pipeline.news_pipeline import run_pipeline
 
         now = datetime.now()
         ctx = RunContext(
-            trigger_mode="scheduler",
+            trigger_mode=trigger_mode,
             time_window_start=now.strftime("%Y-%m-%dT00:00:00"),
             time_window_end=now.strftime("%Y-%m-%dT%H:%M:%S"),
         )

@@ -2,14 +2,14 @@
 
 import pytest
 
-from app.pipeline.candidate import CandidateItem
-from app.pipeline.context import RunContext, TriggerMode, Period, PublishScope, StateNamespace
 from app.pipeline import (
+    DigestPayload,
+    PublishResult,
     SummaryItem,
     SummaryResult,
-    PublishResult,
-    DigestPayload,
 )
+from app.pipeline.candidate import CandidateItem
+from app.pipeline.context import RunContext
 from collectors.base import HotItem, hotitem_to_candidate
 
 
@@ -17,21 +17,15 @@ class TestCandidateItem:
     """Tests for CandidateItem.make_canonical_key and construction."""
 
     def test_make_canonical_key_strips_query_string(self):
-        result = CandidateItem.make_canonical_key(
-            "https://example.com/path/to/article?utm=xxx"
-        )
+        result = CandidateItem.make_canonical_key("https://example.com/path/to/article?utm=xxx")
         assert result == "example.com/path/to/article"
 
     def test_make_canonical_key_basic_url(self):
-        result = CandidateItem.make_canonical_key(
-            "https://qbitai.com/article/12345"
-        )
+        result = CandidateItem.make_canonical_key("https://qbitai.com/article/12345")
         assert result == "qbitai.com/article/12345"
 
     def test_make_canonical_key_strips_fragment(self):
-        result = CandidateItem.make_canonical_key(
-            "https://example.com/news#section"
-        )
+        result = CandidateItem.make_canonical_key("https://example.com/news#section")
         assert result == "example.com/news"
 
     def test_make_canonical_key_strips_both_query_and_fragment(self):
@@ -212,17 +206,14 @@ class TestPipelineInitExports:
 
     def test_all_exports_importable(self):
         from app.pipeline import (
-            RunContext,
-            TriggerMode,
-            Period,
-            PublishScope,
-            StateNamespace,
             CandidateItem,
+            DigestPayload,
+            PublishResult,
+            RunContext,
             SummaryItem,
             SummaryResult,
-            PublishResult,
-            DigestPayload,
         )
+
         # If we get here, all imports succeeded
         assert RunContext is not None
         assert CandidateItem is not None

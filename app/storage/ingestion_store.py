@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import shutil
-from dataclasses import asdict, fields as dataclass_fields
+from dataclasses import asdict
+from dataclasses import fields as dataclass_fields
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -129,7 +130,9 @@ class IngestionStore:
                                     fetched_dt = datetime.fromisoformat(item.fetched_at)
                                 except ValueError:
                                     fetched_dt = None
-                                if fetched_dt is not None and not (start_dt <= fetched_dt <= end_dt):
+                                if fetched_dt is not None and not (
+                                    start_dt <= fetched_dt <= end_dt
+                                ):
                                     continue
                             raw_items.append(item)
                         except (json.JSONDecodeError, TypeError):

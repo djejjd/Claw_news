@@ -47,9 +47,9 @@ def render_digest(result: SummaryResult, github_items: list | None = None) -> st
             lines.append(f"**{i}.** {safe_title}")
 
         lines.append(f"> 核心内容：{item.core_summary}")
-        lines.append(f">")
+        lines.append(">")
         lines.append(f"> 重要性：{item.importance}")
-        lines.append(f">")
+        lines.append(">")
         lines.append(f"> 趋势判断：{item.trend}")
 
         if i < len(items):

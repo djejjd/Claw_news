@@ -53,16 +53,46 @@ async def test_collect_empty_result_returns_empty_list():
 async def test_collect_queries_each_topic_and_merges_unique_repos():
     responses = []
     payloads = [
-        {"items": [
-            {"full_name": "owner/a", "html_url": "https://github.com/owner/a", "description": "a", "stargazers_count": 100, "language": "Python"},
-            {"full_name": "owner/shared", "html_url": "https://github.com/owner/shared", "description": "shared", "stargazers_count": 90, "language": "Python"},
-        ]},
-        {"items": [
-            {"full_name": "owner/b", "html_url": "https://github.com/owner/b", "description": "b", "stargazers_count": 95, "language": "TypeScript"},
-        ]},
-        {"items": [
-            {"full_name": "owner/shared", "html_url": "https://github.com/owner/shared", "description": "shared", "stargazers_count": 90, "language": "Python"},
-        ]},
+        {
+            "items": [
+                {
+                    "full_name": "owner/a",
+                    "html_url": "https://github.com/owner/a",
+                    "description": "a",
+                    "stargazers_count": 100,
+                    "language": "Python",
+                },
+                {
+                    "full_name": "owner/shared",
+                    "html_url": "https://github.com/owner/shared",
+                    "description": "shared",
+                    "stargazers_count": 90,
+                    "language": "Python",
+                },
+            ]
+        },
+        {
+            "items": [
+                {
+                    "full_name": "owner/b",
+                    "html_url": "https://github.com/owner/b",
+                    "description": "b",
+                    "stargazers_count": 95,
+                    "language": "TypeScript",
+                },
+            ]
+        },
+        {
+            "items": [
+                {
+                    "full_name": "owner/shared",
+                    "html_url": "https://github.com/owner/shared",
+                    "description": "shared",
+                    "stargazers_count": 90,
+                    "language": "Python",
+                },
+            ]
+        },
     ]
     for payload in payloads:
         response = AsyncMock()

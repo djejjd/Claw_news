@@ -133,7 +133,9 @@ async def test_run_ingest_preloads_recent_keys_dedups_before_quality_and_updates
         patch("app.scheduler.jobs.IngestionStore", return_value=ingestion_store, create=True),
         patch("app.scheduler.jobs.SourceMetricsStore", return_value=metrics_store, create=True),
         patch("app.scheduler.jobs.SourceStateStore", return_value=state_store, create=True),
-        patch("app.scheduler.jobs.should_accept_candidate", side_effect=lambda item: True, create=True) as accept_mock,
+        patch(
+            "app.scheduler.jobs.should_accept_candidate", side_effect=lambda item: True, create=True
+        ) as accept_mock,
     ):
         result = await run_ingest()
 
@@ -240,7 +242,9 @@ async def test_run_ingest_dedups_same_round_before_quality_filter(
         patch("app.scheduler.jobs.IngestionStore", return_value=ingestion_store, create=True),
         patch("app.scheduler.jobs.SourceMetricsStore", return_value=metrics_store, create=True),
         patch("app.scheduler.jobs.SourceStateStore", return_value=state_store, create=True),
-        patch("app.scheduler.jobs.should_accept_candidate", side_effect=accept_if_long_enough) as accept_mock,
+        patch(
+            "app.scheduler.jobs.should_accept_candidate", side_effect=accept_if_long_enough
+        ) as accept_mock,
     ):
         result = await run_ingest()
 

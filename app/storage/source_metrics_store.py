@@ -73,7 +73,9 @@ class SourceMetricsStore:
             "raw_fetched_count": raw_fetched_count,
             "accepted_count": accepted_count,
             "selected_count": selected_count,
-            "effective_new_rate": (accepted_count / raw_fetched_count) if raw_fetched_count else 0.0,
+            "effective_new_rate": (accepted_count / raw_fetched_count)
+            if raw_fetched_count
+            else 0.0,
             "selection_rate": (selected_count / accepted_count) if accepted_count else 0.0,
         }
 

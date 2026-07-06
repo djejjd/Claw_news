@@ -5,7 +5,6 @@ from pathlib import Path
 from app.tools.summary_result import DigestPayload
 from infra.storage.state_store import StateStore
 
-
 # ------------------------------------------------------------------
 # write_digest
 # ------------------------------------------------------------------

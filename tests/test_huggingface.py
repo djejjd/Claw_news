@@ -1,6 +1,7 @@
+from unittest.mock import AsyncMock, patch
+
 import httpx
 import pytest
-from unittest.mock import AsyncMock, patch
 
 from collectors.huggingface import HF_API_URL, HfDailyPapersCollector
 
@@ -72,7 +73,10 @@ async def test_collect_respects_runtime_fetch_count_limit(httpx_mock):
     httpx_mock.add_response(url=HF_API_URL, json=mock_papers)
 
     collector = HfDailyPapersCollector(fetch_count=2, client=httpx.AsyncClient())
-    with patch("collectors.huggingface._translate_to_chinese", new=AsyncMock(side_effect=lambda text: text)):
+    with patch(
+        "collectors.huggingface._translate_to_chinese",
+        new=AsyncMock(side_effect=lambda text: text),
+    ):
         items = await collector.collect()
 
     assert len(items) == 2

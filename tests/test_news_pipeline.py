@@ -2,7 +2,6 @@
 
 import inspect
 
-
 # ===================================================================
 # 1. RunContext 构造正确
 # ===================================================================
@@ -60,8 +59,11 @@ class TestPublishResultConstruction:
         from app.tools.summary_result import PublishResult
 
         r = PublishResult(
-            status="ok", selected_count=5, pushed=True,
-            message_type="markdown", summary_preview="# 今日 AI 新闻摘要...",
+            status="ok",
+            selected_count=5,
+            pushed=True,
+            message_type="markdown",
+            summary_preview="# 今日 AI 新闻摘要...",
         )
         assert r.status == "ok"
         assert r.selected_count == 5
@@ -73,8 +75,11 @@ class TestPublishResultConstruction:
         from app.tools.summary_result import PublishResult
 
         r = PublishResult(
-            status="skipped", selected_count=0, pushed=False,
-            message_type="markdown", summary_preview="",
+            status="skipped",
+            selected_count=0,
+            pushed=False,
+            message_type="markdown",
+            summary_preview="",
         )
         assert r.status == "skipped"
         assert r.selected_count == 0
@@ -85,8 +90,11 @@ class TestPublishResultConstruction:
         from app.tools.summary_result import PublishResult
 
         r = PublishResult(
-            status="failed", selected_count=3, pushed=False,
-            message_type="markdown", summary_preview="",
+            status="failed",
+            selected_count=3,
+            pushed=False,
+            message_type="markdown",
+            summary_preview="",
             errors=["push: rate limit exceeded"],
         )
         assert r.status == "failed"
@@ -97,8 +105,11 @@ class TestPublishResultConstruction:
         from app.tools.summary_result import PublishResult
 
         r = PublishResult(
-            status="ok", selected_count=5, pushed=True,
-            message_type="markdown", summary_preview="# 摘要...",
+            status="ok",
+            selected_count=5,
+            pushed=True,
+            message_type="markdown",
+            summary_preview="# 摘要...",
             errors=["state_write_failed"],
         )
         assert r.status == "ok"
@@ -110,8 +121,11 @@ class TestPublishResultConstruction:
         from app.tools.summary_result import PublishResult
 
         r = PublishResult(
-            status="ok", selected_count=1, pushed=True,
-            message_type="markdown", summary_preview="",
+            status="ok",
+            selected_count=1,
+            pushed=True,
+            message_type="markdown",
+            summary_preview="",
         )
         assert r.errors == []
         assert isinstance(r.errors, list)
@@ -160,8 +174,10 @@ class TestDigestPayloadFields:
         from app.tools.summary_result import DigestPayload
 
         d = DigestPayload(
-            date="2026-05-18", period="evening",
-            published_at="", trigger_mode="manual",
+            date="2026-05-18",
+            period="evening",
+            published_at="",
+            trigger_mode="manual",
         )
         assert d.headline_items == []
         assert d.daily_judgement == ""

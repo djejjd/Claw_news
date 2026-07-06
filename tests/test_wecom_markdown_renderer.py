@@ -14,6 +14,7 @@ from pusher.wecom import PushResult, WeComError, WeComPusher
 # helpers
 # ---------------------------------------------------------------------------
 
+
 def make_item(
     title="Test Article",
     url="https://example.com/article",
@@ -201,9 +202,7 @@ class TestRenderDigestEscape:
         assert "Path\\\\to\\\\file" in md
 
     def test_combined_special_chars(self):
-        result = make_result(
-            [make_item(title="*Important* [Update] on `model_v2` with \\path")]
-        )
+        result = make_result([make_item(title="*Important* [Update] on `model_v2` with \\path")])
         md = render_digest(result)
         assert "\\*Important\\*" in md
         assert "\\[Update\\]" in md

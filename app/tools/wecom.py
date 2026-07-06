@@ -90,9 +90,7 @@ async def send_text(webhook_url: str, content: str) -> dict:
     errmsg = body.get("errmsg")
 
     if errcode is None:
-        raise RuntimeError(
-            f"WeCom response missing errcode field: {body}"
-        )
+        raise RuntimeError(f"WeCom response missing errcode field: {body}")
     if errcode != 0:
         raise WeComError(errcode=errcode, errmsg=errmsg)
 

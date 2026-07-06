@@ -69,8 +69,11 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         candidates = [item for item in candidates if item.category == "ai"]
     if not candidates:
         return PublishResult(
-            status="skipped", selected_count=0, pushed=False,
-            message_type="markdown", summary_preview="",
+            status="skipped",
+            selected_count=0,
+            pushed=False,
+            message_type="markdown",
+            summary_preview="",
         )
 
     # 2. 分类
@@ -81,8 +84,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
 
     # 4. LLM 摘要
     items_for_llm = [
-        {"title": it.title, "link": it.url,
-         "summary": it.summary, "published_at": it.published_at}
+        {"title": it.title, "link": it.url, "summary": it.summary, "published_at": it.published_at}
         for it in selected
     ]
     llm_result = await summarize_news(
@@ -93,17 +95,22 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     )
     if "_parse_error" in llm_result and not llm_result.get("headline_items"):
         return PublishResult(
-            status="failed", selected_count=len(selected), pushed=False,
-            message_type="markdown", summary_preview="",
+            status="failed",
+            selected_count=len(selected),
+            pushed=False,
+            message_type="markdown",
+            summary_preview="",
             errors=[f"llm_parse: {llm_result['_parse_error']}"],
         )
 
     # 5. 构建 SummaryResult
     headline_items = [
         SummaryItem(
-            title=it["title"], url=it["url"],
+            title=it["title"],
+            url=it["url"],
             core_summary=it["core_summary"],
-            importance=it["importance"], trend=it["trend"],
+            importance=it["importance"],
+            trend=it["trend"],
         )
         for it in llm_result["headline_items"]
     ]
@@ -116,7 +123,9 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     github_items = GitHubStore().load_latest_snapshot()
     markdown = render_digest(summary, github_items=github_items)
     source_failures = _collect_source_failures(
-        ingestion_store, ctx.time_window_start, ctx.time_window_end,
+        ingestion_store,
+        ctx.time_window_start,
+        ctx.time_window_end,
     )
 
     # 7. 推送
@@ -124,14 +133,20 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         pr = await WeComPusher(config.wecom_webhook_url).push_single_markdown(markdown)
     except Exception as exc:
         return PublishResult(
-            status="failed", selected_count=len(selected), pushed=False,
-            message_type="markdown", summary_preview=make_preview(markdown),
+            status="failed",
+            selected_count=len(selected),
+            pushed=False,
+            message_type="markdown",
+            summary_preview=make_preview(markdown),
             errors=[f"push: {exc}"],
         )
     if not pr.success:
         return PublishResult(
-            status="failed", selected_count=len(selected), pushed=False,
-            message_type="markdown", summary_preview=make_preview(markdown),
+            status="failed",
+            selected_count=len(selected),
+            pushed=False,
+            message_type="markdown",
+            summary_preview=make_preview(markdown),
             errors=["push_failed"],
         )
 
@@ -153,26 +168,36 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     try:
         state_store.merge_pushed_urls(set(published_urls))
         state_store.merge_published_keys(published_keys_list)
-        state_store.write_digest(DigestPayload(
-            date=ctx.time_window_start[:10],
-            period=ctx.period,
-            published_at=datetime.now().isoformat(),
-            trigger_mode=ctx.trigger_mode,
-            headline_items=[{
-                "title": it["title"], "url": it["url"],
-                "core_summary": it["core_summary"],
-                "importance": it["importance"], "trend": it["trend"],
-            } for it in llm_result["headline_items"]],
-            daily_judgement=llm_result["daily_judgement"],
-            source_failures=source_failures,
-            published_urls=published_urls,
-            published_keys=published_keys_list,
-        ))
+        state_store.write_digest(
+            DigestPayload(
+                date=ctx.time_window_start[:10],
+                period=ctx.period,
+                published_at=datetime.now().isoformat(),
+                trigger_mode=ctx.trigger_mode,
+                headline_items=[
+                    {
+                        "title": it["title"],
+                        "url": it["url"],
+                        "core_summary": it["core_summary"],
+                        "importance": it["importance"],
+                        "trend": it["trend"],
+                    }
+                    for it in llm_result["headline_items"]
+                ],
+                daily_judgement=llm_result["daily_judgement"],
+                source_failures=source_failures,
+                published_urls=published_urls,
+                published_keys=published_keys_list,
+            )
+        )
     except Exception:
         errors.append("state_write_failed")
 
     return PublishResult(
-        status="ok", selected_count=len(selected), pushed=True,
-        message_type="markdown", summary_preview=make_preview(markdown),
+        status="ok",
+        selected_count=len(selected),
+        pushed=True,
+        message_type="markdown",
+        summary_preview=make_preview(markdown),
         errors=errors,
     )

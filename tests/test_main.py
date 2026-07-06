@@ -12,10 +12,12 @@ import pytest
 from app.config import AppConfig
 from app.pipeline.candidate import CandidateItem
 from app.pipeline.context import RunContext
+from pusher.wecom import PushResult
 
 # ---------------------------------------------------------------------------
 # Shared helper
 # ---------------------------------------------------------------------------
+
 
 def _make_config(**kwargs) -> AppConfig:
     return AppConfig(
@@ -72,8 +74,6 @@ def _make_llm_result() -> dict:
 
 
 def _make_push_result(*, success: bool = True) -> "PushResult":
-    from pusher.wecom import PushResult
-
     return PushResult(
         category="ai",
         success=success,
@@ -105,7 +105,9 @@ class TestPipelineSuccess:
         with (
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
-            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)),
+            patch(
+                "app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)
+            ),
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
             patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
@@ -151,7 +153,9 @@ class TestPipelinePushFailure:
         with (
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
-            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)),
+            patch(
+                "app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)
+            ),
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
         ):
@@ -186,7 +190,9 @@ class TestPipelinePushFailure:
         with (
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
-            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)),
+            patch(
+                "app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)
+            ),
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
         ):
@@ -199,9 +205,7 @@ class TestPipelinePushFailure:
 
             # Pusher raises an exception
             mock_pusher = MagicMock()
-            mock_pusher.push_single_markdown = AsyncMock(
-                side_effect=RuntimeError("rate limited")
-            )
+            mock_pusher.push_single_markdown = AsyncMock(side_effect=RuntimeError("rate limited"))
             mock_pusher_cls.return_value = mock_pusher
 
             result = await run_pipeline(ctx, config)

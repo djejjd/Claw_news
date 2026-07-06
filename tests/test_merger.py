@@ -1,8 +1,5 @@
-import time as _time
 from datetime import date as _date
 from datetime import timedelta
-
-import pytest
 
 from aggregator.merger import (
     DEFAULT_AI_SOURCE_WEIGHT,
@@ -18,7 +15,6 @@ from aggregator.merger import (
 )
 from app.pipeline.candidate import CandidateItem
 from collectors.base import HotItem, time_modifier
-
 
 # =============================================================================
 # Existing tests (unchanged)
@@ -120,6 +116,7 @@ _OLD_DATE = (_date.today() - timedelta(days=7)).isoformat()
 
 
 # ---- helpers ----
+
 
 def _make_candidate(
     title="Test Item",
@@ -362,16 +359,25 @@ class TestMergerNewScoring:
         merger = Merger(top_n=3)
         items = [
             _make_candidate(
-                title="Low", url="https://a.com/low", source_weight=1.0,
-                topic_weight=1.0, keyword_bonus=0.0,
+                title="Low",
+                url="https://a.com/low",
+                source_weight=1.0,
+                topic_weight=1.0,
+                keyword_bonus=0.0,
             ),
             _make_candidate(
-                title="High", url="https://a.com/high", source_weight=3.0,
-                topic_weight=3.0, keyword_bonus=0.5,
+                title="High",
+                url="https://a.com/high",
+                source_weight=3.0,
+                topic_weight=3.0,
+                keyword_bonus=0.5,
             ),
             _make_candidate(
-                title="Mid", url="https://a.com/mid", source_weight=2.0,
-                topic_weight=2.0, keyword_bonus=0.0,
+                title="Mid",
+                url="https://a.com/mid",
+                source_weight=2.0,
+                topic_weight=2.0,
+                keyword_bonus=0.0,
             ),
         ]
         result = merger.merge(items, use_new_scoring=True)
@@ -384,9 +390,13 @@ class TestMergerNewScoring:
         """TopN 限制生效"""
         merger = Merger(top_n=2)
         items = [
-            _make_candidate(title=f"Item {i}", url=f"https://a.com/{i}",
-                            source_weight=float(i), topic_weight=1.0,
-                            keyword_bonus=0.0)
+            _make_candidate(
+                title=f"Item {i}",
+                url=f"https://a.com/{i}",
+                source_weight=float(i),
+                topic_weight=1.0,
+                keyword_bonus=0.0,
+            )
             for i in range(5)
         ]
         result = merger.merge(items, use_new_scoring=True)
@@ -397,21 +407,30 @@ class TestMergerNewScoring:
         merger = Merger(top_n=2)
         items = [
             _make_candidate(
-                title="SameSource-1", url="https://srcA.com/1",
-                source="huggingface", source_weight=None,
-                topic="model_release", topic_weight=None,
+                title="SameSource-1",
+                url="https://srcA.com/1",
+                source="huggingface",
+                source_weight=None,
+                topic="model_release",
+                topic_weight=None,
                 keyword_bonus=0.5,
             ),
             _make_candidate(
-                title="SameSource-2", url="https://srcA.com/2",
-                source="huggingface", source_weight=None,
-                topic="model_release", topic_weight=None,
+                title="SameSource-2",
+                url="https://srcA.com/2",
+                source="huggingface",
+                source_weight=None,
+                topic="model_release",
+                topic_weight=None,
                 keyword_bonus=0.5,
             ),
             _make_candidate(
-                title="OtherSource", url="https://srcB.com/1",
-                source="ithome", source_weight=None,
-                topic="application_case", topic_weight=None,
+                title="OtherSource",
+                url="https://srcB.com/1",
+                source="ithome",
+                source_weight=None,
+                topic="application_case",
+                topic_weight=None,
                 keyword_bonus=0.0,
             ),
         ]
@@ -432,12 +451,18 @@ class TestMergerNewScoring:
         merger = Merger(top_n=5)
         items = [
             _make_candidate(
-                title="Low score dup", url="https://dup.com/1",
-                source_weight=1.0, topic_weight=1.0, keyword_bonus=0.0,
+                title="Low score dup",
+                url="https://dup.com/1",
+                source_weight=1.0,
+                topic_weight=1.0,
+                keyword_bonus=0.0,
             ),
             _make_candidate(
-                title="High score original", url="https://dup.com/1",
-                source_weight=3.0, topic_weight=3.0, keyword_bonus=0.5,
+                title="High score original",
+                url="https://dup.com/1",
+                source_weight=3.0,
+                topic_weight=3.0,
+                keyword_bonus=0.5,
             ),
         ]
         result = merger.merge(items, use_new_scoring=True)
@@ -450,9 +475,13 @@ class TestMergerNewScoring:
         """返回的列表元素为 CandidateItem（或具有 final_score 属性）"""
         merger = Merger(top_n=3)
         items = [
-            _make_candidate(title=f"Item {i}", url=f"https://a.com/{i}",
-                            source_weight=float(i), topic_weight=1.0,
-                            keyword_bonus=0.0)
+            _make_candidate(
+                title=f"Item {i}",
+                url=f"https://a.com/{i}",
+                source_weight=float(i),
+                topic_weight=1.0,
+                keyword_bonus=0.0,
+            )
             for i in range(3)
         ]
         result = merger.merge(items, use_new_scoring=True)
