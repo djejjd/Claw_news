@@ -8,9 +8,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
+ARG PIP_INDEX_URL
+ARG PIP_EXTRA_INDEX_URL
+
 COPY . .
-RUN pip install --no-cache-dir "setuptools>=68" wheel \
-    && pip install --no-cache-dir --no-build-isolation .
+RUN PIP_INDEX_URL="${PIP_INDEX_URL}" PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL}" \
+    pip install --no-cache-dir "setuptools>=68" wheel \
+    && PIP_INDEX_URL="${PIP_INDEX_URL}" PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL}" \
+    pip install --no-cache-dir --no-build-isolation .
 
 EXPOSE 8000
 

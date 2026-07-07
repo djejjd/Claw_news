@@ -119,6 +119,8 @@ cp .env.example .env
 | `HF_OPTIONAL` | No | `1` means HuggingFace failures are recorded as skipped instead of failed |
 | `AI_RSS_MODE` | No | `append` (default) keeps built-ins; `replace` uses only `AI_RSS_FEEDS` |
 | `AI_RSS_FEEDS` | No | Comma-separated `source|url` AI RSS feeds, e.g. `openai_blog|https://openai.com/news/rss.xml` |
+| `PIP_INDEX_URL` | Build only | Optional primary PyPI index for `docker compose build`, useful on slow overseas links |
+| `PIP_EXTRA_INDEX_URL` | Build only | Optional fallback PyPI index for `docker compose build` |
 
 ### HTTP 接口
 
@@ -131,6 +133,10 @@ cp .env.example .env
 ### Docker 部署
 
 ```bash
+# Optional: set a mirror first when the server reaches PyPI slowly
+export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+export PIP_EXTRA_INDEX_URL=https://pypi.org/simple
+
 # Build and start the service
 docker compose up -d --build
 
@@ -143,6 +149,8 @@ curl -X POST http://127.0.0.1:8000/run/news
 # View logs
 docker compose logs -f
 ```
+
+`deploy-prod.sh` will default to the Tsinghua mirror on the Tencent Cloud server build path, and you can override it by exporting `PIP_INDEX_URL` / `PIP_EXTRA_INDEX_URL` before running the script.
 
 ### 推荐交付策略
 

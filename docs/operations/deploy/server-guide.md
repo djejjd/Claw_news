@@ -111,6 +111,15 @@ bash deploy-prod.sh
 3. 在远端用 `DOCKER_CONFIG=/tmp/docker-no-proxy` 构建并重启 `claw-news`
 4. 用 `/health` 验证服务状态
 
+默认情况下，`deploy-prod.sh` 会为腾讯云构建阶段传入：
+
+```bash
+PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+PIP_EXTRA_INDEX_URL=https://pypi.org/simple
+```
+
+如果你已经有可用的企业代理或自建 PyPI 源，可以在本地执行脚本前覆盖这两个变量。
+
 ### 4.1 方案 A：`scp/rsync` 同步代码到服务器（推荐）
 
 适用场景：
@@ -154,6 +163,8 @@ scp -r /path/to/Claw_news user@your-server:/opt/Claw_news
 
 ```bash
 cd /opt/Claw_news
+export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+export PIP_EXTRA_INDEX_URL=https://pypi.org/simple
 docker compose up -d --build
 ```
 
@@ -162,6 +173,8 @@ docker compose up -d --build
 ```bash
 cp /path/to/backup/.env /opt/Claw_news/.env
 chmod 600 /opt/Claw_news/.env
+export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+export PIP_EXTRA_INDEX_URL=https://pypi.org/simple
 docker compose up -d --build
 ```
 
