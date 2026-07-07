@@ -152,6 +152,14 @@ docker compose logs -f
 
 `deploy-prod.sh` will default to the Tsinghua mirror on the Tencent Cloud server build path, and you can override it by exporting `PIP_INDEX_URL` / `PIP_EXTRA_INDEX_URL` before running the script.
 
+For the current Tencent Cloud production path, the recommended one-command release entrypoint is:
+
+```bash
+make release-prod
+```
+
+It runs `lint`, then `test`, then `bash deploy-prod.sh`, and stops immediately if any step fails.
+
 ### 推荐交付策略
 
 如果云服务器访问 GitHub 不稳定，不建议把服务器上的 `git pull` 作为主要部署路径。

@@ -30,3 +30,13 @@ def test_deploy_script_sets_remote_pypi_mirror() -> None:
     assert 'PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"' in script
     assert "docker compose build claw-news" in script
     assert "for attempt in \\$(seq 1 12)" in script
+
+
+def test_makefile_exposes_one_command_release_target() -> None:
+    makefile = (ROOT / "Makefile").read_text()
+
+    phony = "install test lint format run-morning run-evening dry-run clean clean-data"
+
+    assert f".PHONY: {phony} release-prod" in makefile
+    assert "release-prod: lint test" in makefile
+    assert "\tbash deploy-prod.sh" in makefile

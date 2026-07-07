@@ -104,6 +104,20 @@ sudo firewall-cmd --add-port=8000/tcp --permanent && sudo firewall-cmd --reload 
 bash deploy-prod.sh
 ```
 
+如果你希望本地一条命令完成“校验 + 发版”，当前推荐入口是：
+
+```bash
+make release-prod
+```
+
+它会按顺序执行：
+
+1. `make lint`
+2. `make test`
+3. `bash deploy-prod.sh`
+
+任一步失败都会立即停止，不会继续往服务器发版。
+
 脚本会做四件事：
 
 1. 检查本地工作区是否干净
