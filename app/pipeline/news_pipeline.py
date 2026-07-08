@@ -188,7 +188,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             cn_desc = translated_map.get(item.full_name, "")
             if cn_desc:
                 item.description = cn_desc
-    markdown = render_digest(summary, github_items=github_items)
+    markdown = render_digest(summary, github_items=github_items, pushed_urls=pushed_urls)
     source_failures = _collect_source_failures(
         ingestion_store,
         ctx.time_window_start,

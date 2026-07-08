@@ -446,8 +446,8 @@ class TestPipelineDigestPresentation:
         assert "【工具】1" in pushed_markdown
         assert "[模型]" in pushed_markdown
         assert "[开源]" in pushed_markdown
-        assert "openai_blog" in pushed_markdown
-        assert "github" in pushed_markdown
+        assert "OpenAI" in pushed_markdown
+        assert "GitHub" in pushed_markdown
 
 
 class TestPipelineAllDigestScope:

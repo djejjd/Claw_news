@@ -22,12 +22,6 @@ def strip_html(text: str) -> str:
     return re.sub(r"<[^>]+>", "", text).strip()
 
 
-def check_keyword_hit(title: str, summary: str, category: str, keywords: dict) -> bool:
-    kws = keywords.get(category, [])
-    text = (title + " " + summary).lower()
-    return any(kw.lower() in text for kw in kws)
-
-
 def extract_pub_date(published_parsed) -> str:
     if published_parsed and len(published_parsed) >= 3:
         return f"{published_parsed[0]:04d}-{published_parsed[1]:02d}-{published_parsed[2]:02d}"
@@ -38,12 +32,10 @@ class RssCollector:
     def __init__(
         self,
         feed_configs: List[dict] | None = None,
-        keywords: dict | None = None,
         fetch_count: int = 10,
         client: httpx.AsyncClient | None = None,
     ):
         self.feeds = feed_configs if feed_configs is not None else load_all_rss_feeds()
-        self._keywords = keywords or {}
         self._fetch_count = fetch_count
         self._client = client
 
@@ -85,7 +77,6 @@ class RssCollector:
         pub_date = extract_pub_date(entry.get("published_parsed"))
         cat = feed["category"]
         source_name = feed.get("source", cat)
-        kw_hit = check_keyword_hit(title, summary, cat, self._keywords)
 
         return HotItem(
             title=title,
@@ -95,7 +86,7 @@ class RssCollector:
             category=cat,  # type: ignore[arg-type]
             source_score=5.0,
             timestamp=ts,
-            keyword_hit=kw_hit,
+            keyword_hit=False,
             pub_date=pub_date,
         )
 
