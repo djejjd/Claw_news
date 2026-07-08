@@ -1,19 +1,21 @@
 FROM python:3.12-slim
 
 WORKDIR /app
+ENV PIP_DEFAULT_TIMEOUT=120
 
 # Install system dependencies for curl-cffi
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY pyproject.toml requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir fastapi uvicorn apscheduler
+ARG PIP_INDEX_URL
+ARG PIP_EXTRA_INDEX_URL
 
-# Copy application code
 COPY . .
+RUN PIP_INDEX_URL="${PIP_INDEX_URL}" PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL}" \
+    pip install --no-cache-dir "setuptools>=68" wheel \
+    && PIP_INDEX_URL="${PIP_INDEX_URL}" PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL}" \
+    pip install --no-cache-dir --no-build-isolation .
 
 EXPOSE 8000
 

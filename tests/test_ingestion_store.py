@@ -8,18 +8,25 @@ from pathlib import Path
 from app.pipeline.candidate import CandidateItem
 from app.storage.ingestion_store import IngestionStore
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
 
-def _make_item(title="T", url="https://x.com/a", summary="S", source="test",
-               category="ai", **kwargs) -> CandidateItem:
+
+def _make_item(
+    title="T", url="https://x.com/a", summary="S", source="test", category="ai", **kwargs
+) -> CandidateItem:
     key = kwargs.pop("canonical_key", CandidateItem.make_canonical_key(url))
     fetched = kwargs.pop("fetched_at", datetime.now().isoformat())
     return CandidateItem(
-        title=title, url=url, summary=summary, source=source,
-        category=category, canonical_key=key, fetched_at=fetched, **kwargs,
+        title=title,
+        url=url,
+        summary=summary,
+        source=source,
+        category=category,
+        canonical_key=key,
+        fetched_at=fetched,
+        **kwargs,
     )
 
 
@@ -43,6 +50,7 @@ def _today_str() -> str:
 # ---------------------------------------------------------------------------
 # append_or_merge
 # ---------------------------------------------------------------------------
+
 
 class TestAppendOrMerge:
     def test_creates_dir_and_files(self, tmp_path: Path):
@@ -99,8 +107,11 @@ class TestAppendOrMerge:
     def test_dict_items_are_normalized(self, tmp_path: Path):
         store = IngestionStore(root_dir=tmp_path)
         d = {
-            "title": "D", "url": "https://d.com/p",
-            "summary": "sd", "source": "test", "category": "ai",
+            "title": "D",
+            "url": "https://d.com/p",
+            "summary": "sd",
+            "source": "test",
+            "category": "ai",
         }
         result = store.append_or_merge([d])
         assert result["item_count"] == 1
@@ -114,7 +125,9 @@ class TestAppendOrMerge:
     def test_source_failures_accumulate(self, tmp_path: Path):
         store = IngestionStore(root_dir=tmp_path)
         store.append_or_merge([_make_item()], source_failures=["s1"])
-        result = store.append_or_merge([_make_item(url="https://b.com")], source_failures=["s2", "s1"])
+        result = store.append_or_merge(
+            [_make_item(url="https://b.com")], source_failures=["s2", "s1"]
+        )
         assert set(result["source_failures"]) == {"s1", "s2"}
 
     def test_index_json_structure(self, tmp_path: Path):
@@ -124,7 +137,13 @@ class TestAppendOrMerge:
             source_failures=["bad_source"],
         )
 
-        assert set(result.keys()) == {"date", "seen_keys", "source_failures", "item_count", "updated_at"}
+        assert set(result.keys()) == {
+            "date",
+            "seen_keys",
+            "source_failures",
+            "item_count",
+            "updated_at",
+        }
         assert isinstance(result["date"], str)
         assert isinstance(result["seen_keys"], list)
         assert isinstance(result["source_failures"], list)
@@ -151,6 +170,7 @@ class TestAppendOrMerge:
 # ---------------------------------------------------------------------------
 # load_window_candidates
 # ---------------------------------------------------------------------------
+
 
 class TestLoadWindowCandidates:
     def test_folds_by_canonical_key(self, tmp_path: Path):
@@ -328,7 +348,7 @@ class TestLoadWindowCandidates:
         # 手动写入混合内容
         (day_dir / "candidates.jsonl").write_text(
             '{"title":"OK","url":"https://ok.com/1","summary":"s","source":"t","category":"ai","canonical_key":"ok.com/1"}\n'
-            'NOT JSON\n'
+            "NOT JSON\n"
             '{"title":"OK2","url":"https://ok.com/2","summary":"s2","source":"t","category":"ai","canonical_key":"ok.com/2"}\n',
             encoding="utf-8",
         )
@@ -348,8 +368,26 @@ class TestLoadWindowCandidates:
 
         ing = tmp_path / "data" / "ingestion"
 
-        _write_jsonl(ing / d1, [_make_item(url="https://cross.com/a", summary="v1", fetched_at="2026-05-18T08:00:00")])
-        _write_jsonl(ing / d2, [_make_item(url="https://cross.com/a", summary="v2 newer fetch", fetched_at="2026-05-18T09:00:00")])
+        _write_jsonl(
+            ing / d1,
+            [
+                _make_item(
+                    url="https://cross.com/a",
+                    summary="v1",
+                    fetched_at=f"{d1}T08:00:00",
+                )
+            ],
+        )
+        _write_jsonl(
+            ing / d2,
+            [
+                _make_item(
+                    url="https://cross.com/a",
+                    summary="v2 newer fetch",
+                    fetched_at=f"{d1}T09:00:00",
+                )
+            ],
+        )
 
         candidates = store.load_window_candidates(
             time_window_start=f"{d2}T00:00:00",
@@ -362,6 +400,7 @@ class TestLoadWindowCandidates:
 # ---------------------------------------------------------------------------
 # prune_expired
 # ---------------------------------------------------------------------------
+
 
 class TestPruneExpired:
     def test_cleans_old_directories(self, tmp_path: Path):
@@ -379,9 +418,7 @@ class TestPruneExpired:
         assert deleted == 2  # -4 天和 -7 天应被删除
 
         remaining = sorted(d.name for d in ing.iterdir() if d.is_dir())
-        expected = sorted(
-            (today - timedelta(days=i)).isoformat() for i in range(3)
-        )
+        expected = sorted((today - timedelta(days=i)).isoformat() for i in range(3))
         assert remaining == expected
 
     def test_returns_zero_when_no_expired(self, tmp_path: Path):

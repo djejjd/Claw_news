@@ -1,6 +1,10 @@
 services:
   claw-news:
-    build: .
+    build:
+      context: .
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
     container_name: claw-news
     restart: always
     ports:

@@ -9,6 +9,7 @@ import pytest
 # Sample news items
 # ---------------------------------------------------------------------------
 
+
 def _make_news_items(count: int = 3) -> list[dict]:
     """Return a list of sample news dicts matching fetch_news output format."""
     return [
@@ -25,6 +26,7 @@ def _make_news_items(count: int = 3) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Normal case helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_valid_response(content: str) -> dict:
     """Build a valid OpenAI-compatible chat completion response JSON."""
@@ -72,6 +74,7 @@ def _build_mock_client(
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestSummarizeNews:
     """Tests for summarize_news() — OpenAI-compatible LLM summarizer."""
 
@@ -79,24 +82,28 @@ class TestSummarizeNews:
 
     @pytest.mark.asyncio
     async def test_normal_summary_returns_chinese(self):
-        """A valid API response produces a Chinese summary dict with headline_items and daily_judgement."""
+        """A valid API response produces a Chinese summary dict."""
         from app.tools.llm import summarize_news
 
         items = _make_news_items(3)
 
         import json
-        llm_json_output = json.dumps({
-            "headline_items": [
-                {
-                    "title": "AI打破了0项纪录",
-                    "url": "https://example.com/news/0",
-                    "core_summary": "测试核心内容",
-                    "importance": "高",
-                    "trend": "利好",
-                }
-            ],
-            "daily_judgement": "AI行业持续火热",
-        }, ensure_ascii=False)
+
+        llm_json_output = json.dumps(
+            {
+                "headline_items": [
+                    {
+                        "title": "AI打破了0项纪录",
+                        "url": "https://example.com/news/0",
+                        "core_summary": "测试核心内容",
+                        "importance": "高",
+                        "trend": "利好",
+                    }
+                ],
+                "daily_judgement": "AI行业持续火热",
+            },
+            ensure_ascii=False,
+        )
 
         mock_client = _build_mock_client(_make_valid_response(llm_json_output))
 
@@ -121,7 +128,9 @@ class TestSummarizeNews:
         from app.tools.llm import summarize_news
 
         items = _make_news_items(2)
-        expected_summary = "今日 AI 新闻摘要\n\n1. [新闻](https://example.com/news/0)\n...\n今日一句话判断：还行"
+        expected_summary = (
+            "今日 AI 新闻摘要\n\n1. [新闻](https://example.com/news/0)\n...\n今日一句话判断：还行"
+        )
 
         mock_client = _build_mock_client(_make_valid_response(expected_summary))
 

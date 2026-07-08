@@ -32,32 +32,34 @@ HF/TapTap = 自带 upvotes/排名分数
 
 ## 快速开始
 
+正式运行路径是 **FastAPI + APScheduler 服务模式**。旧 CLI 入口仍保留为兼容/本地辅助入口，但不再是生产发布主路径。
+
 ```bash
 # 1. 一键安装
 make install
 
-# 2. 配置 webhook
-#    首先必须有 config.yaml（从模板复制）:
-cp config.example.yaml config.yaml
-#    然后配置 webhook（二选一）:
-#    方式 A: 环境变量（推荐，覆盖 YAML 中的 webhook）
-export PUSHER_WECOM_WEBHOOK="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY_HERE"
-#    方式 B: 直接在 config.yaml 中填写 webhook
+# 2. 准备服务配置
+cp .env.example .env
+# 编辑 .env，填写 LLM_* 与 WECOM_WEBHOOK_URL
 
 # 3. 验证
 make test
 make dry-run
 
-# 4. 推送
-make run-morning
+# 4. 启动正式服务
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 > **注意：**
 > - `.env.example` 是人工参考模板，程序不会自动加载。如需环境变量注入，请在 shell / launchd / cron 中 `export`。
-> - `--dry-run` 不要求 webhook 配置。
+> - `make dry-run` 只验证 CLI 兼容壳可启动，不触发 LLM 摘要或企业微信推送，也不要求 LLM / webhook 配置。
 > - `make clean` 不删除 `data/`（运行状态），`make clean-data` 清空。
 > - **不要直接使用系统 Python 跑 `pytest`**。标准入口是 `make install` 后再 `make test`。
 > - `deploy.example.sh` 是部署参考模板，只做安装+dry-run 验证，不是生产推送入口。
+
+### CLI 兼容入口
+
+`main.py` 仍保留 `--period` 和 `--dry-run` 参数，主要用于旧脚本兼容。真实发布建议使用服务模式；如果必须使用 CLI 真实推送，需要提供与服务模式一致的 `LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL` 和 `WECOM_WEBHOOK_URL` 环境变量。
 
 ## 定时自动运行 (macOS launchd)
 
@@ -93,13 +95,13 @@ launchctl load ~/Library/LaunchAgents/com.lanser.clawnews.evening.plist
 - `[续]` — 上次推送已出现过
 - 来源名 + 国内/国外标注
 
-## Service Mode
+## 服务模式
 
-Claw_news uses one formal publishing path: a long-running FastAPI + APScheduler service that performs high-frequency ingestion, structured LLM summarization, and a single WeCom markdown digest push.
+Claw_news 的正式发布路径是一个长运行的 FastAPI + APScheduler 服务：高频采集候选池，定时执行结构化 LLM 摘要，并向企业微信群推送一条 markdown 摘要。
 
-### Environment Variables
+### 环境变量
 
-The service mode reads configuration from environment variables. Copy `.env.example` to `.env` and fill in your values:
+服务模式从环境变量读取配置。先复制 `.env.example` 到 `.env`，再填写实际值：
 
 ```bash
 cp .env.example .env
@@ -113,10 +115,14 @@ cp .env.example .env
 | `WECOM_WEBHOOK_URL` | Yes | WeCom bot webhook URL |
 | `TZ` | No | Timezone (default: `Asia/Shanghai`) |
 | `NEWS_RSS_URLS` | Legacy | Historical URL-only RSS config; formal AI ingest uses `AI_RSS_*` below |
+| `HF_PROXY` | No | HuggingFace collector proxy URL, mainly for restricted network environments |
+| `HF_OPTIONAL` | No | `1` means HuggingFace failures are recorded as skipped instead of failed |
 | `AI_RSS_MODE` | No | `append` (default) keeps built-ins; `replace` uses only `AI_RSS_FEEDS` |
 | `AI_RSS_FEEDS` | No | Comma-separated `source|url` AI RSS feeds, e.g. `openai_blog|https://openai.com/news/rss.xml` |
+| `PIP_INDEX_URL` | Build only | Optional primary PyPI index for `docker compose build`, useful on slow overseas links |
+| `PIP_EXTRA_INDEX_URL` | Build only | Optional fallback PyPI index for `docker compose build` |
 
-### HTTP Endpoints
+### HTTP 接口
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -124,9 +130,13 @@ cp .env.example .env
 | `GET` | `/health` | Health check plus latest ingest status |
 | `POST` | `/run/news` | Manually trigger one publish cycle from the ingestion store |
 
-### Docker Deployment
+### Docker 部署
 
 ```bash
+# Optional: set a mirror first when the server reaches PyPI slowly
+export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+export PIP_EXTRA_INDEX_URL=https://pypi.org/simple
+
 # Build and start the service
 docker compose up -d --build
 
@@ -140,37 +150,47 @@ curl -X POST http://127.0.0.1:8000/run/news
 docker compose logs -f
 ```
 
-### Recommended Delivery Strategy
+`deploy-prod.sh` will default to the Tsinghua mirror on the Tencent Cloud server build path, and you can override it by exporting `PIP_INDEX_URL` / `PIP_EXTRA_INDEX_URL` before running the script.
 
-For cloud servers where access to GitHub may be unstable, do not treat `git pull` on the server as the primary deployment path.
+For the current Tencent Cloud production path, the recommended one-command release entrypoint is:
 
-Recommended order:
+```bash
+make release-prod
+```
 
-1. **Preferred:** sync code from a local machine or CI to the server with `scp` or `rsync`
-2. **Advanced:** let GitHub Actions build and deliver artifacts to the server
-3. **Fallback only:** direct `git pull` on the server
+It runs `lint`, then `test`, then `bash deploy-prod.sh`, and stops immediately if any step fails.
 
-See the full deployment guide:
+### 推荐交付策略
+
+如果云服务器访问 GitHub 不稳定，不建议把服务器上的 `git pull` 作为主要部署路径。
+
+推荐顺序：
+
+1. **首选：** 从本地或 CI 用 `scp` / `rsync` 同步代码到服务器
+2. **进阶：** 由 GitHub Actions 构建并交付产物
+3. **备选：** 在服务器上直接 `git pull`
+
+完整部署指南：
 
 - [docs/operations/deploy/server-guide.md](docs/operations/deploy/server-guide.md)
 
-### Deployment Modes
+### 部署模式
 
-**Mode A: Internal APScheduler (recommended)**
+**模式 A：内部 APScheduler（推荐）**
 
-The service keeps one 09:00 publish job and one high-frequency ingest job that refreshes the candidate pool every 30 minutes. The digest can also append a three-item GitHub project supplement when a recent snapshot is available. The container keeps a single process running with a built-in scheduler. This is the default mode.
+服务内置一个 09:00 发布任务，以及一个每 30 分钟刷新候选池的高频采集任务。当存在最近的 GitHub 项目快照时，摘要可附加 3 条项目补充。容器内保持单进程运行，这是默认模式。
 
-**Mode B: External HTTP trigger**
+**模式 B：外部 HTTP 触发**
 
-Disable the internal scheduler and use an external timer (cron, systemd timer, etc.) to call `POST /run/news`. This is available as a migration-friendly option if you prefer to keep your existing scheduling infrastructure.
+禁用内部 scheduler，并用外部计时器（cron、systemd timer 等）调用 `POST /run/news`。如果你希望保留现有调度基础设施，可以用这种迁移友好的模式。
 
-> **Important:** This is a single-instance service. Do not run multiple replicas or workers, as deduplication state is stored in local files.
+> **重要：** 这是单实例服务。去重状态存储在本地文件中，不要运行多个副本或多个 worker。
 
-### LLM Provider Compatibility
+### LLM Provider 兼容性
 
-The service uses an OpenAI-compatible HTTP interface. Any provider that supports `base_url + api_key + model` works — just change the three `LLM_*` environment variables. Examples: OpenAI, DeepSeek, Qwen (通义千问), Groq, local vLLM, Ollama.
+服务使用 OpenAI-compatible HTTP 接口。任何支持 `base_url + api_key + model` 的供应商都可接入，只需要修改三个 `LLM_*` 环境变量。例如 OpenAI、DeepSeek、Qwen（通义千问）、Groq、本地 vLLM、Ollama。
 
-### Local Development (without Docker)
+### 本地开发（不使用 Docker）
 
 ```bash
 # Set up environment

@@ -1,0 +1,12 @@
+.git
+.pytest_cache
+.ruff_cache
+.DS_Store
+.env
+config.yaml
+data/
+docs/temp/
+venv/
+__pycache__/
+*.pyc
+deploy.sh

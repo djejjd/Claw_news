@@ -14,12 +14,16 @@ from pusher.wecom import PushResult, WeComError, WeComPusher
 # helpers
 # ---------------------------------------------------------------------------
 
+
 def make_item(
     title="Test Article",
     url="https://example.com/article",
     core_summary="An interesting article about AI.",
     importance="高",
     trend="持续关注",
+    source="OpenAI Blog",
+    display_category="AI",
+    topic_label=None,
 ):
     return SummaryItem(
         title=title,
@@ -27,6 +31,9 @@ def make_item(
         core_summary=core_summary,
         importance=importance,
         trend=trend,
+        source=source,
+        display_category=display_category,
+        topic_label=topic_label,
     )
 
 
@@ -48,7 +55,7 @@ class TestRenderDigestBasic:
     def test_heading_present(self):
         result = make_result([make_item()])
         md = render_digest(result)
-        assert md.startswith("# 今日 AI 新闻摘要")
+        assert md.startswith("# AI / 游戏 / 工具 热点")
 
     def test_single_headline_numbering(self):
         result = make_result([make_item(title="GPT-5 发布")])
@@ -115,6 +122,41 @@ class TestRenderDigestMultiple:
         assert "Summary A" in md
         assert "Summary B" in md
 
+    def test_groups_items_by_display_category(self):
+        items = [
+            make_item(title="AI A", display_category="AI", topic_label="模型"),
+            make_item(title="Tool A", display_category="工具", topic_label="开源"),
+            make_item(title="Game A", display_category="游戏", topic_label="新品"),
+        ]
+        md = render_digest(make_result(items))
+
+        assert "【AI】" in md
+        assert "【工具】" in md
+        assert "【游戏】" in md
+        assert "[模型]" in md
+        assert "[开源]" in md
+        assert "[新品]" in md
+
+    def test_shows_source_on_summary_line(self):
+        result = make_result([make_item(source="腾讯云开发者")])
+        md = render_digest(result)
+
+        assert "— 腾讯云开发者" in md
+
+    def test_limits_total_entries_to_ten(self):
+        items = [
+            make_item(
+                title=f"Item {i}",
+                url=f"https://example.com/{i}",
+                display_category="AI" if i < 5 else "工具" if i < 9 else "游戏",
+            )
+            for i in range(12)
+        ]
+        md = render_digest(make_result(items))
+
+        assert "**10.**" in md
+        assert "**11.**" not in md
+
 
 class TestRenderDigestEmpty:
     """Rendering with empty headline_items."""
@@ -122,13 +164,13 @@ class TestRenderDigestEmpty:
     def test_empty_headlines_renders_heading_only(self):
         result = make_result([], daily_judgement="今天静悄悄。")
         md = render_digest(result)
-        assert "# 今日 AI 新闻摘要" in md
+        assert "# AI / 游戏 / 工具 热点" in md
         assert "> 今日一句话判断：今天静悄悄。" in md
 
     def test_none_headlines_treated_as_empty(self):
         result = make_result(None, daily_judgement="无事发生。")
         md = render_digest(result)
-        assert "# 今日 AI 新闻摘要" in md
+        assert "# AI / 游戏 / 工具 热点" in md
         assert "> 今日一句话判断：无事发生。" in md
         # No numbered entries should appear
         assert "**1.**" not in md
@@ -201,9 +243,7 @@ class TestRenderDigestEscape:
         assert "Path\\\\to\\\\file" in md
 
     def test_combined_special_chars(self):
-        result = make_result(
-            [make_item(title="*Important* [Update] on `model_v2` with \\path")]
-        )
+        result = make_result([make_item(title="*Important* [Update] on `model_v2` with \\path")])
         md = render_digest(result)
         assert "\\*Important\\*" in md
         assert "\\[Update\\]" in md

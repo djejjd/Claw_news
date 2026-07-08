@@ -104,6 +104,7 @@ class TestHealthEndpoint:
                 "last_item_count": 3,
                 "successful_sources": ["rss"],
                 "failed_sources": [],
+                "skipped_sources": [],
             }
             client = TestClient(app)
             resp = client.get("/health")
@@ -132,20 +133,13 @@ class TestHealthEndpoint:
 
 class TestRunNewsEndpoint:
     def test_run_news_triggers_agent(self):
-        """POST /run/news calls run_pipeline() and returns its result."""
+        """POST /run/news calls the shared agent so publish locking is reused."""
         from fastapi.testclient import TestClient
 
-        from app.tools.summary_result import PublishResult
-
-        mock_result = PublishResult(
-            status="ok", selected_count=8, pushed=True,
-            message_type="markdown", summary_preview="今日 AI 新闻摘要...",
-            errors=[],
-        )
+        mock_agent = _make_mock_agent()
 
         with (
-            patch("app.main.run_pipeline", new=AsyncMock(return_value=mock_result)),
-            patch("app.main.agent", _make_mock_agent()),
+            patch("app.main.agent", mock_agent),
             patch("app.main.scheduler", MagicMock()),
         ):
             from app.main import app
@@ -158,6 +152,7 @@ class TestRunNewsEndpoint:
         assert data["status"] == "ok"
         assert data["fetched_count"] == 8
         assert data["pushed"] is True
+        mock_agent.run_once.assert_awaited_once_with(trigger_mode="http")
 
     def test_run_news_when_skipped(self):
         """POST /run/news returns skipped status when lock held."""
@@ -210,29 +205,39 @@ class TestRunNewsEndpoint:
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_ingestion_store,
             patch("app.pipeline.news_pipeline.TopicClassifier"),
             patch("app.pipeline.news_pipeline.Merger") as mock_merger_cls,
-            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value={
-                "headline_items": [
-                    {
-                        "title": "A",
-                        "url": "https://example.com/a",
-                        "core_summary": "a",
-                        "importance": "高",
-                        "trend": "up",
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(
+                    return_value={
+                        "headline_items": [
+                            {
+                                "title": "A",
+                                "url": "https://example.com/a",
+                                "core_summary": "a",
+                                "importance": "高",
+                                "trend": "up",
+                            }
+                        ],
+                        "daily_judgement": "ok",
                     }
-                ],
-                "daily_judgement": "ok",
-            })),
+                ),
+            ),
             patch("app.pipeline.news_pipeline.GitHubStore") as mock_github_store,
             patch("app.pipeline.news_pipeline.render_digest", return_value="markdown"),
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.StateStore") as mock_state_store_cls,
-            patch("app.pipeline.news_pipeline.SourceMetricsStore", return_value=fake_metrics_store),
+            patch(
+                "app.pipeline.news_pipeline.SourceMetricsStore",
+                return_value=fake_metrics_store,
+            ),
             patch("app.pipeline.news_pipeline._collect_source_failures", return_value=[]),
         ):
             mock_ingestion_store.return_value.load_window_candidates.return_value = selected_items
             mock_merger_cls.return_value.merge.return_value = selected_items
             mock_github_store.return_value.load_latest_snapshot.return_value = []
-            mock_pusher_cls.return_value.push_single_markdown = AsyncMock(return_value=MagicMock(success=True))
+            mock_pusher_cls.return_value.push_single_markdown = AsyncMock(
+                return_value=MagicMock(success=True)
+            )
             mock_state_store_cls.return_value.load_pushed_urls.return_value = set()
             mock_state_store_cls.return_value.load_published_keys.return_value = set()
 
@@ -289,29 +294,39 @@ class TestRunNewsEndpoint:
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_ingestion_store,
             patch("app.pipeline.news_pipeline.TopicClassifier"),
             patch("app.pipeline.news_pipeline.Merger") as mock_merger_cls,
-            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value={
-                "headline_items": [
-                    {
-                        "title": "A",
-                        "url": "https://example.com/a",
-                        "core_summary": "a",
-                        "importance": "高",
-                        "trend": "up",
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(
+                    return_value={
+                        "headline_items": [
+                            {
+                                "title": "A",
+                                "url": "https://example.com/a",
+                                "core_summary": "a",
+                                "importance": "高",
+                                "trend": "up",
+                            }
+                        ],
+                        "daily_judgement": "ok",
                     }
-                ],
-                "daily_judgement": "ok",
-            })),
+                ),
+            ),
             patch("app.pipeline.news_pipeline.GitHubStore") as mock_github_store,
             patch("app.pipeline.news_pipeline.render_digest", return_value="markdown"),
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.StateStore") as mock_state_store_cls,
-            patch("app.pipeline.news_pipeline.SourceMetricsStore", return_value=fake_metrics_store),
+            patch(
+                "app.pipeline.news_pipeline.SourceMetricsStore",
+                return_value=fake_metrics_store,
+            ),
             patch("app.pipeline.news_pipeline._collect_source_failures", return_value=[]),
         ):
             mock_ingestion_store.return_value.load_window_candidates.return_value = selected_items
             mock_merger_cls.return_value.merge.return_value = selected_items
             mock_github_store.return_value.load_latest_snapshot.return_value = []
-            mock_pusher_cls.return_value.push_single_markdown = AsyncMock(return_value=MagicMock(success=True))
+            mock_pusher_cls.return_value.push_single_markdown = AsyncMock(
+                return_value=MagicMock(success=True)
+            )
             mock_state_store_cls.return_value.load_pushed_urls.return_value = set()
             mock_state_store_cls.return_value.load_published_keys.return_value = set()
 
@@ -333,7 +348,6 @@ class TestRunNewsEndpoint:
 
         assert result.status == "ok"
         assert "source_metrics_write_failed" in result.errors
-
 
 
 class TestScheduler:

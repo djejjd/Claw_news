@@ -11,7 +11,9 @@ class TestLoadConfigMissingRequired:
     def test_missing_llm_api_key(self, monkeypatch):
         monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
         monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
-        monkeypatch.setenv("WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test")
+        monkeypatch.setenv(
+            "WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+        )
         monkeypatch.delenv("LLM_API_KEY", raising=False)
         with pytest.raises(ValueError, match="LLM_API_KEY"):
             load_config()
@@ -19,7 +21,9 @@ class TestLoadConfigMissingRequired:
     def test_missing_llm_base_url(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
-        monkeypatch.setenv("WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test")
+        monkeypatch.setenv(
+            "WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+        )
         monkeypatch.delenv("LLM_BASE_URL", raising=False)
         with pytest.raises(ValueError, match="LLM_BASE_URL"):
             load_config()
@@ -27,7 +31,9 @@ class TestLoadConfigMissingRequired:
     def test_missing_llm_model(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
-        monkeypatch.setenv("WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test")
+        monkeypatch.setenv(
+            "WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+        )
         monkeypatch.delenv("LLM_MODEL", raising=False)
         with pytest.raises(ValueError, match="LLM_MODEL"):
             load_config()
@@ -44,7 +50,9 @@ class TestLoadConfigMissingRequired:
         monkeypatch.setenv("LLM_API_KEY", "")
         monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
         monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
-        monkeypatch.setenv("WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test")
+        monkeypatch.setenv(
+            "WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+        )
         with pytest.raises(ValueError, match="LLM_API_KEY"):
             load_config()
 
@@ -55,7 +63,9 @@ class TestDefaults:
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
         monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
-        monkeypatch.setenv("WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test")
+        monkeypatch.setenv(
+            "WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+        )
         monkeypatch.delenv("TZ", raising=False)
         config = load_config()
         assert config.tz == "Asia/Shanghai"
@@ -65,7 +75,9 @@ class TestDefaults:
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
         monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
-        monkeypatch.setenv("WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test")
+        monkeypatch.setenv(
+            "WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+        )
         monkeypatch.delenv("NEWS_RSS_URLS", raising=False)
         config = load_config()
         assert config.news_rss_urls == []
@@ -76,7 +88,9 @@ class TestNewsRssUrlsParsing:
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
         monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
-        monkeypatch.setenv("WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test")
+        monkeypatch.setenv(
+            "WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+        )
         monkeypatch.setenv("NEWS_RSS_URLS", "https://example.com/feed.xml")
         config = load_config()
         assert config.news_rss_urls == ["https://example.com/feed.xml"]
@@ -85,7 +99,9 @@ class TestNewsRssUrlsParsing:
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
         monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
-        monkeypatch.setenv("WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test")
+        monkeypatch.setenv(
+            "WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+        )
         monkeypatch.setenv(
             "NEWS_RSS_URLS",
             "https://example.com/ai.xml,https://example.com/game.xml",
@@ -100,7 +116,9 @@ class TestNewsRssUrlsParsing:
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
         monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
-        monkeypatch.setenv("WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test")
+        monkeypatch.setenv(
+            "WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+        )
         monkeypatch.setenv(
             "NEWS_RSS_URLS",
             " https://example.com/ai.xml , https://example.com/game.xml ",
@@ -115,7 +133,9 @@ class TestNewsRssUrlsParsing:
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
         monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
-        monkeypatch.setenv("WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test")
+        monkeypatch.setenv(
+            "WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+        )
         monkeypatch.setenv("NEWS_RSS_URLS", "")
         config = load_config()
         assert config.news_rss_urls == []
@@ -126,13 +146,17 @@ class TestHappyPath:
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
         monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
-        monkeypatch.setenv("WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test")
+        monkeypatch.setenv(
+            "WECOM_WEBHOOK_URL", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+        )
         monkeypatch.setenv("TZ", "Asia/Tokyo")
         monkeypatch.setenv("NEWS_RSS_URLS", "https://example.com/feed.xml")
         config = load_config()
         assert config.llm_api_key == "sk-test"
         assert config.llm_base_url == "https://api.openai.com/v1"
         assert config.llm_model == "gpt-4.1-mini"
-        assert config.wecom_webhook_url == "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+        assert (
+            config.wecom_webhook_url == "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+        )
         assert config.tz == "Asia/Tokyo"
         assert config.news_rss_urls == ["https://example.com/feed.xml"]

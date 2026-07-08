@@ -12,10 +12,12 @@ import pytest
 from app.config import AppConfig
 from app.pipeline.candidate import CandidateItem
 from app.pipeline.context import RunContext
+from pusher.wecom import PushResult
 
 # ---------------------------------------------------------------------------
 # Shared helper
 # ---------------------------------------------------------------------------
+
 
 def _make_config(**kwargs) -> AppConfig:
     return AppConfig(
@@ -72,8 +74,6 @@ def _make_llm_result() -> dict:
 
 
 def _make_push_result(*, success: bool = True) -> "PushResult":
-    from pusher.wecom import PushResult
-
     return PushResult(
         category="ai",
         success=success,
@@ -105,7 +105,9 @@ class TestPipelineSuccess:
         with (
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
-            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)),
+            patch(
+                "app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)
+            ),
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
             patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
@@ -133,6 +135,43 @@ class TestPipelineSuccess:
         assert result.selected_count == 1
         assert result.errors == []
 
+    @pytest.mark.asyncio
+    async def test_pipeline_uses_top_ten_selection_limit(self, tmp_path: Path):
+        from app.pipeline.news_pipeline import run_pipeline
+
+        config = _make_config()
+        ctx = _make_ctx()
+        candidate = _make_candidate()
+        llm_result = _make_llm_result()
+        push_result = _make_push_result(success=True)
+        selected = [candidate]
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)
+            ),
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
+            patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
+            patch("app.pipeline.news_pipeline.Merger") as mock_merger_cls,
+        ):
+            mock_is_inst = MagicMock()
+            mock_is_inst.load_window_candidates.return_value = [candidate]
+            mock_is.return_value = mock_is_inst
+            mock_cls.return_value = MagicMock()
+            mock_pusher = MagicMock()
+            mock_pusher.push_single_markdown = AsyncMock(return_value=push_result)
+            mock_pusher_cls.return_value = mock_pusher
+            mock_metrics_store_cls.return_value.write_selected_counts.return_value = 1
+            mock_merger_cls.return_value.merge.return_value = selected
+
+            result = await run_pipeline(ctx, config)
+
+        assert result.status == "ok"
+        mock_merger_cls.assert_called_once_with(top_n=10)
+
 
 class TestPipelinePushFailure:
     """When the WeCom push fails, the pipeline reports failure."""
@@ -151,7 +190,9 @@ class TestPipelinePushFailure:
         with (
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
-            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)),
+            patch(
+                "app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)
+            ),
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
         ):
@@ -186,7 +227,9 @@ class TestPipelinePushFailure:
         with (
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
-            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)),
+            patch(
+                "app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)
+            ),
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
         ):
@@ -199,9 +242,7 @@ class TestPipelinePushFailure:
 
             # Pusher raises an exception
             mock_pusher = MagicMock()
-            mock_pusher.push_single_markdown = AsyncMock(
-                side_effect=RuntimeError("rate limited")
-            )
+            mock_pusher.push_single_markdown = AsyncMock(side_effect=RuntimeError("rate limited"))
             mock_pusher_cls.return_value = mock_pusher
 
             result = await run_pipeline(ctx, config)
@@ -335,3 +376,75 @@ class TestPipelineGitHubSupplement:
         pushed_markdown = mock_pusher.push_single_markdown.await_args.args[0]
         assert "今日值得看项目" in pushed_markdown
         assert "owner/repo" in pushed_markdown
+
+
+class TestPipelineDigestPresentation:
+    @pytest.mark.asyncio
+    async def test_digest_uses_display_category_topic_label_and_source(self, tmp_path: Path):
+        from app.pipeline.news_pipeline import run_pipeline
+
+        config = _make_config()
+        ctx = _make_ctx()
+        ai_candidate = _make_candidate(
+            title="OpenAI 发布新模型",
+            url="https://example.com/model",
+            source="openai_blog",
+        )
+        ai_candidate.topic = "model_release"
+        tool_candidate = _make_candidate(
+            title="开源 Agent SDK",
+            url="https://example.com/sdk",
+            source="github",
+        )
+        tool_candidate.topic = "developer_tooling"
+        llm_result = {
+            "headline_items": [
+                {
+                    "title": "OpenAI 发布新模型",
+                    "url": "https://example.com/model",
+                    "core_summary": "模型更新。",
+                    "importance": "高",
+                    "trend": "利好",
+                },
+                {
+                    "title": "开源 Agent SDK",
+                    "url": "https://example.com/sdk",
+                    "core_summary": "开发者工具更新。",
+                    "importance": "中",
+                    "trend": "关注",
+                },
+            ],
+            "daily_judgement": "今天以模型和工具更新为主。",
+        }
+        push_result = _make_push_result(success=True)
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=llm_result),
+            ),
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
+            patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
+        ):
+            mock_is_inst = MagicMock()
+            mock_is_inst.load_window_candidates.return_value = [ai_candidate, tool_candidate]
+            mock_is.return_value = mock_is_inst
+            mock_cls.return_value = MagicMock()
+            mock_pusher = MagicMock()
+            mock_pusher.push_single_markdown = AsyncMock(return_value=push_result)
+            mock_pusher_cls.return_value = mock_pusher
+            mock_metrics_store_cls.return_value.write_selected_counts.return_value = 2
+
+            result = await run_pipeline(ctx, config)
+
+        assert result.status == "ok"
+        pushed_markdown = mock_pusher.push_single_markdown.await_args.args[0]
+        assert "【AI】1" in pushed_markdown
+        assert "【工具】1" in pushed_markdown
+        assert "[模型]" in pushed_markdown
+        assert "[开源]" in pushed_markdown
+        assert "openai_blog" in pushed_markdown
+        assert "github" in pushed_markdown

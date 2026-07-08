@@ -130,8 +130,11 @@ class TestNoNews:
 
         config = _make_config()
         mock_result = _make_publish_result(
-            status="skipped", selected_count=0, pushed=False,
-            summary_preview="", errors=[],
+            status="skipped",
+            selected_count=0,
+            pushed=False,
+            summary_preview="",
+            errors=[],
         )
 
         with patch(
@@ -304,7 +307,9 @@ class TestPushFailure:
 
         config = _make_config()
         mock_result = _make_publish_result(
-            status="failed", selected_count=5, pushed=False,
+            status="failed",
+            selected_count=5,
+            pushed=False,
             errors=["push_failed"],
         )
 
@@ -435,7 +440,8 @@ class TestLinksPreserved:
         preview = "# 今日 AI 新闻摘要\n有3条重要新闻"
 
         mock_result = _make_publish_result(
-            summary_preview=preview, selected_count=3,
+            summary_preview=preview,
+            selected_count=3,
         )
 
         with patch(
@@ -478,7 +484,8 @@ class TestLinksPreserved:
 
         config = _make_config()
         mock_result = _make_publish_result(
-            status="failed", pushed=False,
+            status="failed",
+            pushed=False,
             errors=["llm_parse: bad JSON", "push: rate limited"],
         )
 

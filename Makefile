@@ -1,4 +1,4 @@
-.PHONY: install test lint format run-morning run-evening dry-run clean clean-data
+.PHONY: install test lint format run-morning run-evening dry-run clean clean-data release-prod
 
 install:
 	python3 -m venv venv
@@ -21,6 +21,9 @@ run-evening:
 
 dry-run:
 	./venv/bin/python main.py --period morning --dry-run
+
+release-prod: lint test
+	bash deploy-prod.sh
 
 clean:
 	rm -rf venv/ .pytest_cache/ .ruff_cache/ __pycache__/

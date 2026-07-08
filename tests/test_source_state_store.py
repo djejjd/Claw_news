@@ -133,12 +133,12 @@ def test_save_state_writes_only_white_listed_fields_to_disk(tmp_path: Path):
     )
 
     assert path.read_text(encoding="utf-8") == (
-        '{\n'
+        "{\n"
         '  "source": "qbitai",\n'
         '  "fetch_count": 14,\n'
         '  "min_fetch_count": 11,\n'
         '  "max_fetch_count": 20,\n'
         '  "cooldown_remaining": 2,\n'
         '  "last_adjusted_at": "2026-05-19T10:00:00"\n'
-        '}'
+        "}"
     )

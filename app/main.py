@@ -8,14 +8,11 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime
 
 from fastapi import FastAPI
 
 from app.agents.news_agent import NewsAgent
 from app.config import load_config
-from app.pipeline.context import RunContext
-from app.pipeline.news_pipeline import run_pipeline
 from app.scheduler.jobs import create_scheduler
 from app.storage.ingest_status_store import IngestStatusStore
 
@@ -64,17 +61,4 @@ async def health():
 
 @app.post("/run/news")
 async def run_news():
-    now = datetime.now()
-    ctx = RunContext(
-        trigger_mode="http",
-        time_window_start=now.strftime("%Y-%m-%dT00:00:00"),
-        time_window_end=now.strftime("%Y-%m-%dT%H:%M:%S"),
-    )
-    result = await run_pipeline(ctx, config)
-    return {
-        "status": result.status,
-        "fetched_count": result.selected_count,
-        "pushed": result.pushed,
-        "summary_preview": result.summary_preview,
-        "errors": result.errors,
-    }
+    return await agent.run_once(trigger_mode="http")

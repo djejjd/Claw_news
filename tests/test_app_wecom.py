@@ -12,6 +12,7 @@ WEBHOOK = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key"
 # Helper to build httpx_mock response expectations inline
 # ---------------------------------------------------------------------------
 
+
 class TestSendTextSuccess:
     """Tests for the happy path: send_text returns the response dict on success."""
 

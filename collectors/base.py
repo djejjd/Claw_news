@@ -1,7 +1,10 @@
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from app.pipeline.candidate import CandidateItem
 
 Category = Literal["ai", "game", "device"]
 
