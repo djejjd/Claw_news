@@ -3,22 +3,12 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Literal
 
+from app.category_policy import normalize_category
+
 if TYPE_CHECKING:
     from app.pipeline.candidate import CandidateItem
 
 Category = Literal["ai", "tool", "game"]
-
-_CATEGORY_ALIASES: dict[str, Category] = {
-    "device": "tool",
-}
-
-
-def normalize_category(category: str) -> Category:
-    if category in ("ai", "tool", "game"):
-        return category
-    if category in _CATEGORY_ALIASES:
-        return _CATEGORY_ALIASES[category]
-    raise ValueError(f"Unsupported category: {category}")
 
 
 @dataclass
