@@ -31,18 +31,27 @@ _SYSTEM_PROMPT = """\
       "trend": "该新闻反映的行业趋势"
     }
   ],
-  "daily_judgement": "用一句话总结今天的AI新闻整体态势"
+  "daily_judgement": "用一句话总结今天的AI新闻整体态势",
+  "github_projects": [
+    {
+      "full_name": "owner/repo",
+      "description_cn": "将项目英文描述翻译为中文，1句话"
+    }
+  ]
 }
 
 要求：
 - 只输出 JSON，不要用 ```json``` 包裹
 - 每条新闻的 url 必须保留原文链接
 - importance 只能是 高、中、低 三个值
-- headline_items 按重要性从高到低排列"""
+- headline_items 按重要性从高到低排列
+- github_projects 中的 description_cn 必须翻译为简洁的中文"""
 
 _USER_PROMPT_TEMPLATE = """请总结以下新闻：
 
 {news_json}
+
+{github_section}
 
 请按照格式要求生成摘要。"""
 
@@ -97,6 +106,7 @@ async def summarize_news(
     base_url: str,
     api_key: str,
     model: str,
+    github_projects: list[dict] | None = None,
 ) -> dict:
     """Summarize a list of news items into a structured Chinese AI news digest.
 
@@ -105,10 +115,13 @@ async def summarize_news(
         base_url: Base URL of the OpenAI-compatible API (e.g. https://api.openai.com).
         api_key: API key for authentication.
         model: Model name to use for completion.
+        github_projects: Optional list of GitHub repo dicts with keys:
+            full_name, description, stars, language.
 
     Returns:
-        A dict with ``headline_items`` (list of news summaries) and
-        ``daily_judgement`` (one-line overall assessment).
+        A dict with ``headline_items`` (list of news summaries),
+        ``daily_judgement`` (one-line overall assessment), and
+        ``github_projects`` (list of translated project descriptions).
 
     Raises:
         httpx.HTTPStatusError: On upstream HTTP error responses.
@@ -128,8 +141,26 @@ async def summarize_news(
         }
         for item in items
     ]
+
+    github_section = ""
+    if github_projects:
+        projects_for_prompt = [
+            {
+                "full_name": p["full_name"],
+                "description": p.get("description", ""),
+                "stars": p.get("stars", 0),
+                "language": p.get("language", ""),
+            }
+            for p in github_projects
+        ]
+        github_section = (
+            "以下是今日值得关注的 GitHub 项目，请将 description 翻译为中文：\n\n"
+            f"{json.dumps(projects_for_prompt, ensure_ascii=False, indent=2)}"
+        )
+
     user_content = _USER_PROMPT_TEMPLATE.format(
-        news_json=json.dumps(news_for_prompt, ensure_ascii=False, indent=2)
+        news_json=json.dumps(news_for_prompt, ensure_ascii=False, indent=2),
+        github_section=github_section,
     )
 
     url = f"{base_url.rstrip('/')}/chat/completions"

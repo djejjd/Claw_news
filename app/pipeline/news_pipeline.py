@@ -119,16 +119,27 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     # 3. 评分选材
     selected = Merger(top_n=10).merge(candidates, use_new_scoring=True)
 
-    # 4. LLM 摘要
+    # 4. LLM 摘要（含 GitHub 项目中文翻译）
     items_for_llm = [
         {"title": it.title, "link": it.url, "summary": it.summary, "published_at": it.published_at}
         for it in selected
+    ]
+    github_raw = GitHubStore().load_latest_snapshot()
+    github_dicts = [
+        {
+            "full_name": r.full_name,
+            "description": r.description,
+            "stars": r.stars,
+            "language": r.language,
+        }
+        for r in (github_raw or [])
     ]
     llm_result = await summarize_news(
         items_for_llm,
         base_url=config.llm_base_url,
         api_key=config.llm_api_key,
         model=config.llm_model,
+        github_projects=github_dicts if github_dicts else None,
     )
     if "_parse_error" in llm_result and not llm_result.get("headline_items"):
         return PublishResult(
@@ -158,10 +169,20 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     summary = SummaryResult(
         headline_items=headline_items,
         daily_judgement=llm_result["daily_judgement"],
+        github_projects_cn=llm_result.get("github_projects", []),
     )
 
-    # 6. 渲染 & 收集 source_failures
+    # 6. 渲染 — 将 GitHub 描述替换为 LLM 翻译的中文版本
+    translated_map: dict[str, str] = {
+        p["full_name"]: p.get("description_cn", "")
+        for p in llm_result.get("github_projects", [])
+    }
     github_items = GitHubStore().load_latest_snapshot()
+    if github_items and translated_map:
+        for item in github_items:
+            cn_desc = translated_map.get(item.full_name, "")
+            if cn_desc:
+                item.description = cn_desc
     markdown = render_digest(summary, github_items=github_items)
     source_failures = _collect_source_failures(
         ingestion_store,
@@ -229,6 +250,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
                 source_failures=source_failures,
                 published_urls=published_urls,
                 published_keys=published_keys_list,
+                github_projects=llm_result.get("github_projects", []),
             )
         )
     except Exception:

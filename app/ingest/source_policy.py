@@ -4,7 +4,7 @@ from typing import Any
 
 from app.pipeline.candidate import CandidateItem
 
-_MIN_SUMMARY_LENGTH = 20
+_MIN_SUMMARY_LENGTH = 5
 _MIN_RUNS_FOR_ADJUSTMENT = 12
 _ADJUST_STEP = 2
 _COOLDOWN_ROUNDS = 6
