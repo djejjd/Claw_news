@@ -170,6 +170,10 @@ class TestRunContext:
         assert ctx.time_window_start == "2024-05-18T00:00:00"
         assert ctx.time_window_end == "2024-05-18T08:00:00"
 
+    def test_run_context_supports_all_digest_scope(self):
+        ctx = RunContext(trigger_mode="http", publish_scope="all_digest")
+        assert ctx.publish_scope == "all_digest"
+
     def test_frozen_prevents_mutation(self):
         ctx = RunContext(trigger_mode="scheduler")
         with pytest.raises(Exception):

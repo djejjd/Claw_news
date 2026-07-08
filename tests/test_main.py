@@ -448,3 +448,90 @@ class TestPipelineDigestPresentation:
         assert "[开源]" in pushed_markdown
         assert "openai_blog" in pushed_markdown
         assert "github" in pushed_markdown
+
+
+class TestPipelineAllDigestScope:
+    @pytest.mark.asyncio
+    async def test_all_digest_scope_keeps_tool_and_game_candidates(self, tmp_path: Path):
+        from app.pipeline.news_pipeline import run_pipeline
+
+        config = _make_config()
+        ctx = _make_ctx(publish_scope="all_digest")
+        ai_candidate = _make_candidate(url="https://example.com/ai", category="ai")
+        tool_candidate = _make_candidate(url="https://example.com/tool", category="tool", source="sspai")
+        game_candidate = _make_candidate(url="https://example.com/game", category="game", source="yystv")
+        llm_result = {
+            "headline_items": [
+                {"title": "AI News", "url": "https://example.com/ai", "core_summary": "AI summary.", "importance": "高", "trend": "利好"},
+                {"title": "Tool News", "url": "https://example.com/tool", "core_summary": "Tool summary.", "importance": "中", "trend": "稳定"},
+                {"title": "Game News", "url": "https://example.com/game", "core_summary": "Game summary.", "importance": "高", "trend": "利好"},
+            ],
+            "daily_judgement": "AI行业稳步发展",
+            "github_projects": [],
+        }
+        push_result = _make_push_result(success=True)
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)),
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
+            patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
+            patch("app.pipeline.news_pipeline.GitHubStore") as mock_github,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
+        ):
+            mock_is_inst = MagicMock()
+            mock_is_inst.load_window_candidates.return_value = [ai_candidate, tool_candidate, game_candidate]
+            mock_is.return_value = mock_is_inst
+            mock_cls.return_value = MagicMock()
+            mock_github.return_value.load_latest_snapshot.return_value = []
+            mock_pusher = MagicMock()
+            mock_pusher.push_single_markdown = AsyncMock(return_value=push_result)
+            mock_pusher_cls.return_value = mock_pusher
+            mock_metrics_store_cls.return_value.write_selected_counts.return_value = 3
+
+            result = await run_pipeline(ctx, config)
+
+        assert result.status == "ok"
+        assert result.selected_count == 3
+        # Verify all three were passed to the LLM summarizer
+        news_items = mock_is_inst.load_window_candidates.return_value
+        assert len(news_items) == 3
+
+    @pytest.mark.asyncio
+    async def test_ai_only_scope_drops_tool_and_game(self, tmp_path: Path):
+        from app.pipeline.news_pipeline import run_pipeline
+
+        config = _make_config()
+        ctx = _make_ctx(publish_scope="ai_only")
+        candidates = [
+            _make_candidate(url="https://example.com/ai", category="ai"),
+            _make_candidate(url="https://example.com/tool", category="tool", source="sspai"),
+            _make_candidate(url="https://example.com/game", category="game", source="yystv"),
+        ]
+        llm_result = _make_llm_result()
+        push_result = _make_push_result(success=True)
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)),
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
+            patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
+            patch("app.pipeline.news_pipeline.GitHubStore") as mock_github,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
+        ):
+            mock_is_inst = MagicMock()
+            mock_is_inst.load_window_candidates.return_value = candidates
+            mock_is.return_value = mock_is_inst
+            mock_cls.return_value = MagicMock()
+            mock_github.return_value.load_latest_snapshot.return_value = []
+            mock_pusher = MagicMock()
+            mock_pusher.push_single_markdown = AsyncMock(return_value=push_result)
+            mock_pusher_cls.return_value = mock_pusher
+            mock_metrics_store_cls.return_value.write_selected_counts.return_value = 1
+
+            result = await run_pipeline(ctx, config)
+
+        assert result.status == "ok"
+        assert result.selected_count == 1

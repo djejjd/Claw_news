@@ -3,7 +3,7 @@ from typing import Literal
 
 TriggerMode = Literal["scheduler", "http", "cli_compat"]
 Period = Literal["morning"]
-PublishScope = Literal["ai_only"]
+PublishScope = Literal["ai_only", "all_digest"]
 StateNamespace = Literal["ai_digest"]
 
 

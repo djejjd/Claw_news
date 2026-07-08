@@ -104,6 +104,8 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     )
     if ctx.publish_scope == "ai_only":
         candidates = [item for item in candidates if item.category == "ai"]
+    elif ctx.publish_scope == "all_digest":
+        candidates = [item for item in candidates if item.category in {"ai", "tool", "game"}]
     if not candidates:
         return PublishResult(
             status="skipped",
