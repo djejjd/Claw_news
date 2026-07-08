@@ -31,10 +31,17 @@ _TOPIC_LABELS = {
 
 
 def _display_category_for(candidate) -> str:
-    if candidate.category == "game":
+    if candidate is None:
+        return "AI"
+    category = candidate.category
+    if category == "game":
         return "游戏"
-    if getattr(candidate, "topic", None) == "developer_tooling" or candidate.source == "github":
+    if category in {"tool", "device"}:
         return "工具"
+    if category == "ai":
+        if getattr(candidate, "topic", None) == "developer_tooling" or candidate.source == "github":
+            return "工具"
+        return "AI"
     return "AI"
 
 
