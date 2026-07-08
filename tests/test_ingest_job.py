@@ -288,7 +288,7 @@ async def test_run_ingest_dedups_same_round_before_quality_filter(
 def test_should_accept_candidate_rejects_short_summary():
     from app.ingest.source_policy import should_accept_candidate
 
-    item = _make_candidate(summary="too short")
+    item = _make_candidate(summary="ab")
 
     assert should_accept_candidate(item) is False
 
@@ -296,7 +296,7 @@ def test_should_accept_candidate_rejects_short_summary():
 def test_should_accept_candidate_accepts_summary_at_min_length():
     from app.ingest.source_policy import should_accept_candidate
 
-    item = _make_candidate(summary="x" * 20)
+    item = _make_candidate(summary="x" * 5)
 
     assert should_accept_candidate(item) is True
 

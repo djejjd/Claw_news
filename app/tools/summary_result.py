@@ -18,6 +18,7 @@ class SummaryItem:
 class SummaryResult:
     headline_items: list  # list[SummaryItem]
     daily_judgement: str
+    github_projects_cn: list = field(default_factory=list)  # list[dict] with description_cn
 
 
 @dataclass
@@ -41,3 +42,4 @@ class DigestPayload:
     source_failures: list = field(default_factory=list)
     published_urls: list = field(default_factory=list)
     published_keys: list = field(default_factory=list)
+    github_projects: list = field(default_factory=list)
