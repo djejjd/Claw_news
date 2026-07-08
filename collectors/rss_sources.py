@@ -8,22 +8,14 @@ import feedparser
 import httpx
 
 from collectors.base import BROWSER_HEADERS, HotItem
-from collectors.ai_rss import (
-    DEFAULT_AI_RSS_FEEDS,
-    DEFAULT_GAME_RSS_FEEDS,
-    DEFAULT_TOOL_RSS_FEEDS,
-    load_all_rss_feeds,
-)
+from collectors.ai_rss import load_all_rss_feeds
 
 # 设置 feedparser 的 User-Agent，防止被 RSS 源拦截
 feedparser.USER_AGENT = BROWSER_HEADERS["User-Agent"]
 HTTP_TIMEOUT = 15.0
 
-FEED_CONFIGS: List[dict] = [
-    *DEFAULT_AI_RSS_FEEDS,
-    *DEFAULT_TOOL_RSS_FEEDS,
-    *DEFAULT_GAME_RSS_FEEDS,
-]
+# FEED_CONFIGS 从 feeds.yaml（或代码默认值）动态加载
+FEED_CONFIGS: List[dict] = load_all_rss_feeds()
 
 
 def strip_html(text: str) -> str:

@@ -1,0 +1,20 @@
+# RSS 订阅源配置模板
+# 复制为 feeds.yaml 后修改：cp feeds.example.yaml feeds.yaml
+# feeds.yaml 不在版本控制中，可自由修改
+
+feeds:
+  ai:
+    - url: https://www.qbitai.com/feed
+      source: qbitai
+    - url: https://www.leiphone.com/feed
+      source: leiphone
+  tool:
+    - url: https://sspai.com/feed
+      source: sspai
+    - url: https://www.ithome.com/rss/
+      source: ithome
+  game:
+    - url: https://www.yystv.cn/rss/feed
+      source: yystv
+    - url: https://www.gcores.com/rss
+      source: gcores
