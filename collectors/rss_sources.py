@@ -8,16 +8,20 @@ import feedparser
 import httpx
 
 from collectors.base import BROWSER_HEADERS, HotItem
+from collectors.ai_rss import (
+    DEFAULT_AI_RSS_FEEDS,
+    DEFAULT_GAME_RSS_FEEDS,
+    DEFAULT_TOOL_RSS_FEEDS,
+)
 
 # 设置 feedparser 的 User-Agent，防止被 RSS 源拦截
 feedparser.USER_AGENT = BROWSER_HEADERS["User-Agent"]
 HTTP_TIMEOUT = 15.0
 
 FEED_CONFIGS: List[dict] = [
-    {"url": "https://www.qbitai.com/feed", "category": "ai", "source": "qbitai"},
-    {"url": "https://sspai.com/feed", "category": "device", "source": "sspai"},
-    {"url": "https://www.ithome.com/rss/", "category": "device", "source": "ithome"},
-    {"url": "https://www.yystv.cn/rss/feed", "category": "game", "source": "yystv"},
+    *DEFAULT_AI_RSS_FEEDS,
+    *DEFAULT_TOOL_RSS_FEEDS,
+    *DEFAULT_GAME_RSS_FEEDS,
 ]
 
 

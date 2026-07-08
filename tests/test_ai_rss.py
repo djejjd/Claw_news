@@ -1,6 +1,12 @@
 import pytest
 
-from collectors.ai_rss import DEFAULT_AI_RSS_FEEDS, load_ai_rss_feeds
+from collectors.ai_rss import (
+    DEFAULT_AI_RSS_FEEDS,
+    load_ai_rss_feeds,
+    load_all_rss_feeds,
+    load_game_rss_feeds,
+    load_tool_rss_feeds,
+)
 
 
 def test_defaults_return_ai_feeds(monkeypatch):
@@ -11,7 +17,35 @@ def test_defaults_return_ai_feeds(monkeypatch):
 
     assert feeds == DEFAULT_AI_RSS_FEEDS
     assert all(feed["category"] == "ai" for feed in feeds)
-    assert len(feeds) >= 2
+    assert feeds == [
+        {"url": "https://www.qbitai.com/feed", "category": "ai", "source": "qbitai"},
+        {
+            "url": "https://www.jiqizhixin.com/rss",
+            "category": "ai",
+            "source": "jiqizhixin",
+        },
+    ]
+
+
+def test_tool_feeds_default_to_tool_category():
+    feeds = load_tool_rss_feeds()
+
+    assert feeds
+    assert all(feed["category"] == "tool" for feed in feeds)
+    assert {"sspai", "ithome"} <= {feed["source"] for feed in feeds}
+
+
+def test_game_feeds_include_existing_and_new_sources():
+    feeds = load_game_rss_feeds()
+
+    assert {"yystv", "gamelook"} <= {feed["source"] for feed in feeds}
+
+
+def test_load_all_rss_feeds_contains_ai_tool_game():
+    feeds = load_all_rss_feeds()
+    categories = {feed["category"] for feed in feeds}
+
+    assert categories == {"ai", "tool", "game"}
 
 
 def test_append_mode_keeps_defaults_and_adds_configured_feed(monkeypatch):

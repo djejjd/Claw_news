@@ -11,17 +11,18 @@ from collectors.rss_sources import (
 )
 
 
-def test_feed_configs_has_4_feeds():
-    assert len(FEED_CONFIGS) == 4
+def test_feed_configs_has_6_feeds():
+    assert len(FEED_CONFIGS) == 6
     for feed in FEED_CONFIGS:
         assert "url" in feed
         assert "category" in feed
         assert "source" in feed
+    assert {feed["category"] for feed in FEED_CONFIGS} == {"ai", "tool", "game"}
 
 
 def test_feed_configs_distinct_sources():
     sources = {feed["source"] for feed in FEED_CONFIGS}
-    assert sources == {"qbitai", "sspai", "ithome", "yystv"}
+    assert sources == {"qbitai", "jiqizhixin", "sspai", "ithome", "yystv", "gamelook"}
 
 
 def test_strip_html():
