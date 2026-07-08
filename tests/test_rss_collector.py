@@ -91,6 +91,22 @@ def test_rss_collector_defaults_to_feed_configs_when_none_provided():
     assert collector.feeds == FEED_CONFIGS
 
 
+def test_rss_collector_defaults_use_runtime_loader_feeds(monkeypatch):
+    monkeypatch.setenv("TOOL_RSS_FEEDS", "custom_tool|https://custom.example.com/feed.xml")
+    monkeypatch.setenv("TOOL_RSS_MODE", "replace")
+
+    collector = RssCollector()
+    tool_feeds = [feed for feed in collector.feeds if feed["category"] == "tool"]
+
+    assert tool_feeds == [
+        {
+            "url": "https://custom.example.com/feed.xml",
+            "category": "tool",
+            "source": "custom_tool",
+        }
+    ]
+
+
 @pytest.mark.asyncio
 async def test_collect_fetches_feed_content_async_before_parsing():
     collector = RssCollector(

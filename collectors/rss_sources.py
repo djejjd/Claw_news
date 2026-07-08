@@ -12,6 +12,7 @@ from collectors.ai_rss import (
     DEFAULT_AI_RSS_FEEDS,
     DEFAULT_GAME_RSS_FEEDS,
     DEFAULT_TOOL_RSS_FEEDS,
+    load_all_rss_feeds,
 )
 
 # 设置 feedparser 的 User-Agent，防止被 RSS 源拦截
@@ -49,7 +50,7 @@ class RssCollector:
         fetch_count: int = 10,
         client: httpx.AsyncClient | None = None,
     ):
-        self.feeds = feed_configs or FEED_CONFIGS
+        self.feeds = feed_configs if feed_configs is not None else load_all_rss_feeds()
         self._keywords = keywords or {}
         self._fetch_count = fetch_count
         self._client = client

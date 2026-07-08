@@ -6,7 +6,18 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from app.pipeline.candidate import CandidateItem
 
-Category = Literal["ai", "game", "device"]
+Category = Literal["ai", "game", "device", "tool"]
+LegacyCategory = Literal["ai", "game", "device"]
+
+LEGACY_CATEGORY_ALIASES: dict[str, LegacyCategory] = {
+    "tool": "device",
+}
+
+
+def to_legacy_category(category: str) -> LegacyCategory:
+    if category in ("ai", "game", "device"):
+        return category
+    return LEGACY_CATEGORY_ALIASES.get(category, "device")
 
 
 @dataclass

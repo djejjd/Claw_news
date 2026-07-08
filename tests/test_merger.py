@@ -65,6 +65,20 @@ class TestMerger:
         result = merger.merge(sample_items_v2, period="morning")
         assert set(result.keys()) == {"ai", "game", "device"}
 
+    def test_tool_items_flow_into_legacy_device_bucket(self):
+        merger = Merger(top_n=5)
+        items = [
+            HotItem("Tool 1", "https://tool.example.com/1", "s", "sspai", "tool", 5.0),
+            HotItem("Tool 2", "https://tool.example.com/2", "s", "ithome", "tool", 5.0),
+        ]
+
+        result = merger.merge(items, period="morning")
+
+        assert [item.url for item in result["device"]] == [
+            "https://tool.example.com/1",
+            "https://tool.example.com/2",
+        ]
+
     def test_sorts_desc(self, sample_items_v2):
         merger = Merger(top_n=5)
         result = merger.merge(sample_items_v2, period="morning")

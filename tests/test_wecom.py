@@ -73,6 +73,7 @@ class TestFormatMessage:
         assert CATEGORY_LABELS["ai"] == "AI 热点"
         assert CATEGORY_LABELS["game"] == "游戏热点"
         assert CATEGORY_LABELS["device"] == "数码硬件"
+        assert CATEGORY_LABELS["tool"] == "数码硬件"
 
     def test_domestic_source_has_region_label(self):
         item = make_item("t", "https://x.com/t", "s", source="qbitai", category="ai", score=5.0)
@@ -141,6 +142,31 @@ class TestWeComPusher:
         }
         await pusher.push(items, period="evening")
         assert len(httpx_mock.get_requests()) >= 1
+
+    @pytest.mark.asyncio
+    async def test_push_accepts_tool_bucket_alias(self, httpx_mock):
+        webhook = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+        httpx_mock.add_response(url=webhook, json={"errcode": 0, "errmsg": "ok"})
+
+        pusher = WeComPusher(webhook)
+        items = {
+            "ai": [],
+            "game": [],
+            "tool": [
+                make_item(
+                    "Tool Test",
+                    "https://x.com/tool",
+                    "summary",
+                    source="sspai",
+                    category="tool",
+                    score=8.0,
+                )
+            ],
+        }
+
+        await pusher.push(items)
+
+        assert len(httpx_mock.get_requests()) == 1
 
 
 @pytest.mark.asyncio
