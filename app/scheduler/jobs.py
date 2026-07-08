@@ -38,10 +38,11 @@ async def run_ingest():
     """
     import os
 
-    from collectors.ai_rss import load_ai_rss_feeds
+    from collectors.ai_rss import load_all_rss_feeds
     from collectors.github import GitHubCollector
     from collectors.huggingface import HfDailyPapersCollector
     from collectors.rss_sources import RssCollector
+    from collectors.taptap import TapTapCollector
 
     store = IngestionStore()
     metrics_store = SourceMetricsStore()
@@ -57,10 +58,11 @@ async def run_ingest():
     hf_proxy = os.getenv("HF_PROXY", "").strip() or None
     hf_optional = os.getenv("HF_OPTIONAL", "").strip().lower() in {"1", "true", "yes", "on"}
 
-    # AI-relevant collectors only (TapTap is game-focused, skip)
+    # AI / tool / game 三类内容采集
     collector_specs = [
-        ("rss", RssCollector, {"feed_configs": load_ai_rss_feeds()}),
+        ("rss", RssCollector, {"feed_configs": load_all_rss_feeds()}),
         ("huggingface", HfDailyPapersCollector, {"proxy": hf_proxy}),
+        ("taptap", TapTapCollector, {}),
     ]
 
     for name, collector_cls, collector_kwargs in collector_specs:
@@ -74,7 +76,7 @@ async def run_ingest():
             items = await collector.collect()
             logger.info("Ingest source done: %s items=%s", name, len(items))
             successful_sources.append(name)
-            raw_items = [i for i in items if i.category == "ai"]
+            raw_items = [i for i in items if i.category in {"ai", "tool", "game"}]
         except Exception as e:
             if name == "huggingface" and hf_optional:
                 logger.warning("Ingest source skipped: %s (%s)", name, e)

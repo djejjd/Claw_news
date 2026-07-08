@@ -5,6 +5,7 @@ from typing import Any
 from app.pipeline.candidate import CandidateItem
 
 _MIN_SUMMARY_LENGTH = 5
+_VALID_CATEGORIES = frozenset({"ai", "tool", "game"})
 _MIN_RUNS_FOR_ADJUSTMENT = 12
 _ADJUST_STEP = 2
 _COOLDOWN_ROUNDS = 6
@@ -16,7 +17,7 @@ def should_accept_candidate(item: CandidateItem) -> bool:
         return False
     if not item.url.strip():
         return False
-    if item.category.strip().lower() != "ai":
+    if item.category.strip().lower() not in _VALID_CATEGORIES:
         return False
     if len((item.summary or "").strip()) < _MIN_SUMMARY_LENGTH:
         return False
