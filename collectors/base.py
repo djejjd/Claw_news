@@ -6,18 +6,19 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from app.pipeline.candidate import CandidateItem
 
-Category = Literal["ai", "game", "device", "tool"]
-LegacyCategory = Literal["ai", "game", "device"]
+Category = Literal["ai", "tool", "game"]
 
-LEGACY_CATEGORY_ALIASES: dict[str, LegacyCategory] = {
-    "tool": "device",
+_CATEGORY_ALIASES: dict[str, Category] = {
+    "device": "tool",
 }
 
 
-def to_legacy_category(category: str) -> LegacyCategory:
-    if category in ("ai", "game", "device"):
+def normalize_category(category: str) -> Category:
+    if category in ("ai", "tool", "game"):
         return category
-    return LEGACY_CATEGORY_ALIASES.get(category, "device")
+    if category in _CATEGORY_ALIASES:
+        return _CATEGORY_ALIASES[category]
+    raise ValueError(f"Unsupported category: {category}")
 
 
 @dataclass
@@ -97,7 +98,7 @@ def hotitem_to_candidate(item: HotItem, ingest_run_id: str = "") -> "CandidateIt
         url=item.url,
         summary=item.summary,
         source=item.source,
-        category=item.category,
+        category=normalize_category(item.category),
         published_at=item.pub_date,
         fetched_at=datetime.fromtimestamp(item.timestamp).isoformat(),
         canonical_key=CandidateItem.make_canonical_key(item.url) if item.url else "",
