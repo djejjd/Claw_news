@@ -19,11 +19,7 @@ def test_defaults_return_ai_feeds(monkeypatch):
     assert all(feed["category"] == "ai" for feed in feeds)
     assert feeds == [
         {"url": "https://www.qbitai.com/feed", "category": "ai", "source": "qbitai"},
-        {
-            "url": "https://www.jiqizhixin.com/rss",
-            "category": "ai",
-            "source": "jiqizhixin",
-        },
+        {"url": "https://www.leiphone.com/feed", "category": "ai", "source": "leiphone"},
     ]
 
 
@@ -38,7 +34,7 @@ def test_tool_feeds_default_to_tool_category():
 def test_game_feeds_include_existing_and_new_sources():
     feeds = load_game_rss_feeds()
 
-    assert {"yystv", "gamelook"} <= {feed["source"] for feed in feeds}
+    assert {"yystv", "gcores"} <= {feed["source"] for feed in feeds}
 
 
 def test_load_all_rss_feeds_contains_ai_tool_game():

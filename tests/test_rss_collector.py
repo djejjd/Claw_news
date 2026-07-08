@@ -22,7 +22,7 @@ def test_feed_configs_has_6_feeds():
 
 def test_feed_configs_distinct_sources():
     sources = {feed["source"] for feed in FEED_CONFIGS}
-    assert sources == {"qbitai", "jiqizhixin", "sspai", "ithome", "yystv", "gamelook"}
+    assert sources == {"qbitai", "leiphone", "sspai", "ithome", "yystv", "gcores"}
 
 
 def test_strip_html():

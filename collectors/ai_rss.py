@@ -4,7 +4,7 @@ import os
 
 DEFAULT_AI_RSS_FEEDS = [
     {"url": "https://www.qbitai.com/feed", "category": "ai", "source": "qbitai"},
-    {"url": "https://www.jiqizhixin.com/rss", "category": "ai", "source": "jiqizhixin"},
+    {"url": "https://www.leiphone.com/feed", "category": "ai", "source": "leiphone"},
 ]
 
 DEFAULT_TOOL_RSS_FEEDS = [
@@ -14,7 +14,7 @@ DEFAULT_TOOL_RSS_FEEDS = [
 
 DEFAULT_GAME_RSS_FEEDS = [
     {"url": "https://www.yystv.cn/rss/feed", "category": "game", "source": "yystv"},
-    {"url": "https://www.gamelook.com.cn/feed", "category": "game", "source": "gamelook"},
+    {"url": "https://www.gcores.com/rss", "category": "game", "source": "gcores"},
 ]
 
 
