@@ -10,6 +10,9 @@ REMOTE_DOCKER_CONFIG="/tmp/docker-no-proxy"
 HEALTH_URL="http://127.0.0.1:8000/health"
 PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL:-https://pypi.org/simple}"
+CURRENT_BRANCH="$(git branch --show-current)"
+CURRENT_COMMIT="$(git rev-parse --short HEAD)"
+STARTED_AT="$(date '+%Y-%m-%d %H:%M:%S %Z')"
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "本地工作区不干净，请先提交或清理后再部署。"
@@ -20,6 +23,12 @@ if ! git rev-parse --abbrev-ref HEAD >/dev/null 2>&1; then
   echo "当前目录不是 git 仓库。"
   exit 1
 fi
+
+echo "[release] started_at=${STARTED_AT}"
+echo "[release] branch=${CURRENT_BRANCH} commit=${CURRENT_COMMIT}"
+echo "[release] target=${REMOTE_HOST}:${REMOTE_DIR}"
+echo "[release] pypi_primary=${PIP_INDEX_URL}"
+echo "[release] pypi_fallback=${PIP_EXTRA_INDEX_URL}"
 
 echo "[1/4] 同步代码到 ${REMOTE_HOST}:${REMOTE_DIR}"
 rsync -az --delete \
@@ -43,4 +52,7 @@ ssh -o BatchMode=yes -o ConnectTimeout=8 "${REMOTE_HOST}" \
 
 echo "[4/4] 健康检查"
 ssh -o BatchMode=yes -o ConnectTimeout=8 "${REMOTE_HOST}" \
-  "cd '${REMOTE_DIR}' && for attempt in \$(seq 1 12); do if curl -fsS --max-time 10 '${HEALTH_URL}'; then exit 0; fi; sleep 5; done; exit 1"
+  "cd '${REMOTE_DIR}' && for attempt in \$(seq 1 12); do if curl -fsS --max-time 10 '${HEALTH_URL}'; then exit 0; fi; sleep 5; done; exit 1" \
+  | while IFS= read -r health_payload; do
+      echo "[health] ${health_payload}"
+    done
