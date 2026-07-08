@@ -10,6 +10,7 @@ from app.pipeline import (
 )
 from app.pipeline.candidate import CandidateItem
 from app.pipeline.context import RunContext
+from app.category_policy import display_category_for_runtime, normalize_category
 from collectors.base import HotItem, hotitem_to_candidate
 
 
@@ -178,6 +179,20 @@ class TestRunContext:
         ctx = RunContext(trigger_mode="scheduler")
         with pytest.raises(Exception):
             ctx.trigger_mode = "http"  # type: ignore[misc]
+
+
+class TestCategoryPolicy:
+    def test_device_alias_normalizes_to_tool(self):
+        assert normalize_category("device") == "tool"
+
+    def test_runtime_display_categories_are_stable(self):
+        assert display_category_for_runtime("ai") == "AI"
+        assert display_category_for_runtime("tool") == "工具"
+        assert display_category_for_runtime("game") == "游戏"
+
+    def test_unknown_category_is_rejected(self):
+        with pytest.raises(ValueError):
+            normalize_category("unknown")
 
 
 class TestSummaryResultDataclasses:

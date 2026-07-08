@@ -86,6 +86,36 @@ async def test_run_ingest_skips_optional_huggingface_failures(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_run_ingest_skips_optional_taptap_failures(monkeypatch):
+    from app.scheduler.jobs import run_ingest
+
+    monkeypatch.setenv("TAPTAP_OPTIONAL", "1")
+
+    ok_rss = MagicMock()
+    ok_rss.collect = AsyncMock(return_value=[])
+    ok_hf = MagicMock()
+    ok_hf.collect = AsyncMock(return_value=[])
+    failing_taptap = MagicMock()
+    failing_taptap.collect = AsyncMock(side_effect=RuntimeError("taptap blocked"))
+
+    with (
+        patch("collectors.rss_sources.RssCollector", return_value=ok_rss),
+        patch("collectors.huggingface.HfDailyPapersCollector", return_value=ok_hf),
+        patch("collectors.taptap.TapTapCollector", return_value=failing_taptap),
+        patch("collectors.github.GitHubCollector.collect", new=AsyncMock(return_value=[])),
+        patch("app.scheduler.jobs.IngestionStore"),
+        patch("app.scheduler.jobs.GitHubStore"),
+        patch("app.scheduler.jobs.IngestStatusStore") as status_store,
+    ):
+        await run_ingest()
+
+    payload = status_store.return_value.write_status.call_args.args[0]
+    assert payload["successful_sources"] == ["rss", "huggingface", "github"]
+    assert payload["failed_sources"] == []
+    assert payload["skipped_sources"] == ["taptap: taptap blocked"]
+
+
+@pytest.mark.asyncio
 async def test_run_ingest_preloads_recent_keys_dedups_before_quality_and_updates_state():
     from app.scheduler.jobs import run_ingest
 

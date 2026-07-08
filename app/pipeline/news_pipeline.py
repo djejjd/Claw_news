@@ -7,6 +7,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from aggregator.merger import Merger
+from app.category_policy import display_category_for_runtime, normalize_category
 from app.classifiers.topic_classifier import TopicClassifier
 from app.pipeline.context import RunContext
 from app.renderers.wecom_markdown import make_preview, render_digest
@@ -33,16 +34,11 @@ _TOPIC_LABELS = {
 def _display_category_for(candidate) -> str:
     if candidate is None:
         return "AI"
-    category = candidate.category
-    if category == "game":
-        return "游戏"
-    if category in {"tool", "device"}:
-        return "工具"
+    category = normalize_category(candidate.category)
     if category == "ai":
         if getattr(candidate, "topic", None) == "developer_tooling" or candidate.source == "github":
             return "工具"
-        return "AI"
-    return "AI"
+    return display_category_for_runtime(category)
 
 
 def _topic_label_for(candidate) -> str | None:

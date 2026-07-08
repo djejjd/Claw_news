@@ -83,6 +83,7 @@ class NewsAgent:
             trigger_mode=trigger_mode,
             time_window_start=now.strftime("%Y-%m-%dT00:00:00"),
             time_window_end=now.strftime("%Y-%m-%dT%H:%M:%S"),
+            publish_scope="all_digest" if trigger_mode in {"scheduler", "http"} else "ai_only",
         )
 
         try:
