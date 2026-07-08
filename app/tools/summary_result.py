@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Optional
 
 
 @dataclass
@@ -8,6 +9,9 @@ class SummaryItem:
     core_summary: str
     importance: str  # 高/中/低
     trend: str
+    source: str = ""
+    display_category: str = "AI"
+    topic_label: Optional[str] = None
 
 
 @dataclass

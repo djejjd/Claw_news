@@ -20,6 +20,43 @@ from pusher.wecom import WeComPusher
 
 logger = logging.getLogger(__name__)
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+_TOPIC_LABELS = {
+    "model_release": "模型",
+    "agent_workflow": "Agent",
+    "developer_tooling": "开源",
+    "research_benchmark": "论文",
+    "infrastructure": "工程",
+    "application_case": "产品",
+}
+
+
+def _display_category_for(candidate) -> str:
+    if candidate.category == "game":
+        return "游戏"
+    if getattr(candidate, "topic", None) == "developer_tooling" or candidate.source == "github":
+        return "工具"
+    return "AI"
+
+
+def _topic_label_for(candidate) -> str | None:
+    return _TOPIC_LABELS.get(getattr(candidate, "topic", None) or "")
+
+
+def _match_selected_candidate(selected: list, headline_item: dict):
+    url = headline_item.get("url", "")
+    title = headline_item.get("title", "")
+
+    if url:
+        for candidate in selected:
+            if candidate.url == url:
+                return candidate
+
+    if title:
+        for candidate in selected:
+            if candidate.title == title:
+                return candidate
+
+    return None
 
 
 def _collect_source_failures(store: IngestionStore, start: str, end: str) -> list[str]:
@@ -80,7 +117,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     TopicClassifier().classify_batch(candidates)
 
     # 3. 评分选材
-    selected = Merger(top_n=5).merge(candidates, use_new_scoring=True)
+    selected = Merger(top_n=10).merge(candidates, use_new_scoring=True)
 
     # 4. LLM 摘要
     items_for_llm = [
@@ -111,8 +148,12 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             core_summary=it["core_summary"],
             importance=it["importance"],
             trend=it["trend"],
+            source=matched.source if matched else "",
+            display_category=_display_category_for(matched) if matched else "AI",
+            topic_label=_topic_label_for(matched) if matched else None,
         )
         for it in llm_result["headline_items"]
+        for matched in [_match_selected_candidate(selected, it)]
     ]
     summary = SummaryResult(
         headline_items=headline_items,

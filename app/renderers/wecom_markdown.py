@@ -7,10 +7,13 @@ message string suitable for the ``msgtype: markdown`` webhook endpoint.
 from __future__ import annotations
 
 import re
+from collections import OrderedDict
 
 from app.tools.summary_result import SummaryResult
 
 MAX_PREVIEW_CHARS = 200
+MAX_DIGEST_ITEMS = 10
+DISPLAY_CATEGORY_ORDER = ("AI", "工具", "游戏")
 
 # Characters that have special meaning in WeCom markdown and may appear
 # inside article titles.  Escaping them prevents accidental formatting
@@ -34,26 +37,47 @@ def render_digest(result: SummaryResult, github_items: list | None = None) -> st
     - The daily one-sentence judgement is appended at the bottom as a
       block-quote.
     """
-    lines = ["# 今日 AI 新闻摘要", ""]
+    lines = ["# AI / 游戏 / 工具 热点", ""]
 
-    items = result.headline_items or []
-    for i, item in enumerate(items, 1):
-        safe_title = _escape_title(item.title)
-        url = item.url or ""
+    items = (result.headline_items or [])[:MAX_DIGEST_ITEMS]
+    grouped_items: OrderedDict[str, list] = OrderedDict(
+        (category, []) for category in DISPLAY_CATEGORY_ORDER
+    )
+    for item in items:
+        category = item.display_category if item.display_category in grouped_items else "AI"
+        grouped_items[category].append(item)
 
-        if url:
-            lines.append(f"**{i}.** [{safe_title}]({url})")
-        else:
-            lines.append(f"**{i}.** {safe_title}")
+    item_number = 1
+    rendered_item_count = 0
+    for category, category_items in grouped_items.items():
+        if not category_items:
+            continue
 
-        lines.append(f"> 核心内容：{item.core_summary}")
-        lines.append(">")
-        lines.append(f"> 重要性：{item.importance}")
-        lines.append(">")
-        lines.append(f"> 趋势判断：{item.trend}")
+        lines.append(f"【{category}】{len(category_items)}")
+        for item in category_items:
+            safe_title = _escape_title(item.title)
+            url = item.url or ""
+            topic_label = f"[{item.topic_label}] " if item.topic_label else ""
 
-        if i < len(items):
-            lines.append("")
+            if url:
+                lines.append(f"**{item_number}.** {topic_label}[{safe_title}]({url})")
+            else:
+                lines.append(f"**{item_number}.** {topic_label}{safe_title}")
+
+            lines.append(f"> 核心内容：{item.core_summary}")
+            lines.append(">")
+            lines.append(f"> 重要性：{item.importance}")
+            lines.append(">")
+            lines.append(f"> 趋势判断：{item.trend}")
+            if item.source:
+                lines.append(">")
+                lines.append(f"> — {item.source}")
+
+            item_number += 1
+            rendered_item_count += 1
+
+            if rendered_item_count < len(items):
+                lines.append("")
 
     if result.daily_judgement:
         lines.append("")
