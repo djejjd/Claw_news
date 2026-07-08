@@ -99,6 +99,23 @@ class TestHotItemToCandidate:
         candidate = hotitem_to_candidate(hot)
         assert candidate.ingest_run_id == ""
 
+    def test_device_alias_normalizes_to_tool(self):
+        hot = HotItem(
+            title="Tool Alias",
+            url="https://example.com/tool",
+            summary="",
+            source="ithome",
+            category="device",
+            source_score=1.0,
+            timestamp=1716000000.0,
+            keyword_hit=False,
+            pub_date="",
+        )
+
+        candidate = hotitem_to_candidate(hot)
+
+        assert candidate.category == "tool"
+
     def test_conversion_hashed_url_keys_match(self):
         """Items with different query strings but same base URL get same canonical_key."""
         hot1 = HotItem(

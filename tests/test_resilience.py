@@ -182,7 +182,7 @@ class TestMergerWithPartialFailure:
         result = merger.merge(items, period="morning")
         assert len(result["ai"]) == 1
         assert result["game"] == []
-        assert result["device"] == []
+        assert result["tool"] == []
 
 
 class TestHTTPErrorPropagation:
