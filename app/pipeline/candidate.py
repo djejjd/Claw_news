@@ -8,7 +8,7 @@ class CandidateItem:
     url: str
     summary: str
     source: str
-    category: str  # "ai" | "game" | "device"
+    category: str  # "ai" | "game" | "tool"
     published_at: str = ""  # yyyy-mm-dd
     fetched_at: str = ""  # ISO format
     canonical_key: str = ""  # domain+path, no query/fragment

@@ -7,6 +7,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from aggregator.merger import Merger
+from app.category_policy import display_category_for_runtime, normalize_category
 from app.classifiers.topic_classifier import TopicClassifier
 from app.pipeline.context import RunContext
 from app.renderers.wecom_markdown import make_preview, render_digest
@@ -31,11 +32,13 @@ _TOPIC_LABELS = {
 
 
 def _display_category_for(candidate) -> str:
-    if candidate.category == "game":
-        return "游戏"
-    if getattr(candidate, "topic", None) == "developer_tooling" or candidate.source == "github":
-        return "工具"
-    return "AI"
+    if candidate is None:
+        return "AI"
+    category = normalize_category(candidate.category)
+    if category == "ai":
+        if getattr(candidate, "topic", None) == "developer_tooling" or candidate.source == "github":
+            return "工具"
+    return display_category_for_runtime(category)
 
 
 def _topic_label_for(candidate) -> str | None:
@@ -104,6 +107,8 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     )
     if ctx.publish_scope == "ai_only":
         candidates = [item for item in candidates if item.category == "ai"]
+    elif ctx.publish_scope == "all_digest":
+        candidates = [item for item in candidates if item.category in {"ai", "tool", "game"}]
     if not candidates:
         return PublishResult(
             status="skipped",

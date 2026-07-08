@@ -3,10 +3,12 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Literal
 
+from app.category_policy import normalize_category
+
 if TYPE_CHECKING:
     from app.pipeline.candidate import CandidateItem
 
-Category = Literal["ai", "game", "device"]
+Category = Literal["ai", "tool", "game"]
 
 
 @dataclass
@@ -86,7 +88,7 @@ def hotitem_to_candidate(item: HotItem, ingest_run_id: str = "") -> "CandidateIt
         url=item.url,
         summary=item.summary,
         source=item.source,
-        category=item.category,
+        category=normalize_category(item.category),
         published_at=item.pub_date,
         fetched_at=datetime.fromtimestamp(item.timestamp).isoformat(),
         canonical_key=CandidateItem.make_canonical_key(item.url) if item.url else "",

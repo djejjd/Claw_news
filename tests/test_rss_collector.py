@@ -11,17 +11,18 @@ from collectors.rss_sources import (
 )
 
 
-def test_feed_configs_has_4_feeds():
-    assert len(FEED_CONFIGS) == 4
+def test_feed_configs_covers_three_categories():
+    assert len(FEED_CONFIGS) >= 3
     for feed in FEED_CONFIGS:
         assert "url" in feed
         assert "category" in feed
         assert "source" in feed
+    assert {feed["category"] for feed in FEED_CONFIGS} == {"ai", "tool", "game"}
 
 
 def test_feed_configs_distinct_sources():
     sources = {feed["source"] for feed in FEED_CONFIGS}
-    assert sources == {"qbitai", "sspai", "ithome", "yystv"}
+    assert len(sources) == len(FEED_CONFIGS)  # all sources are unique
 
 
 def test_strip_html():
@@ -88,6 +89,22 @@ def test_rss_collector_uses_injected_feeds():
 def test_rss_collector_defaults_to_feed_configs_when_none_provided():
     collector = RssCollector()
     assert collector.feeds == FEED_CONFIGS
+
+
+def test_rss_collector_defaults_use_runtime_loader_feeds(monkeypatch):
+    monkeypatch.setenv("TOOL_RSS_FEEDS", "custom_tool|https://custom.example.com/feed.xml")
+    monkeypatch.setenv("TOOL_RSS_MODE", "replace")
+
+    collector = RssCollector()
+    tool_feeds = [feed for feed in collector.feeds if feed["category"] == "tool"]
+
+    assert tool_feeds == [
+        {
+            "url": "https://custom.example.com/feed.xml",
+            "category": "tool",
+            "source": "custom_tool",
+        }
+    ]
 
 
 @pytest.mark.asyncio

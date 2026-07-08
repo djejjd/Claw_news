@@ -122,6 +122,23 @@ class TestAppendOrMerge:
         data = json.loads(lines[0])
         assert data["canonical_key"] == "d.com/p"
 
+    def test_device_category_alias_is_normalized_to_tool(self, tmp_path: Path):
+        store = IngestionStore(root_dir=tmp_path)
+        d = {
+            "title": "Tool Alias",
+            "url": "https://d.com/tool",
+            "summary": "sd",
+            "source": "test",
+            "category": "device",
+        }
+
+        store.append_or_merge([d])
+
+        day_dir = tmp_path / "data" / "ingestion" / _today_str()
+        lines = (day_dir / "candidates.jsonl").read_text(encoding="utf-8").strip().split("\n")
+        data = json.loads(lines[0])
+        assert data["category"] == "tool"
+
     def test_source_failures_accumulate(self, tmp_path: Path):
         store = IngestionStore(root_dir=tmp_path)
         store.append_or_merge([_make_item()], source_failures=["s1"])

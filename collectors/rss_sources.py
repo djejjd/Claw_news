@@ -8,17 +8,14 @@ import feedparser
 import httpx
 
 from collectors.base import BROWSER_HEADERS, HotItem
+from collectors.ai_rss import load_all_rss_feeds
 
 # 设置 feedparser 的 User-Agent，防止被 RSS 源拦截
 feedparser.USER_AGENT = BROWSER_HEADERS["User-Agent"]
 HTTP_TIMEOUT = 15.0
 
-FEED_CONFIGS: List[dict] = [
-    {"url": "https://www.qbitai.com/feed", "category": "ai", "source": "qbitai"},
-    {"url": "https://sspai.com/feed", "category": "device", "source": "sspai"},
-    {"url": "https://www.ithome.com/rss/", "category": "device", "source": "ithome"},
-    {"url": "https://www.yystv.cn/rss/feed", "category": "game", "source": "yystv"},
-]
+# FEED_CONFIGS 从 feeds.yaml（或代码默认值）动态加载
+FEED_CONFIGS: List[dict] = load_all_rss_feeds()
 
 
 def strip_html(text: str) -> str:
@@ -45,7 +42,7 @@ class RssCollector:
         fetch_count: int = 10,
         client: httpx.AsyncClient | None = None,
     ):
-        self.feeds = feed_configs or FEED_CONFIGS
+        self.feeds = feed_configs if feed_configs is not None else load_all_rss_feeds()
         self._keywords = keywords or {}
         self._fetch_count = fetch_count
         self._client = client

@@ -38,10 +38,9 @@ async def run_ingest():
     """
     import os
 
-    from collectors.ai_rss import load_ai_rss_feeds
+    from app.category_policy import normalize_category
+    from app.ingest.source_registry import build_ingest_source_specs, is_optional_source
     from collectors.github import GitHubCollector
-    from collectors.huggingface import HfDailyPapersCollector
-    from collectors.rss_sources import RssCollector
 
     store = IngestionStore()
     metrics_store = SourceMetricsStore()
@@ -55,34 +54,33 @@ async def run_ingest():
     recent_seen_keys = set(store.load_recent_seen_canonical_keys())
 
     hf_proxy = os.getenv("HF_PROXY", "").strip() or None
-    hf_optional = os.getenv("HF_OPTIONAL", "").strip().lower() in {"1", "true", "yes", "on"}
 
-    # AI-relevant collectors only (TapTap is game-focused, skip)
-    collector_specs = [
-        ("rss", RssCollector, {"feed_configs": load_ai_rss_feeds()}),
-        ("huggingface", HfDailyPapersCollector, {"proxy": hf_proxy}),
-    ]
+    # AI / tool / game 三类内容采集
+    collector_specs = build_ingest_source_specs(hf_proxy=hf_proxy)
 
-    for name, collector_cls, collector_kwargs in collector_specs:
+    for spec in collector_specs:
         started_at = time.perf_counter()
         status = "ok"
         raw_items = []
-        source_state = state_store.load_state(name, default_fetch_count=10)
+        source_state = state_store.load_state(spec.name, default_fetch_count=10)
         try:
-            logger.info("Ingest source start: %s", name)
-            collector = collector_cls(fetch_count=source_state["fetch_count"], **collector_kwargs)
+            logger.info("Ingest source start: %s", spec.name)
+            collector = spec.collector_cls(
+                fetch_count=source_state["fetch_count"],
+                **spec.collector_kwargs,
+            )
             items = await collector.collect()
-            logger.info("Ingest source done: %s items=%s", name, len(items))
-            successful_sources.append(name)
-            raw_items = [i for i in items if i.category == "ai"]
+            logger.info("Ingest source done: %s items=%s", spec.name, len(items))
+            successful_sources.append(spec.name)
+            raw_items = [i for i in items if normalize_category(i.category) in {"ai", "tool", "game"}]
         except Exception as e:
-            if name == "huggingface" and hf_optional:
-                logger.warning("Ingest source skipped: %s (%s)", name, e)
-                skipped_sources.append(f"{name}: {e}")
+            if is_optional_source(spec):
+                logger.warning("Ingest source skipped: %s (%s)", spec.name, e)
+                skipped_sources.append(f"{spec.name}: {e}")
                 status = "skipped"
             else:
-                logger.exception("Ingest source failed: %s", name)
-                source_failures.append(f"{name}: {e}")
+                logger.exception("Ingest source failed: %s", spec.name)
+                source_failures.append(f"{spec.name}: {e}")
                 status = "error"
 
         deduped_items: list[tuple[str, object]] = []
@@ -113,7 +111,7 @@ async def run_ingest():
         duration_ms = int((time.perf_counter() - started_at) * 1000)
         metrics_store.append_run_metric(
             {
-                "source": name,
+                "source": spec.name,
                 "run_id": ingest_run_id,
                 "run_started_at": run_started_at,
                 "raw_fetched_count": len(raw_items),
@@ -127,13 +125,13 @@ async def run_ingest():
             }
         )
 
-        recent_metrics = metrics_store.aggregate_recent(name, limit=24)
+        recent_metrics = metrics_store.aggregate_recent(spec.name, limit=24)
         updated_state = update_fetch_count_from_metrics(
             source_state,
             recent_metrics,
             run_started_at,
         )
-        state_store.save_state(name, updated_state)
+        state_store.save_state(spec.name, updated_state)
 
     try:
         logger.info("Ingest source start: github")

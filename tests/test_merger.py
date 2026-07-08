@@ -63,7 +63,21 @@ class TestMerger:
     def test_groups_by_category(self, sample_items_v2):
         merger = Merger(top_n=5)
         result = merger.merge(sample_items_v2, period="morning")
-        assert set(result.keys()) == {"ai", "game", "device"}
+        assert set(result.keys()) == {"ai", "game", "tool"}
+
+    def test_device_alias_normalizes_into_tool_bucket(self):
+        merger = Merger(top_n=5)
+        items = [
+            HotItem("Tool 1", "https://tool.example.com/1", "s", "sspai", "tool", 5.0),
+            HotItem("Tool 2", "https://tool.example.com/2", "s", "ithome", "device", 5.0),
+        ]
+
+        result = merger.merge(items, period="morning")
+
+        assert [item.url for item in result["tool"]] == [
+            "https://tool.example.com/1",
+            "https://tool.example.com/2",
+        ]
 
     def test_sorts_desc(self, sample_items_v2):
         merger = Merger(top_n=5)
@@ -82,7 +96,7 @@ class TestMerger:
     def test_empty_input(self):
         merger = Merger(top_n=5)
         result = merger.merge([], period="morning")
-        assert result == {"ai": [], "game": [], "device": []}
+        assert result == {"ai": [], "game": [], "tool": []}
 
     def test_each_source_has_at_least_one(self, sample_items_v2):
         """每源至少 1 条出现在结果中（V2 关键词保底规则）"""
@@ -496,7 +510,7 @@ class TestMergerLegacyRegression:
     def test_groups_by_category_legacy(self, sample_items_v2):
         merger = Merger(top_n=5)
         result = merger.merge(sample_items_v2, period="morning", use_new_scoring=False)
-        assert set(result.keys()) == {"ai", "game", "device"}
+        assert set(result.keys()) == {"ai", "game", "tool"}
 
     def test_sorts_desc_legacy(self, sample_items_v2):
         merger = Merger(top_n=5)
@@ -515,7 +529,7 @@ class TestMergerLegacyRegression:
     def test_empty_input_legacy(self):
         merger = Merger(top_n=5)
         result = merger.merge([], period="morning", use_new_scoring=False)
-        assert result == {"ai": [], "game": [], "device": []}
+        assert result == {"ai": [], "game": [], "tool": []}
 
     def test_each_source_has_at_least_one_legacy(self, sample_items_v2):
         """每源保底规则在旧模式仍然生效"""
@@ -537,7 +551,7 @@ class TestMergerLegacyRegression:
         result = merger.merge(sample_items_v2, period="morning")
         # 旧行为返回 dict
         assert isinstance(result, dict)
-        assert set(result.keys()) == {"ai", "game", "device"}
+        assert set(result.keys()) == {"ai", "game", "tool"}
 
 
 class TestSourceWeightsConstants:

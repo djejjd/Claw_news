@@ -10,6 +10,7 @@ from app.pipeline import (
 )
 from app.pipeline.candidate import CandidateItem
 from app.pipeline.context import RunContext
+from app.category_policy import display_category_for_runtime, normalize_category
 from collectors.base import HotItem, hotitem_to_candidate
 
 
@@ -99,6 +100,23 @@ class TestHotItemToCandidate:
         candidate = hotitem_to_candidate(hot)
         assert candidate.ingest_run_id == ""
 
+    def test_device_alias_normalizes_to_tool(self):
+        hot = HotItem(
+            title="Tool Alias",
+            url="https://example.com/tool",
+            summary="",
+            source="ithome",
+            category="device",
+            source_score=1.0,
+            timestamp=1716000000.0,
+            keyword_hit=False,
+            pub_date="",
+        )
+
+        candidate = hotitem_to_candidate(hot)
+
+        assert candidate.category == "tool"
+
     def test_conversion_hashed_url_keys_match(self):
         """Items with different query strings but same base URL get same canonical_key."""
         hot1 = HotItem(
@@ -153,10 +171,28 @@ class TestRunContext:
         assert ctx.time_window_start == "2024-05-18T00:00:00"
         assert ctx.time_window_end == "2024-05-18T08:00:00"
 
+    def test_run_context_supports_all_digest_scope(self):
+        ctx = RunContext(trigger_mode="http", publish_scope="all_digest")
+        assert ctx.publish_scope == "all_digest"
+
     def test_frozen_prevents_mutation(self):
         ctx = RunContext(trigger_mode="scheduler")
         with pytest.raises(Exception):
             ctx.trigger_mode = "http"  # type: ignore[misc]
+
+
+class TestCategoryPolicy:
+    def test_device_alias_normalizes_to_tool(self):
+        assert normalize_category("device") == "tool"
+
+    def test_runtime_display_categories_are_stable(self):
+        assert display_category_for_runtime("ai") == "AI"
+        assert display_category_for_runtime("tool") == "工具"
+        assert display_category_for_runtime("game") == "游戏"
+
+    def test_unknown_category_is_rejected(self):
+        with pytest.raises(ValueError):
+            normalize_category("unknown")
 
 
 class TestSummaryResultDataclasses:

@@ -1,0 +1,37 @@
+# RSS 订阅源配置模板
+# 复制为 feeds.yaml 后修改：cp feeds.example.yaml feeds.yaml
+# feeds.yaml 不在版本控制中，修改后 docker compose restart 生效
+
+feeds:
+  ai:
+    - url: https://www.qbitai.com/feed
+      source: qbitai
+    - url: https://www.leiphone.com/feed
+      source: leiphone
+    - url: https://decemberpei.cyou/rssbox/wechat-jiqizhixin.xml
+      source: jiqizhixin       # 第三方 RSSBox 代理，稳定性依赖上游
+    # deepmind.google 国内被墙，不可达
+    # - url: https://deepmind.google/blog/rss.xml
+    #   source: deepmind          # 英文，Google AI 前沿研究
+    - url: https://tech.meituan.com/feed/
+      source: meituan_tech      # 中文工程实践，AI/ML 相关
+  tool:
+    - url: https://sspai.com/feed
+      source: sspai
+    - url: https://www.ithome.com/rss/
+      source: ithome
+    - url: https://www.appinn.com/feed
+      source: appinn            # 中文软件工具推荐
+    - url: https://blog.cloudflare.com/zh-cn/rss
+      source: cloudflare_cn     # 基础设施/devops/SRE
+  game:
+    - url: https://www.yystv.cn/rss/feed
+      source: yystv
+    - url: https://www.gcores.com/rss
+      source: gcores
+    - url: https://www.chuapp.com/feed
+      source: chuapp            # 中文深度游戏文化，SSL 证书需跳过验证
+    - url: https://indienova.com/feed/
+      source: indienova         # 中文独立游戏资讯
+    - url: https://www.eurogamer.net/?format=rss
+      source: eurogamer         # 英文游戏大站

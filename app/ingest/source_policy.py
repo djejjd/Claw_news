@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.category_policy import is_supported_runtime_category
 from app.pipeline.candidate import CandidateItem
 
 _MIN_SUMMARY_LENGTH = 5
@@ -16,7 +17,7 @@ def should_accept_candidate(item: CandidateItem) -> bool:
         return False
     if not item.url.strip():
         return False
-    if item.category.strip().lower() != "ai":
+    if not is_supported_runtime_category(item.category):
         return False
     if len((item.summary or "").strip()) < _MIN_SUMMARY_LENGTH:
         return False

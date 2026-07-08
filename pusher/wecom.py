@@ -6,18 +6,18 @@ from datetime import datetime
 
 import httpx
 
-from collectors.base import Category, HotItem
+from collectors.base import Category, HotItem, normalize_category
 
 CATEGORY_LABELS = {
     "ai": "AI 热点",
     "game": "游戏热点",
-    "device": "数码硬件",
+    "tool": "数码硬件",
 }
 
 CATEGORY_EMOJI = {
     "ai": "🤖",
     "game": "🎮",
-    "device": "📱",
+    "tool": "📱",
 }
 
 PERIOD_LABEL = {
@@ -42,10 +42,11 @@ def format_message(
     if pushed_urls is None:
         pushed_urls = set()
 
+    display_category = normalize_category(category)
     today = datetime.now().strftime("%m/%d")
     period_label = PERIOD_LABEL.get(period, "")
-    emoji = CATEGORY_EMOJI.get(category, "")
-    label = CATEGORY_LABELS.get(category, category)
+    emoji = CATEGORY_EMOJI.get(display_category, "")
+    label = CATEGORY_LABELS.get(display_category, display_category)
     lines = [f"{emoji} **{label}** | {today} {period_label}", SEPARATOR, ""]
 
     if not items:
@@ -132,7 +133,8 @@ class WeComPusher:
         if pushed_urls is None:
             pushed_urls = set()
 
-        msg = format_message(items, category, period=period, pushed_urls=pushed_urls)
+        normalized_category = normalize_category(category)
+        msg = format_message(items, normalized_category, period=period, pushed_urls=pushed_urls)
         payload = {"msgtype": "markdown", "markdown": {"content": msg}}
         urls = [item.url for item in items if item.url]
 
@@ -143,12 +145,12 @@ class WeComPusher:
             body = resp.json()
             if body.get("errcode") != 0:
                 raise WeComError(
-                    category=category,
+                    category=normalized_category,
                     errcode=body.get("errcode"),
                     errmsg=body.get("errmsg"),
                 )
             return PushResult(
-                category=category,
+                category=normalized_category,
                 success=True,
                 urls=urls,
                 errcode=0,
@@ -186,8 +188,17 @@ class WeComPusher:
 
     async def push(self, items_by_category, period="morning", pushed_urls=None):
         results = []
-        for category in ("ai", "game", "device"):
-            cat_items = items_by_category.get(category, [])
+        normalized_items = {
+            "ai": list(items_by_category.get("ai", [])),
+            "tool": [
+                *items_by_category.get("tool", []),
+                *items_by_category.get("device", []),
+            ],
+            "game": list(items_by_category.get("game", [])),
+        }
+
+        for category in ("ai", "tool", "game"):
+            cat_items = normalized_items[category]
             if not cat_items:
                 continue
             result = await self.push_category(

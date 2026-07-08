@@ -26,7 +26,7 @@ _SYSTEM_PROMPT = """\
     {
       "title": "新闻标题（原文标题）",
       "url": "原文链接",
-      "core_summary": "该新闻的核心内容，1-2句话",
+      "core_summary": "该新闻的核心内容，不超过25个字",
       "importance": "高/中/低",
       "trend": "该新闻反映的行业趋势"
     }
@@ -45,6 +45,8 @@ _SYSTEM_PROMPT = """\
 - 每条新闻的 url 必须保留原文链接
 - importance 只能是 高、中、低 三个值
 - headline_items 按重要性从高到低排列
+- core_summary 必须控制在 25 个字以内
+- trend 控制在 10 个字以内
 - github_projects 中的 description_cn 必须翻译为简洁的中文"""
 
 _USER_PROMPT_TEMPLATE = """请总结以下新闻：

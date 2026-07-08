@@ -420,7 +420,28 @@ class TestTop5Selection:
         # Verify pipeline was called with context and config
         mock_pipeline.assert_called_once()
         call_args = mock_pipeline.call_args
+        assert call_args[0][0].publish_scope == "all_digest"
         assert call_args[0][1] is config  # second arg is config
+
+    @pytest.mark.asyncio
+    async def test_http_trigger_uses_all_digest_scope(self):
+        """Manual HTTP trigger should also publish the full AI/tool/game digest."""
+        from app.agents.news_agent import NewsAgent
+
+        config = _make_config()
+        mock_result = _make_publish_result()
+
+        with patch(
+            "app.pipeline.news_pipeline.run_pipeline",
+            new=AsyncMock(return_value=mock_result),
+        ) as mock_pipeline:
+            agent = NewsAgent(config)
+            await agent.run_once(trigger_mode="http")
+
+        mock_pipeline.assert_called_once()
+        ctx = mock_pipeline.call_args[0][0]
+        assert ctx.trigger_mode == "http"
+        assert ctx.publish_scope == "all_digest"
 
 
 # ===================================================================

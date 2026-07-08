@@ -43,6 +43,7 @@ async def test_run_ingest_records_failed_sources_when_collector_raises():
     with (
         patch("collectors.rss_sources.RssCollector", return_value=failing_rss),
         patch("collectors.huggingface.HfDailyPapersCollector", return_value=ok_hf),
+        patch("collectors.taptap.TapTapCollector", return_value=ok_hf),
         patch("collectors.github.GitHubCollector.collect", new=AsyncMock(return_value=[])),
         patch("app.scheduler.jobs.IngestionStore"),
         patch("app.scheduler.jobs.GitHubStore"),
@@ -51,7 +52,7 @@ async def test_run_ingest_records_failed_sources_when_collector_raises():
         await run_ingest()
 
     payload = status_store.return_value.write_status.call_args.args[0]
-    assert payload["successful_sources"] == ["huggingface", "github"]
+    assert payload["successful_sources"] == ["huggingface", "taptap", "github"]
     assert payload["failed_sources"] == ["rss: rss down"]
     assert payload["skipped_sources"] == []
 
@@ -70,6 +71,7 @@ async def test_run_ingest_skips_optional_huggingface_failures(monkeypatch):
     with (
         patch("collectors.rss_sources.RssCollector", return_value=ok_rss),
         patch("collectors.huggingface.HfDailyPapersCollector", return_value=failing_hf),
+        patch("collectors.taptap.TapTapCollector", return_value=ok_rss),
         patch("collectors.github.GitHubCollector.collect", new=AsyncMock(return_value=[])),
         patch("app.scheduler.jobs.IngestionStore"),
         patch("app.scheduler.jobs.GitHubStore"),
@@ -78,9 +80,39 @@ async def test_run_ingest_skips_optional_huggingface_failures(monkeypatch):
         await run_ingest()
 
     payload = status_store.return_value.write_status.call_args.args[0]
-    assert payload["successful_sources"] == ["rss", "github"]
+    assert payload["successful_sources"] == ["rss", "taptap", "github"]
     assert payload["failed_sources"] == []
     assert payload["skipped_sources"] == ["huggingface: hf timeout"]
+
+
+@pytest.mark.asyncio
+async def test_run_ingest_skips_optional_taptap_failures(monkeypatch):
+    from app.scheduler.jobs import run_ingest
+
+    monkeypatch.setenv("TAPTAP_OPTIONAL", "1")
+
+    ok_rss = MagicMock()
+    ok_rss.collect = AsyncMock(return_value=[])
+    ok_hf = MagicMock()
+    ok_hf.collect = AsyncMock(return_value=[])
+    failing_taptap = MagicMock()
+    failing_taptap.collect = AsyncMock(side_effect=RuntimeError("taptap blocked"))
+
+    with (
+        patch("collectors.rss_sources.RssCollector", return_value=ok_rss),
+        patch("collectors.huggingface.HfDailyPapersCollector", return_value=ok_hf),
+        patch("collectors.taptap.TapTapCollector", return_value=failing_taptap),
+        patch("collectors.github.GitHubCollector.collect", new=AsyncMock(return_value=[])),
+        patch("app.scheduler.jobs.IngestionStore"),
+        patch("app.scheduler.jobs.GitHubStore"),
+        patch("app.scheduler.jobs.IngestStatusStore") as status_store,
+    ):
+        await run_ingest()
+
+    payload = status_store.return_value.write_status.call_args.args[0]
+    assert payload["successful_sources"] == ["rss", "huggingface", "github"]
+    assert payload["failed_sources"] == []
+    assert payload["skipped_sources"] == ["taptap: taptap blocked"]
 
 
 @pytest.mark.asyncio
@@ -132,6 +164,15 @@ async def test_run_ingest_preloads_recent_keys_dedups_before_quality_and_updates
             "effective_new_rate": 0.0,
             "selection_rate": 0.0,
         },
+        {
+            "source": "taptap",
+            "runs": 12,
+            "raw_fetched_count": 0,
+            "accepted_count": 0,
+            "selected_count": 0,
+            "effective_new_rate": 0.0,
+            "selection_rate": 0.0,
+        },
     ]
 
     state_store = MagicMock()
@@ -152,11 +193,22 @@ async def test_run_ingest_preloads_recent_keys_dedups_before_quality_and_updates
             "cooldown_remaining": 0,
             "last_adjusted_at": None,
         },
+        {
+            "source": "taptap",
+            "fetch_count": 3,
+
+
+            "min_fetch_count": 3,
+            "max_fetch_count": 3,
+            "cooldown_remaining": 0,
+            "last_adjusted_at": None,
+        },
     ]
 
     with (
         patch("collectors.rss_sources.RssCollector", return_value=rss_collector) as rss_cls,
         patch("collectors.huggingface.HfDailyPapersCollector", return_value=hf_collector) as hf_cls,
+        patch("collectors.taptap.TapTapCollector", return_value=MagicMock(collect=AsyncMock(return_value=[]))) as taptap_cls,
         patch("collectors.github.GitHubCollector.collect", new=AsyncMock(return_value=[])),
         patch("app.scheduler.jobs.IngestionStore", return_value=ingestion_store, create=True),
         patch("app.scheduler.jobs.SourceMetricsStore", return_value=metrics_store, create=True),
@@ -171,8 +223,9 @@ async def test_run_ingest_preloads_recent_keys_dedups_before_quality_and_updates
     ingestion_store.load_recent_seen_canonical_keys.assert_called_once()
     assert rss_cls.call_args.kwargs["fetch_count"] == 7
     assert hf_cls.call_args.kwargs["fetch_count"] == 4
-    assert metrics_store.append_run_metric.call_count == 2
-    assert state_store.save_state.call_count == 2
+    assert taptap_cls.call_args.kwargs["fetch_count"] == 3
+    assert metrics_store.append_run_metric.call_count == 3
+    assert state_store.save_state.call_count == 3
     assert ingestion_store.append_or_merge.call_args.args[0][0].url == "https://fresh.example.com/a"
     assert accept_mock.call_count == 1
     rss_save_call = state_store.save_state.call_args_list[0]
@@ -238,6 +291,15 @@ async def test_run_ingest_dedups_same_round_before_quality_filter(
             "effective_new_rate": 0.0,
             "selection_rate": 0.0,
         },
+        {
+            "source": "taptap",
+            "runs": 12,
+            "raw_fetched_count": 0,
+            "accepted_count": 0,
+            "selected_count": 0,
+            "effective_new_rate": 0.0,
+            "selection_rate": 0.0,
+        },
     ]
 
     state_store = MagicMock()
@@ -258,6 +320,14 @@ async def test_run_ingest_dedups_same_round_before_quality_filter(
             "cooldown_remaining": 0,
             "last_adjusted_at": None,
         },
+        {
+            "source": "taptap",
+            "fetch_count": 2,
+            "min_fetch_count": 2,
+            "max_fetch_count": 2,
+            "cooldown_remaining": 0,
+            "last_adjusted_at": None,
+        },
     ]
 
     def accept_if_long_enough(item):
@@ -266,6 +336,7 @@ async def test_run_ingest_dedups_same_round_before_quality_filter(
     with (
         patch("collectors.rss_sources.RssCollector", return_value=rss_collector),
         patch("collectors.huggingface.HfDailyPapersCollector", return_value=hf_collector),
+        patch("collectors.taptap.TapTapCollector", return_value=MagicMock(collect=AsyncMock(return_value=[]))),
         patch("collectors.github.GitHubCollector.collect", new=AsyncMock(return_value=[])),
         patch("app.scheduler.jobs.IngestionStore", return_value=ingestion_store, create=True),
         patch("app.scheduler.jobs.SourceMetricsStore", return_value=metrics_store, create=True),
@@ -283,6 +354,58 @@ async def test_run_ingest_dedups_same_round_before_quality_filter(
         assert ingestion_store.append_or_merge.call_args.args[0][0].canonical_key == same_key
     else:
         assert ingestion_store.append_or_merge.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_run_ingest_accepts_tool_and_game_candidates():
+    from app.scheduler.jobs import run_ingest
+
+    rss_items = [
+        _make_hotitem(title="AI Item", url="https://a.com/1", summary="Long enough AI summary text for acceptance.", source="qbitai", category="ai"),
+        _make_hotitem(title="Tool Item", url="https://t.com/1", summary="Long enough tool summary text for acceptance.", source="sspai", category="tool"),
+        _make_hotitem(title="Game Item", url="https://g.com/1", summary="Long enough game summary text for acceptance.", source="yystv", category="game"),
+    ]
+
+    rss_collector = MagicMock()
+    rss_collector.collect = AsyncMock(return_value=rss_items)
+    hf_collector = MagicMock()
+    hf_collector.collect = AsyncMock(return_value=[])
+    taptap_collector = MagicMock()
+    taptap_collector.collect = AsyncMock(return_value=[])
+
+    ingestion_store = MagicMock()
+    ingestion_store.load_recent_seen_canonical_keys.return_value = set()
+    ingestion_store.append_or_merge.return_value = {"item_count": 3}
+
+    metrics_store = MagicMock()
+    metrics_store.aggregate_recent.side_effect = [
+        {"source": "rss", "runs": 24, "effective_new_rate": 0.5, "selection_rate": 0.3, "raw_fetched_count": 3, "accepted_count": 3, "selected_count": 0},
+        {"source": "huggingface", "runs": 24, "effective_new_rate": 0.0, "selection_rate": 0.0, "raw_fetched_count": 0, "accepted_count": 0, "selected_count": 0},
+        {"source": "taptap", "runs": 24, "effective_new_rate": 0.0, "selection_rate": 0.0, "raw_fetched_count": 0, "accepted_count": 0, "selected_count": 0},
+    ]
+
+    state_store = MagicMock()
+    state_store.load_state.side_effect = [
+        {"source": "rss", "fetch_count": 5, "min_fetch_count": 5, "max_fetch_count": 5, "cooldown_remaining": 0},
+        {"source": "huggingface", "fetch_count": 2, "min_fetch_count": 2, "max_fetch_count": 2, "cooldown_remaining": 0},
+        {"source": "taptap", "fetch_count": 3, "min_fetch_count": 3, "max_fetch_count": 3, "cooldown_remaining": 0},
+    ]
+
+    with (
+        patch("collectors.rss_sources.RssCollector", return_value=rss_collector),
+        patch("collectors.huggingface.HfDailyPapersCollector", return_value=hf_collector),
+        patch("collectors.taptap.TapTapCollector", return_value=taptap_collector),
+        patch("collectors.github.GitHubCollector.collect", new=AsyncMock(return_value=[])),
+        patch("app.scheduler.jobs.IngestionStore", return_value=ingestion_store, create=True),
+        patch("app.scheduler.jobs.SourceMetricsStore", return_value=metrics_store, create=True),
+        patch("app.scheduler.jobs.SourceStateStore", return_value=state_store, create=True),
+        patch("app.scheduler.jobs.should_accept_candidate", side_effect=lambda item: True, create=True),
+    ):
+        result = await run_ingest()
+
+    assert result["item_count"] == 3
+    saved = ingestion_store.append_or_merge.call_args.args[0]
+    assert {item.category for item in saved} == {"ai", "tool", "game"}
 
 
 def test_should_accept_candidate_rejects_short_summary():
@@ -317,12 +440,20 @@ def test_should_accept_candidate_rejects_empty_url():
     assert should_accept_candidate(item) is False
 
 
-def test_should_accept_candidate_rejects_non_ai_category():
+def test_should_accept_candidate_rejects_unknown_category():
     from app.ingest.source_policy import should_accept_candidate
 
-    item = _make_candidate(category="game")
+    item = _make_candidate(category="unknown_cat")
 
     assert should_accept_candidate(item) is False
+
+
+def test_should_accept_candidate_accepts_ai_tool_game_categories():
+    from app.ingest.source_policy import should_accept_candidate
+
+    for cat in ("ai", "tool", "game"):
+        item = _make_candidate(category=cat)
+        assert should_accept_candidate(item) is True, f"category '{cat}' should be accepted"
 
 
 def test_should_accept_candidate_accepts_valid_ai_candidate():

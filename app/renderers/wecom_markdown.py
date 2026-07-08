@@ -64,14 +64,8 @@ def render_digest(result: SummaryResult, github_items: list | None = None) -> st
             else:
                 lines.append(f"**{item_number}.** {topic_label}{safe_title}")
 
-            lines.append(f"> 核心内容：{item.core_summary}")
-            lines.append(">")
-            lines.append(f"> 重要性：{item.importance}")
-            lines.append(">")
-            lines.append(f"> 趋势判断：{item.trend}")
-            if item.source:
-                lines.append(">")
-                lines.append(f"> — {item.source}")
+            source_part = f" — {item.source}" if item.source else ""
+            lines.append(f"> {item.core_summary} | 重要性：{item.importance} | 趋势：{item.trend}{source_part}")
 
             item_number += 1
             rendered_item_count += 1

@@ -1,6 +1,6 @@
 from typing import Dict, List, Union
 
-from collectors.base import Category, HotItem, time_modifier
+from collectors.base import Category, HotItem, normalize_category, time_modifier
 
 # =============================================================================
 # Phase 4: 统一评分常量
@@ -115,13 +115,11 @@ class Merger:
     # Legacy merge (保留原有行为)
     # ------------------------------------------------------------------
 
-    def _merge_legacy(
-        self, items: List[HotItem], period: str = "morning"
-    ) -> Dict[Category, List[HotItem]]:
-        result: Dict[Category, List[HotItem]] = {"ai": [], "game": [], "device": []}
+    def _merge_legacy(self, items: List[HotItem], period: str = "morning") -> Dict[Category, List[HotItem]]:
+        result: Dict[Category, List[HotItem]] = {"ai": [], "tool": [], "game": []}
 
         for category in result:
-            cat_items = [i for i in items if i.category == category]
+            cat_items = [i for i in items if normalize_category(i.category) == category]
             if not cat_items:
                 continue
 

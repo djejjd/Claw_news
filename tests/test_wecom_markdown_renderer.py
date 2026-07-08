@@ -70,17 +70,17 @@ class TestRenderDigestBasic:
     def test_contains_core_summary(self):
         result = make_result([make_item(core_summary="OpenAI 推出新一代模型。")])
         md = render_digest(result)
-        assert "> 核心内容：OpenAI 推出新一代模型。" in md
+        assert "OpenAI 推出新一代模型。" in md
 
     def test_contains_importance(self):
         result = make_result([make_item(importance="高")])
         md = render_digest(result)
-        assert "> 重要性：高" in md
+        assert "重要性：高" in md
 
     def test_contains_trend(self):
         result = make_result([make_item(trend="持续关注")])
         md = render_digest(result)
-        assert "> 趋势判断：持续关注" in md
+        assert "趋势：持续关注" in md
 
     def test_contains_daily_judgement(self):
         result = make_result([make_item()], daily_judgement="AI 行业今日波澜不惊。")

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.pipeline.candidate import CandidateItem
+from collectors.base import normalize_category
 
 _CANDIDATE_FIELD_NAMES = {f.name for f in dataclass_fields(CandidateItem)}
 
@@ -265,6 +266,7 @@ class IngestionStore:
         if isinstance(item, dict):
             valid = {k: v for k, v in item.items() if k in _CANDIDATE_FIELD_NAMES}
             item = CandidateItem(**valid)
+        item.category = normalize_category(item.category)
         if not item.canonical_key:
             item.canonical_key = CandidateItem.make_canonical_key(item.url)
         if not item.fetched_at:
