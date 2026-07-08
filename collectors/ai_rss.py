@@ -4,7 +4,8 @@ import os
 
 DEFAULT_AI_RSS_FEEDS = [
     {"url": "https://www.qbitai.com/feed", "category": "ai", "source": "qbitai"},
-    {"url": "https://www.jiqizhixin.com/rss", "category": "ai", "source": "jiqizhixin"},
+    # jiqizhixin /rss 302→/data-service（HTML SPA，非 RSS XML），暂不可用
+    # {"url": "https://www.jiqizhixin.com/rss", "category": "ai", "source": "jiqizhixin"},
 ]
 
 DEFAULT_TOOL_RSS_FEEDS = [
@@ -14,7 +15,8 @@ DEFAULT_TOOL_RSS_FEEDS = [
 
 DEFAULT_GAME_RSS_FEEDS = [
     {"url": "https://www.yystv.cn/rss/feed", "category": "game", "source": "yystv"},
-    {"url": "https://www.gamelook.com.cn/feed", "category": "game", "source": "gamelook"},
+    # gamelook.com.cn 服务器不可达
+    # {"url": "https://www.gamelook.com.cn/feed", "category": "game", "source": "gamelook"},
 ]
 
 

@@ -12,7 +12,7 @@ from collectors.rss_sources import (
 
 
 def test_feed_configs_has_6_feeds():
-    assert len(FEED_CONFIGS) == 6
+    assert len(FEED_CONFIGS) == 4
     for feed in FEED_CONFIGS:
         assert "url" in feed
         assert "category" in feed
@@ -22,7 +22,7 @@ def test_feed_configs_has_6_feeds():
 
 def test_feed_configs_distinct_sources():
     sources = {feed["source"] for feed in FEED_CONFIGS}
-    assert sources == {"qbitai", "jiqizhixin", "sspai", "ithome", "yystv", "gamelook"}
+    assert sources == {"qbitai", "sspai", "ithome", "yystv"}
 
 
 def test_strip_html():
