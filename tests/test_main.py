@@ -333,12 +333,12 @@ class TestPipelineGitHubSupplement:
         push_result = _make_push_result(success=True)
         repos = [
             GitHubRepoItem(
-                "owner/repo",
-                "https://github.com/owner/repo",
-                "desc",
-                10,
-                "Python",
-                "2026-05-18T08:00:00",
+                full_name="owner/repo",
+                url="https://github.com/owner/repo",
+                description="desc",
+                stars=10,
+                language="Python",
+                fetched_at="2026-05-18T08:00:00",
             )
         ]
 
@@ -346,6 +346,7 @@ class TestPipelineGitHubSupplement:
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
             patch("app.pipeline.news_pipeline.GitHubStore") as mock_github_store,
+            patch("app.storage.github_exposure_store.GitHubExposureStore") as mock_exposure,
             patch(
                 "app.pipeline.news_pipeline.summarize_news",
                 new=AsyncMock(return_value=llm_result),
@@ -357,6 +358,7 @@ class TestPipelineGitHubSupplement:
             mock_is_inst.load_window_candidates.return_value = [candidate]
             mock_is.return_value = mock_is_inst
             mock_github_store.return_value.load_latest_snapshot.return_value = repos
+            mock_exposure.return_value.load.return_value = {}
             mock_cls.return_value = MagicMock()
             mock_pusher = MagicMock()
             mock_pusher.push_single_markdown = AsyncMock(return_value=push_result)

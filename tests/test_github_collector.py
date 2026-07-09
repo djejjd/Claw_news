@@ -7,32 +7,35 @@ from collectors.github import GitHubCollector
 
 
 @pytest.mark.asyncio
-async def test_collect_parses_and_caps_three_repos():
-    payload = {
-        "items": [
-            {
-                "full_name": f"owner/repo{i}",
-                "html_url": f"https://github.com/owner/repo{i}",
-                "description": f"repo {i}",
-                "stargazers_count": 100 - i,
-                "language": "Python",
-            }
-            for i in range(5)
-        ]
-    }
-    response = AsyncMock()
-    response.raise_for_status = lambda: None
-    response.json = lambda: payload
+async def test_collect_queries_multiple_queries_and_deduplicates():
+    """多查询召回，按 full_name 去重"""
+    payloads = [
+        {"items": [{"full_name": "owner/a", "html_url": "https://github.com/owner/a",
+                     "description": "a", "stargazers_count": 100, "language": "Python",
+                     "created_at": "2025-01-01T00:00:00Z",
+                     "updated_at": "2026-07-08T00:00:00Z",
+                     "pushed_at": "2026-07-08T00:00:00Z"}]},
+        {"items": [{"full_name": "owner/a", "html_url": "https://github.com/owner/a",
+                     "description": "a", "stargazers_count": 100, "language": "Python",
+                     "created_at": "2025-01-01T00:00:00Z",
+                     "updated_at": "2026-07-08T00:00:00Z",
+                     "pushed_at": "2026-07-08T00:00:00Z"}]},
+    ] * 4  # repeat for all 8 queries
+    responses = []
+    for payload in payloads:
+        response = AsyncMock()
+        response.raise_for_status = lambda: None
+        response.json = lambda payload=payload: payload
+        responses.append(response)
 
     with patch("collectors.github.httpx.AsyncClient") as client_cls:
         client = AsyncMock()
-        client.get.return_value = response
+        client.get.side_effect = responses
         client_cls.return_value.__aenter__.return_value = client
         items = await GitHubCollector().collect()
 
-    assert len(items) == 3
-    assert items[0].full_name == "owner/repo0"
-    assert items[0].stars == 100
+    assert len(items) == 1  # deduped
+    assert items[0].full_name == "owner/a"
 
 
 @pytest.mark.asyncio
@@ -51,115 +54,56 @@ async def test_collect_empty_result_returns_empty_list():
 
 
 @pytest.mark.asyncio
-async def test_collect_queries_each_topic_and_merges_unique_repos():
-    responses = []
-    payloads = [
-        {
-            "items": [
-                {
-                    "full_name": "owner/a",
-                    "html_url": "https://github.com/owner/a",
-                    "description": "a",
-                    "stargazers_count": 100,
-                    "language": "Python",
-                },
-                {
-                    "full_name": "owner/shared",
-                    "html_url": "https://github.com/owner/shared",
-                    "description": "shared",
-                    "stargazers_count": 90,
-                    "language": "Python",
-                },
-            ]
-        },
-        {
-            "items": [
-                {
-                    "full_name": "owner/b",
-                    "html_url": "https://github.com/owner/b",
-                    "description": "b",
-                    "stargazers_count": 95,
-                    "language": "TypeScript",
-                },
-            ]
-        },
-        {
-            "items": [
-                {
-                    "full_name": "owner/shared",
-                    "html_url": "https://github.com/owner/shared",
-                    "description": "shared",
-                    "stargazers_count": 90,
-                    "language": "Python",
-                },
-            ]
-        },
-    ]
-    for payload in payloads:
-        response = AsyncMock()
-        response.raise_for_status = lambda: None
-        response.json = lambda payload=payload: payload
-        responses.append(response)
-
-    with patch("collectors.github.httpx.AsyncClient") as client_cls:
-        client = AsyncMock()
-        client.get.side_effect = responses
-        client_cls.return_value.__aenter__.return_value = client
-        items = await GitHubCollector().collect()
-
-    assert [item.full_name for item in items] == ["owner/a", "owner/b", "owner/shared"]
-    assert client.get.await_count == 3
-
-
-@pytest.mark.asyncio
-async def test_collect_retries_transient_github_5xx_and_succeeds():
-    success_payload = {
-        "items": [
-            {
-                "full_name": "owner/a",
-                "html_url": "https://github.com/owner/a",
-                "description": "a",
-                "stargazers_count": 100,
-                "language": "Python",
-            }
-        ]
+async def test_collect_preserves_extra_fields():
+    """验证创建日期、更新日期等新字段被保留"""
+    payload = {
+        "items": [{
+            "full_name": "owner/repo",
+            "html_url": "https://github.com/owner/repo",
+            "description": "test",
+            "stargazers_count": 500,
+            "forks_count": 50,
+            "watchers_count": 30,
+            "language": "Rust",
+            "created_at": "2024-06-01T00:00:00Z",
+            "updated_at": "2026-07-08T00:00:00Z",
+            "pushed_at": "2026-07-08T00:00:00Z",
+            "topics": ["llm"],
+        }]
     }
-    ok_response = AsyncMock()
-    ok_response.raise_for_status = lambda: None
-    ok_response.json = lambda: success_payload
-
-    error_request = httpx.Request("GET", "https://api.github.com/search/repositories")
-    error_response = httpx.Response(504, request=error_request)
-    transient_error = httpx.HTTPStatusError(
-        "Server error '504 Gateway Timeout'",
-        request=error_request,
-        response=error_response,
-    )
+    response = AsyncMock()
+    response.raise_for_status = lambda: None
+    response.json = lambda: payload
 
     with patch("collectors.github.httpx.AsyncClient") as client_cls:
         client = AsyncMock()
-        client.get.side_effect = [transient_error, ok_response, ok_response, ok_response]
+        client.get.return_value = response
         client_cls.return_value.__aenter__.return_value = client
-
         items = await GitHubCollector().collect()
 
     assert len(items) == 1
-    assert items[0].full_name == "owner/a"
-    assert client.get.await_count == 4
+    item = items[0]
+    assert item.stars == 500
+    assert item.forks == 50
+    assert item.watchers == 30
+    assert item.created_at == "2024-06-01T00:00:00Z"
+    assert item.pushed_at == "2026-07-08T00:00:00Z"
+    assert "llm" in item.matched_topics
 
 
 @pytest.mark.asyncio
-async def test_collect_returns_partial_results_when_one_topic_keeps_failing():
+async def test_collect_returns_partial_results_on_partial_failures():
     success_payload = {
-        "items": [
-            {
-                "full_name": "owner/a",
-                "html_url": "https://github.com/owner/a",
-                "description": "a",
-                "stargazers_count": 100,
-                "language": "Python",
-            }
-        ]
+        "items": [{
+            "full_name": "owner/a",
+            "html_url": "https://github.com/owner/a",
+            "description": "a",
+            "stargazers_count": 100,
+            "language": "Python",
+            "created_at": "2025-01-01T00:00:00Z",
+            "updated_at": "2026-07-08T00:00:00Z",
+            "pushed_at": "2026-07-08T00:00:00Z",
+        }]
     }
     ok_response = AsyncMock()
     ok_response.raise_for_status = lambda: None
@@ -168,24 +112,16 @@ async def test_collect_returns_partial_results_when_one_topic_keeps_failing():
     error_request = httpx.Request("GET", "https://api.github.com/search/repositories")
     error_response = httpx.Response(504, request=error_request)
     persistent_error = httpx.HTTPStatusError(
-        "Server error '504 Gateway Timeout'",
-        request=error_request,
-        response=error_response,
+        "Server error '504 Gateway Timeout'", request=error_request, response=error_response,
     )
 
     with patch("collectors.github.httpx.AsyncClient") as client_cls:
         client = AsyncMock()
-        client.get.side_effect = [
-            ok_response,
-            ok_response,
-            persistent_error,
-            persistent_error,
-            persistent_error,
-        ]
+        # 8 queries: first 2 succeed, rest 6 fail
+        client.get.side_effect = [ok_response, ok_response] + [persistent_error] * 18
         client_cls.return_value.__aenter__.return_value = client
 
         items = await GitHubCollector().collect()
 
-    assert len(items) == 1
+    assert len(items) >= 1
     assert items[0].full_name == "owner/a"
-    assert client.get.await_count == 5

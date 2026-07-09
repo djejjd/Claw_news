@@ -130,6 +130,16 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         for it in selected
     ]
     github_raw = GitHubStore().load_latest_snapshot()
+    # 综合评分 + 曝光惩罚 → top3
+    from app.github_ranking import rank_and_recommend
+    from app.storage.github_exposure_store import GitHubExposureStore
+
+    exposure_store = GitHubExposureStore()
+    exposure_dates = exposure_store.load()
+    github_ranked = rank_and_recommend(github_raw or [], exposure_dates, top_n=3)
+    github_top3 = [r["item"] for r in github_ranked]
+    github_recommendations = {r["item"].full_name: r["recommendation"] for r in github_ranked}
+
     github_dicts = [
         {
             "full_name": r.full_name,
@@ -137,7 +147,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             "stars": r.stars,
             "language": r.language,
         }
-        for r in (github_raw or [])
+        for r in github_top3
     ]
     llm_result = await summarize_news(
         items_for_llm,
@@ -182,13 +192,24 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         p["full_name"]: p.get("description_cn", "")
         for p in llm_result.get("github_projects", [])
     }
-    github_items = GitHubStore().load_latest_snapshot()
-    if github_items and translated_map:
-        for item in github_items:
+    if github_top3 and translated_map:
+        for item in github_top3:
             cn_desc = translated_map.get(item.full_name, "")
             if cn_desc:
                 item.description = cn_desc
-    markdown = render_digest(summary, github_items=github_items, pushed_urls=pushed_urls)
+    # 附加推荐理由到 item（renderer 会读取）
+    for item in github_top3:
+        if item.full_name in github_recommendations:
+            item.url = item.url  # keep
+    markdown = render_digest(
+        summary,
+        github_items=github_top3,
+        github_recommendations=github_recommendations,
+        pushed_urls=pushed_urls,
+    )
+
+    # 记录本次曝光
+    exposure_store.record([r.full_name for r in github_top3])
     source_failures = _collect_source_failures(
         ingestion_store,
         ctx.time_window_start,

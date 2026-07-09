@@ -49,6 +49,7 @@ def render_digest(
     result: SummaryResult,
     github_items: list | None = None,
     pushed_urls: set[str] | None = None,
+    github_recommendations: dict[str, str] | None = None,
 ) -> str:
     """Consume *result* and produce a single WeCom markdown string.
 
@@ -110,9 +111,11 @@ def render_digest(
         for i, item in enumerate(github_items[:3], 1):
             language = f" · {item.language}" if item.language else ""
             description = item.description or "暂无简介"
+            reason = (github_recommendations or {}).get(item.full_name, "")
+            reason_line = f" | 💡 {reason}" if reason else ""
             lines.append(f"**{i}.** [{item.full_name}]({item.url})")
             lines.append(f"> {description}")
-            lines.append(f"> ⭐ {item.stars}{language}")
+            lines.append(f"> ⭐ {item.stars}{language}{reason_line}")
             if i < min(len(github_items), 3):
                 lines.append("")
 
