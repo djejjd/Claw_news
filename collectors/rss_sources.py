@@ -38,6 +38,8 @@ class RssCollector:
         self.feeds = feed_configs if feed_configs is not None else load_all_rss_feeds()
         self._fetch_count = fetch_count
         self._client = client
+        # 本轮失败的 feed，供调度层读取部分失败信息
+        self.failed_feeds: list[str] = []
 
     async def collect(self) -> List["HotItem"]:
         import logging
@@ -51,6 +53,7 @@ class RssCollector:
                     for entry in parsed.entries[: self._fetch_count]:
                         items.append(self._parse_entry(entry, feed))
                 except Exception as e:
+                    self.failed_feeds.append(f"{feed.get('source', feed['url'])}: {e}")
                     logger.warning("RSS feed %s failed: %s", feed["url"], e)
             return items
 
@@ -61,6 +64,7 @@ class RssCollector:
                     for entry in parsed.entries[: self._fetch_count]:
                         items.append(self._parse_entry(entry, feed))
                 except Exception as e:
+                    self.failed_feeds.append(f"{feed.get('source', feed['url'])}: {e}")
                     logger.warning("RSS feed %s failed: %s", feed["url"], e)
         return items
 

@@ -71,6 +71,11 @@ async def run_ingest():
             )
             items = await collector.collect()
             logger.info("Ingest source done: %s items=%s", spec.name, len(items))
+            # 检查 per-feed 部分失败（RSS 特有）
+            partial_failures = getattr(collector, "failed_feeds", [])
+            if partial_failures:
+                skipped_sources.extend(f"{spec.name}:feed={f}" for f in partial_failures)
+                status = "degraded"
             successful_sources.append(spec.name)
             raw_items = [i for i in items if normalize_category(i.category) in {"ai", "tool", "game"}]
         except Exception as e:

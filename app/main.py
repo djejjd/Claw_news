@@ -56,7 +56,64 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "ingest": IngestStatusStore().load_status()}
+    ingest_status = IngestStatusStore().load_status()
+
+    # 判断 ingest 是否陈旧（超过 1 小时未更新）
+    ingest_fresh = True
+    last_ingest_at = ingest_status.get("last_ingest_at")
+    if last_ingest_at:
+        try:
+            from datetime import datetime, timezone
+            last_dt = datetime.fromisoformat(last_ingest_at)
+            ingest_fresh = (datetime.now().replace(tzinfo=None) - last_dt).total_seconds() < 3600
+        except ValueError:
+            ingest_fresh = False
+
+    # 加载最近 publish 结果
+    from pathlib import Path
+    publish_status_path = Path(__file__).resolve().parent.parent / "data" / "publish_status.json"
+    publish_status = {}
+    if publish_status_path.exists():
+        try:
+            import json
+            publish_status = json.loads(publish_status_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    # 汇总 source 状态
+    source_status = {}
+    for src in ingest_status.get("successful_sources", []):
+        source_status[src] = "ok"
+    for entry in ingest_status.get("failed_sources", []):
+        name = entry.split(":")[0] if ":" in entry else entry
+        source_status[name] = "failed"
+    for entry in ingest_status.get("skipped_sources", []):
+        name = entry.split(":")[0] if ":" in entry else entry
+        source_status[name] = "degraded"
+
+    has_failed_source = any(s == "failed" for s in source_status.values())
+    last_publish_failed = publish_status.get("status") in {"failed", "error"}
+
+    # 综合判定
+    if not ingest_fresh:
+        overall = "degraded"
+    elif has_failed_source and last_publish_failed:
+        overall = "unhealthy"
+    elif has_failed_source:
+        overall = "degraded"
+    elif not publish_status:
+        overall = "healthy"  # 刚启动，还没推送过
+    else:
+        overall = "healthy"
+
+    return {
+        "status": overall,
+        "ingest": ingest_status,
+        "ingest_fresh": ingest_fresh,
+        "last_publish": publish_status,
+        "sources": source_status,
+        "scheduler": "APScheduler — 09:00 daily",
+    }
 
 
 @app.post("/run/news")

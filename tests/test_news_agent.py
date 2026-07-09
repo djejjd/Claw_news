@@ -182,7 +182,7 @@ class TestCrawlFailure:
 
         assert result["status"] == "failed"
         assert result["fetched_count"] == 0
-        assert result["pushed"] is True  # error summary was pushed
+        assert result["pushed"] is False  # main push failed, error notification separate
         assert len(result["errors"]) > 0
         assert any("pipeline" in e for e in result["errors"])
 
@@ -229,7 +229,7 @@ class TestLLMFailure:
 
         assert result["status"] == "failed"
         assert result["fetched_count"] == 0
-        assert result["pushed"] is True  # error summary was pushed
+        assert result["pushed"] is False  # main push failed, error notification separate
         assert len(result["errors"]) > 0
         assert any("pipeline" in e for e in result["errors"])
 

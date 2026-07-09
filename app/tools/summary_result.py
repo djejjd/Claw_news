@@ -43,3 +43,4 @@ class DigestPayload:
     published_urls: list = field(default_factory=list)
     published_keys: list = field(default_factory=list)
     github_projects: list = field(default_factory=list)
+    errors: list = field(default_factory=list)

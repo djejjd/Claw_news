@@ -72,6 +72,9 @@ def _collect_source_failures(store: IngestionStore, start: str, end: str) -> lis
     for d in store.ingestion_dir.iterdir():
         if not d.is_dir():
             continue
+        # 只看当天的失败，避免历史失败污染后续发布
+        if d.name != date.today().isoformat():
+            continue
         try:
             dir_date = date.fromisoformat(d.name)
         except ValueError:
@@ -218,6 +221,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     try:
         pr = await WeComPusher(config.wecom_webhook_url).push_single_markdown(markdown)
     except Exception as exc:
+        _write_publish_status(_make_publish_status("failed", len(selected), False, [f"push: {exc}"]))
         return PublishResult(
             status="failed",
             selected_count=len(selected),
@@ -227,6 +231,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             errors=[f"push: {exc}"],
         )
     if not pr.success:
+        _write_publish_status(_make_publish_status("failed", len(selected), False, ["push_failed"]))
         return PublishResult(
             status="failed",
             selected_count=len(selected),
@@ -270,19 +275,40 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
                         "core_summary": it["core_summary"],
                         "importance": it["importance"],
                         "trend": it["trend"],
+                        "source": matched.source if matched else "",
+                        "display_category": _display_category_for(matched) if matched else "AI",
+                        "topic_label": _topic_label_for(matched) if matched else None,
+                        "topic_confidence": matched.topic_confidence if matched else None,
+                        "final_score": matched.final_score if matched else None,
                     }
                     for it in llm_result["headline_items"]
+                    for matched in [_match_selected_candidate(selected, it)]
                 ],
                 daily_judgement=llm_result["daily_judgement"],
                 source_failures=source_failures,
                 published_urls=published_urls,
                 published_keys=published_keys_list,
-                github_projects=llm_result.get("github_projects", []),
+                github_projects=[
+                    {
+                        "full_name": r["item"].full_name,
+                        "final_score": r["final_score"],
+                        "activity": r["activity"],
+                        "popularity": r["popularity"],
+                        "relevance": r["relevance"],
+                        "penalty": r["penalty"],
+                        "recommendation": r["recommendation"],
+                        "matched_topics": r["item"].matched_topics,
+                        "matched_keywords": r["item"].matched_keywords,
+                    }
+                    for r in github_ranked
+                ],
+                errors=errors,
             )
         )
     except Exception:
         errors.append("state_write_failed")
 
+    _write_publish_status(_make_publish_status("ok", len(selected), True, errors))
     return PublishResult(
         status="ok",
         selected_count=len(selected),
@@ -291,3 +317,22 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         summary_preview=make_preview(markdown),
         errors=errors,
     )
+
+
+def _make_publish_status(status, selected_count, pushed, errors):
+    return {
+        "status": status,
+        "selected_count": selected_count,
+        "pushed": pushed,
+        "errors": errors,
+        "recorded_at": datetime.now().isoformat(),
+    }
+
+
+def _write_publish_status(payload: dict) -> None:
+    """写入 durable publish 状态，供 /health 和后续排查使用。"""
+    path = _DATA_DIR / "publish_status.json"
+    import json
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
