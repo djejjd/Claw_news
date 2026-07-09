@@ -1,7 +1,6 @@
 #!/bin/bash
 # Claw_news 快速只读验证脚本
-# 用法：ssh ubuntu@124.223.102.241 "bash -s" < scripts/quick-verify.sh
-# 或登录服务器后直接运行：bash scripts/quick-verify.sh
+# 用法：登录服务器后 bash scripts/quick-verify.sh
 #
 # 本脚本只读，不触发发布、不重启服务、不写任何数据。
 
@@ -25,41 +24,18 @@ else
 fi
 echo ""
 
-# ---- 2. /health ----
+# ---- 2. /health (完整 JSON) ----
 echo "--- /health ---"
-HEALTH=$(curl -sS --max-time 10 "http://${HOST}:8000/health" 2>&1) || {
-    echo "ERROR: /health 不可达: ${HEALTH}"
-    exit 1
-}
-STATUS=$(echo "$HEALTH" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status","?"))' 2>/dev/null || echo "?")
-echo "  status: ${STATUS}"
-
-INGEST_FRESH=$(echo "$HEALTH" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("ingest_fresh","?"))' 2>/dev/null || echo "?")
-echo "  ingest_fresh: ${INGEST_FRESH}"
-
-echo "  sources:"
-echo "$HEALTH" | python3 -c '
-import json,sys
-d=json.load(sys.stdin)
-for name, state in d.get("sources",{}).items():
-    print(f"    {name}: {state}")
-' 2>/dev/null
+curl -sS --max-time 10 "http://${HOST}:8000/health" | python3 -m json.tool
 echo ""
 
 # ---- 3. publish_status ----
 echo "--- 最近 publish ---"
 PS_FILE="${DATA_DIR}/publish_status.json"
 if [ -f "$PS_FILE" ]; then
-    python3 -c "
-import json
-with open('${PS_FILE}') as f:
-    d=json.load(f)
-print(f\"  status: {d.get('status','?')}  selected: {d.get('selected_count',0)}  pushed: {d.get('pushed','?')}\")
-print(f\"  errors: {d.get('errors',[])}\")
-print(f\"  recorded: {d.get('recorded_at','?')}\")
-" 2>/dev/null
+    python3 -m json.tool "$PS_FILE"
 else
-    echo "  (尚无 publish 记录)"
+    echo "(尚无 publish 记录)"
 fi
 echo ""
 
@@ -68,25 +44,25 @@ echo "--- 候选池 ---"
 CAND_FILE="${DATA_DIR}/ingestion/${TODAY}/candidates.jsonl"
 if [ -f "$CAND_FILE" ]; then
     CAND_COUNT=$(wc -l < "$CAND_FILE" | tr -d ' ')
-    echo "  今日候选: ${CAND_COUNT} 条"
-    python3 -c "
-import json
+    echo "今日候选: ${CAND_COUNT} 条"
+    python3 << 'PYEOF'
+import json, sys
 from collections import Counter
-with open('${CAND_FILE}') as f:
+with open(sys.argv[1]) as f:
     items = [json.loads(l) for l in f]
 cats = Counter(i['category'] for i in items)
-print(f'  分类: {dict(cats)}')
-" 2>/dev/null
+print(f"分类: {dict(cats)}")
+PYEOF "$CAND_FILE"
 else
-    echo "  (今日尚无候选)"
+    echo "(今日尚无候选)"
 fi
 echo ""
 
 # ---- 5. 最新 digest ----
 echo "--- 最新 digest ---"
-python3 -c "
-import json, os
-dd = '${DATA_DIR}'
+python3 << PYEOF
+import json, os, sys
+dd = sys.argv[1]
 found = False
 for d in sorted(os.listdir(dd), reverse=True):
     p = os.path.join(dd, d, 'ai_digest.json')
@@ -97,30 +73,31 @@ for d in sorted(os.listdir(dd), reverse=True):
         cats = {}
         for it in items:
             cats[it.get('display_category','AI')] = cats.get(it.get('display_category','AI'),0)+1
-        print(f'  日期: {data[\"date\"]} | 条数: {len(items)} | 分布: {cats}')
+        print(f"日期: {data['date']} | 条数: {len(items)} | 分布: {cats}")
         empty_labels = sum(1 for it in items if not it.get('topic_label'))
         if empty_labels:
-            print(f'  topic_label 为空: {empty_labels}/{len(items)}')
+            print(f"topic_label 为空: {empty_labels}/{len(items)}")
         gh = data.get('github_projects', [])
         if gh:
-            print(f'  GitHub: {len(gh)} 项目')
+            print(f"GitHub: {len(gh)} 项目")
             for g in gh:
-                print(f'    {g.get(\"full_name\",\"?\")} 推荐: {g.get(\"recommendation\",\"-\")}')
+                print(f"  {g.get('full_name','?')} 推荐: {g.get('recommendation','-')}")
         found = True
         break
 if not found:
-    print('  (无 digest 记录)')
-" 2>/dev/null
+    print('(无 digest 记录)')
+PYEOF "$DATA_DIR"
 echo ""
 
 # ---- 6. GitHub 曝光 ----
 echo "--- GitHub 曝光记录 ---"
 EXP_FILE="${DATA_DIR}/github/exposure.json"
 if [ -f "$EXP_FILE" ]; then
+    python3 -m json.tool "$EXP_FILE" | head -20
     EXP_COUNT=$(python3 -c "import json; print(len(json.load(open('${EXP_FILE}'))))" 2>/dev/null || echo "?")
-    echo "  已曝光项目: ${EXP_COUNT}"
+    echo "  ... 共 ${EXP_COUNT} 条记录"
 else
-    echo "  (无曝光记录)"
+    echo "(无曝光记录)"
 fi
 echo ""
 

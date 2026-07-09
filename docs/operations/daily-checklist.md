@@ -5,7 +5,7 @@
 ## 1. 看服务状态
 
 ```bash
-ssh ubuntu@124.223.102.241 "curl -sS http://127.0.0.1:8000/health"
+curl -sS http://127.0.0.1:8000/health | python3 -m json.tool
 ```
 
 | 状态 | 含义 | 动作 |
@@ -18,15 +18,7 @@ ssh ubuntu@124.223.102.241 "curl -sS http://127.0.0.1:8000/health"
 
 ## 2. 看源状态
 
-```bash
-ssh ubuntu@124.223.102.241 "curl -sS http://127.0.0.1:8000/health | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps(d[\"sources\"], indent=2))'"
-```
-
-| 源状态 | 含义 |
-|---|---|
-| `ok` | 最近一轮采集正常 |
-| `failed` | 最近一轮完全失败 |
-| `degraded` | 部分 feed 失败或标记为可选跳过 |
+在 `/health` 输出中直接看 `sources` 块，每个源单独一行。
 
 正常情况：rss=ok, github=ok，huggingface=degraded（超时），taptap=failed（已知 405）。
 
@@ -35,40 +27,45 @@ ssh ubuntu@124.223.102.241 "curl -sS http://127.0.0.1:8000/health | python3 -c '
 ## 3. 看推送内容
 
 ```bash
-ssh ubuntu@124.223.102.241 "python3 -c '
+python3 << 'PYEOF'
 import json, os
-dd = \"/home/ubuntu/code/Claw_news/data\"
+dd = '/home/ubuntu/code/Claw_news/data'
 for d in sorted(os.listdir(dd), reverse=True):
-    p = f\"{dd}/{d}/ai_digest.json\"
+    p = f'{dd}/{d}/ai_digest.json'
     if os.path.exists(p):
         with open(p) as f:
-            d = json.load(f)
-        items = d.get(\"headline_items\", [])
+            data = json.load(f)
+        items = data.get('headline_items', [])
         cats = {}
         for it in items:
-            cats[it.get(\"display_category\",\"AI\")] = cats.get(it.get(\"display_category\",\"AI\"),0)+1
-        print(f\"日期: {d[\"date\"]} | 条数: {len(items)} | 分布: {cats}\")
+            dc = it.get('display_category', 'AI')
+            cats[dc] = cats.get(dc, 0) + 1
+        print(f"日期: {data['date']} | 条数: {len(items)} | 分布: {cats}")
         for it in items:
-            print(f\"  [{it.get(\"display_category\",\"?\")}] [{it.get(\"topic_label\",\"\")}] {it.get(\"title\",\"\")[:50]}\")
-        gh = d.get(\"github_projects\", [])
+            src = it.get('source', '?')
+            lbl = it.get('topic_label', '')
+            dc = it.get('display_category', '?')
+            print(f"  [{dc}] [{lbl}] {it['title'][:50]}  — {src}")
+        gh = data.get('github_projects', [])
         if gh:
-            print(f\"GitHub: {len(gh)} 个项目\")
+            print(f"GitHub: {len(gh)} 个项目")
             for g in gh:
-                print(f\"  {g.get(\"full_name\",\"?\")} | {g.get(\"recommendation\",\"\")}\")
+                print(f"  {g.get('full_name','?')} | {g.get('recommendation','')}")
         break
-'"
+PYEOF
 ```
 
 | 检查项 | 正常 | 异常 |
 |---|---|---|
 | 总数 | 5-10 条 | <3 或 =0 |
 | 分类分布 | 三类都有 | 某类缺失 |
+| topic_label | 大部分不为空 | 全空 |
 | GitHub | 3 个项目 | 0 个或都是低星 |
 
 ## 4. 看候选池规模
 
 ```bash
-ssh ubuntu@124.223.102.241 "wc -l /home/ubuntu/code/Claw_news/data/ingestion/\$(date +%Y-%m-%d)/candidates.jsonl 2>/dev/null"
+wc -l /home/ubuntu/code/Claw_news/data/ingestion/$(date +%Y-%m-%d)/candidates.jsonl 2>/dev/null
 ```
 
 正常应有 50+ 候选。如果 <20，说明源大面积失效。
@@ -76,5 +73,5 @@ ssh ubuntu@124.223.102.241 "wc -l /home/ubuntu/code/Claw_news/data/ingestion/\$(
 ## 5. 快速综合检查
 
 ```bash
-bash scripts/quick-verify.sh
+bash /home/ubuntu/code/Claw_news/scripts/quick-verify.sh
 ```

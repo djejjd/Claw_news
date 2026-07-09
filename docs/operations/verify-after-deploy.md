@@ -5,7 +5,7 @@
 ## 第 1 步：确认容器已启动（30 秒）
 
 ```bash
-ssh ubuntu@124.223.102.241 "docker ps --format '{{.Names}} {{.Status}}' | grep claw-news"
+docker ps --format '{{.Names}} {{.Status}}' | grep claw-news
 ```
 
 预期输出类似：
@@ -17,13 +17,13 @@ claw-news Up 2 minutes
 如果容器不存在或反复重启，查看日志：
 
 ```bash
-ssh ubuntu@124.223.102.241 "docker logs claw-news --tail 30"
+docker logs claw-news --tail 30
 ```
 
 ## 第 2 步：确认 /health 可达且有意义
 
 ```bash
-ssh ubuntu@124.223.102.241 "curl -sS http://127.0.0.1:8000/health"
+curl -sS http://127.0.0.1:8000/health | python3 -m json.tool
 ```
 
 | 字段 | 通过标准 | 不通过则查 |
@@ -37,7 +37,7 @@ ssh ubuntu@124.223.102.241 "curl -sS http://127.0.0.1:8000/health"
 ## 第 3 步：手动触发一次推送
 
 ```bash
-ssh ubuntu@124.223.102.241 "curl -sS -X POST http://127.0.0.1:8000/run/news"
+curl -sS -X POST http://127.0.0.1:8000/run/news | python3 -m json.tool
 ```
 
 | 字段 | 通过标准 | 不通过则查 |
@@ -50,10 +50,10 @@ ssh ubuntu@124.223.102.241 "curl -sS -X POST http://127.0.0.1:8000/run/news"
 
 ## 第 4 步：确认推送内容分布
 
-检查刚才触发的推送结果中：
+检查刚才触发的推送结果：
 
 ```bash
-ssh ubuntu@124.223.102.241 "cat /home/ubuntu/code/Claw_news/data/publish_status.json"
+cat /home/ubuntu/code/Claw_news/data/publish_status.json | python3 -m json.tool
 ```
 
 确认 `status` 不是 `failed`。
@@ -61,37 +61,37 @@ ssh ubuntu@124.223.102.241 "cat /home/ubuntu/code/Claw_news/data/publish_status.
 然后看 digest：
 
 ```bash
-ssh ubuntu@124.223.102.241 "python3 -c '
+python3 << 'PYEOF'
 import json, os
-dd = \"/home/ubuntu/code/Claw_news/data\"
+dd = '/home/ubuntu/code/Claw_news/data'
 for d in sorted(os.listdir(dd), reverse=True):
-    p = f\"{dd}/{d}/ai_digest.json\"
+    p = f'{dd}/{d}/ai_digest.json'
     if os.path.exists(p):
         with open(p) as f:
-            d = json.load(f)
-        items = d.get(\"headline_items\", [])
+            data = json.load(f)
+        items = data.get('headline_items', [])
         cats = {}
         for it in items:
-            cats[it.get(\"display_category\",\"AI\")] = cats.get(it.get(\"display_category\",\"AI\"),0)+1
-        print(f\"分类分布: {cats}\")
-        print(f\"topic_label 有空: {sum(1 for it in items if not it.get(\"topic_label\"))}/{len(items)}\")
-        gh = d.get(\"github_projects\", [])
-        print(f\"GitHub: {len(gh)} 个项目\")
+            cats[it.get('display_category','AI')] = cats.get(it.get('display_category','AI'),0)+1
+        print(f"分类分布: {cats}")
+        print(f"topic_label 有空: {sum(1 for it in items if not it.get('topic_label'))}/{len(items)}")
+        gh = data.get('github_projects', [])
+        print(f"GitHub: {len(gh)} 个项目")
         for g in gh:
-            print(f\"  {g.get(\"full_name\",\"?\")} ★{g.get(\"final_score\",\"?\")}\")
+            print(f"  {g.get('full_name','?')} | {g.get('recommendation','')}")
         break
-'"
+PYEOF
 ```
 
 | 检查项 | 通过标准 |
 |---|---|
 | 分类分布 | AI / 工具 / 游戏 三类都出现 |
 | topic_label | 不全为空 |
-| GitHub | 3 个项目，没有 stars < 10 的 |
+| GitHub | 3 个项目，推荐理由不为空 |
 | 内容可读 | 快速浏览标题，无乱码或明显垃圾 |
 
 ## 第 5 步：快速综合检查
 
 ```bash
-bash scripts/quick-verify.sh
+bash /home/ubuntu/code/Claw_news/scripts/quick-verify.sh
 ```
