@@ -254,6 +254,28 @@ class TestMatchSelectedCandidate:
         assert result is not None
         assert result.url == "https://a.com/article/123"
 
+    def test_canonical_key_beats_title_match(self):
+        """当两个候选标题相同时，canonical_key 匹配优先于 title 匹配，
+        防止 LLM 改写 URL 后被同标题的另一个候选截走。"""
+        from app.pipeline.news_pipeline import _match_selected_candidate
+        from app.pipeline.candidate import CandidateItem
+        ck_a = CandidateItem.make_canonical_key("https://a.com/article/456")
+        selected = [
+            CandidateItem(title="Same Title", url="https://a.com/article/123",
+                          summary="", source="x", category="ai",
+                          canonical_key=CandidateItem.make_canonical_key("https://a.com/article/123")),
+            CandidateItem(title="Same Title", url="https://a.com/article/456",
+                          summary="", source="y", category="tool", canonical_key=ck_a),
+        ]
+        # LLM 返回了 candidate 2 的 URL（带 query param），标题相同
+        result = _match_selected_candidate(selected, {
+            "url": "https://a.com/article/456?ref=rss",
+            "title": "Same Title",
+        })
+        assert result is not None
+        assert result.url == "https://a.com/article/456"
+        assert result.source == "y"  # canonical_key 命中，不是被 title 截到第一个
+
     def test_no_match_returns_none(self):
         from app.pipeline.news_pipeline import _match_selected_candidate
         from app.pipeline.candidate import CandidateItem

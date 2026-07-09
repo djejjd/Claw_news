@@ -149,7 +149,7 @@ def rank_and_recommend(
     Returns:
         [{full_name, recommendation, score, activity, popularity, relevance, penalty}, ...]
     """
-    # 最低质量标准：过滤明显 spam（0-star fork/spam）
+    # 最低质量标准：过滤低星 spam（stars < 10 直接淘汰）
     candidates = [c for c in candidates if c.stars >= 10]
     scored = []
     for item in candidates:

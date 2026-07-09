@@ -56,13 +56,7 @@ def _match_selected_candidate(selected: list, headline_item: dict):
             if candidate.url == url:
                 return candidate
 
-    # 2. exact title match
-    if title:
-        for candidate in selected:
-            if candidate.title == title:
-                return candidate
-
-    # 3. canonical_key fallback（LLM 可能改写 title/url）
+    # 2. canonical_key fallback（title 可能相同，置信度高于 title 匹配）
     if url:
         from app.pipeline.candidate import CandidateItem
         target_key = CandidateItem.make_canonical_key(url)
@@ -70,6 +64,12 @@ def _match_selected_candidate(selected: list, headline_item: dict):
             for candidate in selected:
                 if getattr(candidate, "canonical_key", "") == target_key:
                     return candidate
+
+    # 3. exact title match（最低优先级，最后手段）
+    if title:
+        for candidate in selected:
+            if candidate.title == title:
+                return candidate
 
     return None
 
