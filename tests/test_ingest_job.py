@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.pipeline.candidate import CandidateItem
+from collectors.github import GitHubCollectorError
 from collectors.base import HotItem
 
 
@@ -113,6 +114,31 @@ async def test_run_ingest_skips_optional_taptap_failures(monkeypatch):
     assert payload["successful_sources"] == ["rss", "huggingface", "github"]
     assert payload["failed_sources"] == []
     assert payload["skipped_sources"] == ["taptap: taptap blocked"]
+
+
+@pytest.mark.asyncio
+async def test_run_ingest_marks_github_failed_when_all_queries_fail():
+    from app.scheduler.jobs import run_ingest
+
+    ok_rss = MagicMock()
+    ok_rss.collect = AsyncMock(return_value=[])
+    github_error = GitHubCollectorError("all 4 GitHub queries failed")
+
+    with (
+        patch("collectors.rss_sources.RssCollector", return_value=ok_rss),
+        patch("collectors.huggingface.HfDailyPapersCollector", return_value=ok_rss),
+        patch("collectors.taptap.TapTapCollector", return_value=ok_rss),
+        patch("collectors.github.GitHubCollector.collect", new=AsyncMock(side_effect=github_error)),
+        patch("app.scheduler.jobs.IngestionStore"),
+        patch("app.scheduler.jobs.GitHubStore"),
+        patch("app.scheduler.jobs.IngestStatusStore") as status_store,
+    ):
+        await run_ingest()
+
+    payload = status_store.return_value.write_status.call_args.args[0]
+    assert "github" not in payload["successful_sources"]
+    assert payload["failed_sources"] == ["github: all 4 GitHub queries failed"]
+    assert payload["skipped_sources"] == []
 
 
 @pytest.mark.asyncio
