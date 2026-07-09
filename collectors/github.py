@@ -1,26 +1,30 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 
 import httpx
 
 GITHUB_SEARCH_URL = "https://api.github.com/search/repositories"
+_DEFAULT_BUDGET = 4
 
-# 多查询召回：topics + keywords
-_TOPIC_QUERIES = [
+# 多查询召回：固定优先级，topics 优先
+_QUERIES = [
     "topic:llm",
     "topic:agent",
     "topic:ai-tools",
     "topic:machine-learning",
-]
-_KEYWORD_QUERIES = [
     "ai agent",
     "llm tool",
     "developer tooling",
     "game ai",
 ]
+
+
+class GitHubCollectorError(RuntimeError):
+    """所有 GitHub query 全部失败时抛出。"""
 
 
 @dataclass
@@ -40,11 +44,24 @@ class GitHubRepoItem:
     fetched_at: str = ""
 
 
-class GitHubCollector:
-    """GitHub Search API 多查询候选召回。
+def _read_budget() -> int:
+    raw = os.getenv("GITHUB_QUERY_BUDGET", str(_DEFAULT_BUDGET)).strip()
+    try:
+        n = int(raw)
+    except ValueError:
+        n = _DEFAULT_BUDGET
+    if n < 1:
+        return _DEFAULT_BUDGET
+    if n > len(_QUERIES):
+        return len(_QUERIES)
+    return n
 
-    每轮搜索多个 topic 和 keyword query，每查询取 top 10，
-    按 full_name 去重合并，输出约 20-30 个候选。
+
+class GitHubCollector:
+    """GitHub Search API 多查询候选召回，带请求预算控制。
+
+    每轮最多执行 budget 个 query（默认 4），按固定优先级截断。
+    每 query 取 top 10，按 full_name 去重合并。
     """
 
     def __init__(self, max_per_query: int = 10, max_retries: int = 2, retry_delay: float = 0.5):
@@ -56,18 +73,28 @@ class GitHubCollector:
         headers = {"Accept": "application/vnd.github+json"}
         fetched_at = datetime.now().isoformat()
         raw_repos: dict[str, dict] = {}
-        queries = _TOPIC_QUERIES + _KEYWORD_QUERIES
+        budget = _read_budget()
+        queries = _QUERIES[:budget]
+        success_count = 0
+        last_error: Exception | None = None
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             for query_str in queries:
                 try:
                     repos = await self._fetch_query(client, query_str, headers)
-                except (httpx.TimeoutException, httpx.HTTPStatusError):
+                    success_count += 1
+                except (httpx.TimeoutException, httpx.HTTPStatusError) as exc:
+                    last_error = exc
                     continue
                 for repo in repos:
                     full_name = repo.get("full_name", "")
                     if full_name:
                         raw_repos[full_name] = repo
+
+        if success_count == 0 and last_error is not None:
+            raise GitHubCollectorError(
+                f"all {len(queries)} GitHub queries failed"
+            ) from last_error
 
         items = []
         for repo_data in raw_repos.values():

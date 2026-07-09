@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from collectors.github import GitHubCollector
+from collectors.github import GitHubCollector, GitHubCollectorError, _read_budget, _DEFAULT_BUDGET
 
 
 @pytest.mark.asyncio
@@ -125,3 +125,109 @@ async def test_collect_returns_partial_results_on_partial_failures():
 
     assert len(items) >= 1
     assert items[0].full_name == "owner/a"
+
+
+# ---- budget tests ----
+
+
+def test_default_budget_is_4():
+    assert _DEFAULT_BUDGET == 4
+
+
+def test_budget_reads_env_var(monkeypatch):
+    monkeypatch.setenv("GITHUB_QUERY_BUDGET", "2")
+    assert _read_budget() == 2
+
+
+def test_budget_clamps_to_1_minimum(monkeypatch):
+    monkeypatch.setenv("GITHUB_QUERY_BUDGET", "-5")
+    assert _read_budget() == _DEFAULT_BUDGET
+
+    monkeypatch.setenv("GITHUB_QUERY_BUDGET", "0")
+    assert _read_budget() == _DEFAULT_BUDGET
+
+
+def test_budget_caps_at_query_count(monkeypatch):
+    monkeypatch.setenv("GITHUB_QUERY_BUDGET", "999")
+    assert _read_budget() <= 8  # _QUERIES length
+
+
+@pytest.mark.asyncio
+async def test_collect_respects_budget(monkeypatch):
+    """当 budget=2 时，只发 2 次 query"""
+    monkeypatch.setenv("GITHUB_QUERY_BUDGET", "2")
+    responses = []
+    for _ in range(10):
+        resp = AsyncMock()
+        resp.raise_for_status = lambda: None
+        resp.json = lambda: {"items": []}
+        responses.append(resp)
+
+    with patch("collectors.github.httpx.AsyncClient") as client_cls:
+        client = AsyncMock()
+        client.get.side_effect = responses
+        client_cls.return_value.__aenter__.return_value = client
+        await GitHubCollector().collect()
+
+    assert client.get.await_count == 2  # only 2 queries fired
+
+
+# ---- all-fail tests ----
+
+
+@pytest.mark.asyncio
+async def test_collect_all_fail_raises_error(monkeypatch):
+    """所有 query 失败时必须抛错"""
+    monkeypatch.setenv("GITHUB_QUERY_BUDGET", "2")
+    error_request = httpx.Request("GET", "https://api.github.com/search/repositories")
+    error_response = httpx.Response(504, request=error_request)
+    persistent_error = httpx.HTTPStatusError(
+        "504", request=error_request, response=error_response,
+    )
+
+    with patch("collectors.github.httpx.AsyncClient") as client_cls:
+        client = AsyncMock()
+        client.get.side_effect = persistent_error
+        client_cls.return_value.__aenter__.return_value = client
+
+        with pytest.raises(GitHubCollectorError):
+            await GitHubCollector().collect()
+
+
+# ---- partial success test ----
+
+
+@pytest.mark.asyncio
+async def test_collect_partial_success_returns_results(monkeypatch):
+    """部分 query 成功时返回部分结果，不抛错"""
+    monkeypatch.setenv("GITHUB_QUERY_BUDGET", "3")
+    ok_payload = {
+        "items": [{
+            "full_name": "owner/x",
+            "html_url": "https://github.com/owner/x",
+            "description": "x",
+            "stargazers_count": 100,
+            "language": "Python",
+            "created_at": "2025-01-01T00:00:00Z",
+            "updated_at": "2026-07-08T00:00:00Z",
+            "pushed_at": "2026-07-08T00:00:00Z",
+        }]
+    }
+    ok_response = AsyncMock()
+    ok_response.raise_for_status = lambda: None
+    ok_response.json = lambda: ok_payload
+
+    error_request = httpx.Request("GET", "https://api.github.com/search/repositories")
+    error_response = httpx.Response(504, request=error_request)
+    timeout_error = httpx.TimeoutException("timeout")
+
+    with patch("collectors.github.httpx.AsyncClient") as client_cls:
+        client = AsyncMock()
+        # query 1 succeeds (1 call), query 2 retries 3x, query 3 retries 3x
+        client.get.side_effect = [ok_response] + [timeout_error] * 6
+        client_cls.return_value.__aenter__.return_value = client
+
+        items = await GitHubCollector().collect()
+
+    assert len(items) == 1
+    assert items[0].full_name == "owner/x"

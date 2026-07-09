@@ -208,8 +208,6 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         pushed_urls=pushed_urls,
     )
 
-    # 记录本次曝光
-    exposure_store.record([r.full_name for r in github_top3])
     source_failures = _collect_source_failures(
         ingestion_store,
         ctx.time_window_start,
@@ -237,6 +235,9 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             summary_preview=make_preview(markdown),
             errors=["push_failed"],
         )
+
+    # 推送成功后记录 GitHub 曝光
+    exposure_store.record([r.full_name for r in github_top3])
 
     # 8. 状态持久化
     published_urls = [it.url for it in selected]
