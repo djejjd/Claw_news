@@ -63,28 +63,13 @@ def _match_selected_candidate(selected: list, headline_item: dict):
 
 
 def _collect_source_failures(store: IngestionStore, start: str, end: str) -> list[str]:
-    """聚合时间窗口内所有 index.json 的 source_failures。"""
-    start_d = datetime.fromisoformat(start).date()
-    end_d = datetime.fromisoformat(end).date()
-    failures: set[str] = set()
-    if not store.ingestion_dir.exists():
-        return []
-    for d in store.ingestion_dir.iterdir():
-        if not d.is_dir():
-            continue
-        # 只看当天的失败，避免历史失败污染后续发布
-        if d.name != date.today().isoformat():
-            continue
-        try:
-            dir_date = date.fromisoformat(d.name)
-        except ValueError:
-            continue
-        if not (start_d <= dir_date <= end_d):
-            continue
-        idx = store._load_index(d)
-        if "source_failures" in idx:
-            failures.update(idx["source_failures"])
-    return sorted(failures)
+    """获取本轮 ingest 的 source_failures，从 IngestStatusStore 读取。
+
+    不再从 index.json 聚合（会跨轮累积），改用最新的 ingest status。
+    """
+    from app.storage.ingest_status_store import IngestStatusStore
+    status = IngestStatusStore().load_status()
+    return status.get("failed_sources", [])
 
 
 async def run_pipeline(ctx: RunContext, config) -> PublishResult:
@@ -113,6 +98,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     elif ctx.publish_scope == "all_digest":
         candidates = [item for item in candidates if item.category in {"ai", "tool", "game"}]
     if not candidates:
+        _write_publish_status(_make_publish_status("skipped", 0, False, []))
         return PublishResult(
             status="skipped",
             selected_count=0,
@@ -160,6 +146,8 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         github_projects=github_dicts if github_dicts else None,
     )
     if "_parse_error" in llm_result and not llm_result.get("headline_items"):
+        _write_publish_status(_make_publish_status(
+            "failed", len(selected), False, [f"llm_parse: {llm_result['_parse_error']}"]))
         return PublishResult(
             status="failed",
             selected_count=len(selected),
@@ -308,9 +296,11 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     except Exception:
         errors.append("state_write_failed")
 
-    _write_publish_status(_make_publish_status("ok", len(selected), True, errors))
+    publish_ok = len(errors) == 0
+    _write_publish_status(_make_publish_status(
+        "ok" if publish_ok else "degraded", len(selected), True, errors))
     return PublishResult(
-        status="ok",
+        status="ok" if publish_ok else "degraded",
         selected_count=len(selected),
         pushed=True,
         message_type="markdown",

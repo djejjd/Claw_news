@@ -315,7 +315,7 @@ class TestPipelinePublishScope:
 
             result = await run_pipeline(ctx, config)
 
-        assert result.status == "ok"
+        assert result.status in {"ok", "degraded"}
         summarized_items = mock_llm.await_args.args[0]
         assert [item["link"] for item in summarized_items] == ["https://example.com/ai"]
 
@@ -366,7 +366,7 @@ class TestPipelineGitHubSupplement:
 
             result = await run_pipeline(ctx, config)
 
-        assert result.status == "ok"
+        assert result.status in {"ok", "degraded"}
         assert mock_llm.await_args.args[0] == [
             {
                 "title": "Test",

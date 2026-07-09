@@ -92,14 +92,14 @@ async def health():
         source_status[name] = "degraded"
 
     has_failed_source = any(s == "failed" for s in source_status.values())
+    has_degraded_source = any(s == "degraded" for s in source_status.values())
     last_publish_failed = publish_status.get("status") in {"failed", "error"}
+    last_publish_degraded = publish_status.get("status") == "degraded"
 
-    # 综合判定
-    if not ingest_fresh:
-        overall = "degraded"
-    elif has_failed_source and last_publish_failed:
+    # 综合判定：healthy < degraded < unhealthy
+    if has_failed_source and last_publish_failed:
         overall = "unhealthy"
-    elif has_failed_source:
+    elif has_failed_source or not ingest_fresh or has_degraded_source or last_publish_degraded:
         overall = "degraded"
     elif not publish_status:
         overall = "healthy"  # 刚启动，还没推送过
