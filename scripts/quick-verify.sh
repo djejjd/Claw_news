@@ -26,7 +26,11 @@ echo ""
 
 # ---- 2. /health (完整 JSON) ----
 echo "--- /health ---"
-curl -sS --max-time 10 "http://${HOST}:8000/health" | python3 -m json.tool
+if HEALTH_PAYLOAD="$(curl -sS --max-time 10 "http://${HOST}:8000/health" 2>/dev/null)"; then
+    printf '%s\n' "$HEALTH_PAYLOAD" | python3 -m json.tool
+else
+    echo "WARN: 无法访问 http://${HOST}:8000/health"
+fi
 echo ""
 
 # ---- 3. publish_status ----
@@ -45,14 +49,14 @@ CAND_FILE="${DATA_DIR}/ingestion/${TODAY}/candidates.jsonl"
 if [ -f "$CAND_FILE" ]; then
     CAND_COUNT=$(wc -l < "$CAND_FILE" | tr -d ' ')
     echo "今日候选: ${CAND_COUNT} 条"
-    python3 << 'PYEOF'
+    python3 - "$CAND_FILE" <<'PYEOF'
 import json, sys
 from collections import Counter
 with open(sys.argv[1]) as f:
     items = [json.loads(l) for l in f]
 cats = Counter(i['category'] for i in items)
 print(f"分类: {dict(cats)}")
-PYEOF "$CAND_FILE"
+PYEOF
 else
     echo "(今日尚无候选)"
 fi
@@ -60,7 +64,8 @@ echo ""
 
 # ---- 5. 最新 digest ----
 echo "--- 最新 digest ---"
-python3 << PYEOF
+if [ -d "$DATA_DIR" ]; then
+python3 - "$DATA_DIR" <<'PYEOF'
 import json, os, sys
 dd = sys.argv[1]
 found = False
@@ -86,7 +91,10 @@ for d in sorted(os.listdir(dd), reverse=True):
         break
 if not found:
     print('(无 digest 记录)')
-PYEOF "$DATA_DIR"
+PYEOF
+else
+    echo "(data 目录不存在: ${DATA_DIR})"
+fi
 echo ""
 
 # ---- 6. GitHub 曝光 ----
