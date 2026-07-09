@@ -218,3 +218,48 @@ class TestPipelineSignature:
 
         assert _DATA_DIR.name == "data"
         assert _DATA_DIR.exists()
+
+
+class TestMatchSelectedCandidate:
+    def test_exact_url_match(self):
+        from app.pipeline.news_pipeline import _match_selected_candidate
+        from app.pipeline.candidate import CandidateItem
+        selected = [CandidateItem(title="T", url="https://a.com/1", summary="", source="x", category="ai")]
+        result = _match_selected_candidate(selected, {"url": "https://a.com/1"})
+        assert result is not None
+        assert result.url == "https://a.com/1"
+
+    def test_exact_title_match(self):
+        from app.pipeline.news_pipeline import _match_selected_candidate
+        from app.pipeline.candidate import CandidateItem
+        selected = [CandidateItem(title="Exact Title", url="https://a.com/1", summary="", source="x", category="ai")]
+        result = _match_selected_candidate(selected, {"title": "Exact Title"})
+        assert result is not None
+        assert result.title == "Exact Title"
+
+    def test_canonical_key_fallback(self):
+        """When URL and title don't match exactly, canonical_key should still work."""
+        from app.pipeline.news_pipeline import _match_selected_candidate
+        from app.pipeline.candidate import CandidateItem
+        ck = CandidateItem.make_canonical_key("https://a.com/article/123")
+        selected = [CandidateItem(
+            title="Some Title", url="https://a.com/article/123",
+            summary="", source="x", category="ai", canonical_key=ck,
+        )]
+        # LLM returned the same URL but with query params or different scheme
+        result = _match_selected_candidate(selected, {
+            "url": "https://a.com/article/123?utm=xxx",
+            "title": "Rewritten Title",
+        })
+        assert result is not None
+        assert result.url == "https://a.com/article/123"
+
+    def test_no_match_returns_none(self):
+        from app.pipeline.news_pipeline import _match_selected_candidate
+        from app.pipeline.candidate import CandidateItem
+        selected = [CandidateItem(title="A", url="https://x.com/1", summary="", source="x", category="ai")]
+        result = _match_selected_candidate(selected, {
+            "url": "https://unrelated.com/2",
+            "title": "Unrelated",
+        })
+        assert result is None

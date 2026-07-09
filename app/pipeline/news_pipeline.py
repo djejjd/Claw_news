@@ -12,6 +12,7 @@ from app.classifiers.topic_classifier import TopicClassifier
 from app.pipeline.context import RunContext
 from app.renderers.wecom_markdown import make_preview, render_digest
 from app.storage.github_store import GitHubStore
+from app.storage.ingest_status_store import IngestStatusStore
 from app.storage.ingestion_store import IngestionStore
 from app.storage.source_metrics_store import SourceMetricsStore
 from app.tools.llm import summarize_news
@@ -49,27 +50,33 @@ def _match_selected_candidate(selected: list, headline_item: dict):
     url = headline_item.get("url", "")
     title = headline_item.get("title", "")
 
+    # 1. exact URL match
     if url:
         for candidate in selected:
             if candidate.url == url:
                 return candidate
 
+    # 2. exact title match
     if title:
         for candidate in selected:
             if candidate.title == title:
                 return candidate
 
+    # 3. canonical_key fallback（LLM 可能改写 title/url）
+    if url:
+        from app.pipeline.candidate import CandidateItem
+        target_key = CandidateItem.make_canonical_key(url)
+        if target_key:
+            for candidate in selected:
+                if getattr(candidate, "canonical_key", "") == target_key:
+                    return candidate
+
     return None
 
 
-def _collect_source_failures(store: IngestionStore, start: str, end: str) -> list[str]:
-    """获取本轮 ingest 的 source_failures，从 IngestStatusStore 读取。
-
-    不再从 index.json 聚合（会跨轮累积），改用最新的 ingest status。
-    """
-    from app.storage.ingest_status_store import IngestStatusStore
-    status = IngestStatusStore().load_status()
-    return status.get("failed_sources", [])
+def _collect_source_failures(ingest_status: dict) -> list[str]:
+    """从本次 publish 启动时捕获的 ingest status 快照中读取失败源。"""
+    return list(ingest_status.get("failed_sources", []))
 
 
 async def run_pipeline(ctx: RunContext, config) -> PublishResult:
@@ -87,6 +94,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     pushed_urls = state_store.load_pushed_urls()
     pushed_keys = state_store.load_published_keys()
     ingestion_store = IngestionStore()
+    ingest_status_snapshot = IngestStatusStore().load_status()
     metrics_store = SourceMetricsStore()
 
     # 1. 读池
@@ -199,11 +207,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         pushed_urls=pushed_urls,
     )
 
-    source_failures = _collect_source_failures(
-        ingestion_store,
-        ctx.time_window_start,
-        ctx.time_window_end,
-    )
+    source_failures = _collect_source_failures(ingest_status_snapshot)
 
     # 7. 推送
     try:

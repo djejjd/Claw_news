@@ -139,13 +139,16 @@ class TestAppendOrMerge:
         data = json.loads(lines[0])
         assert data["category"] == "tool"
 
-    def test_source_failures_accumulate(self, tmp_path: Path):
+    def test_source_failures_only_keep_current_round(self, tmp_path: Path):
         store = IngestionStore(root_dir=tmp_path)
         store.append_or_merge([_make_item()], source_failures=["s1"])
         result = store.append_or_merge(
             [_make_item(url="https://b.com")], source_failures=["s2", "s1"]
         )
         assert set(result["source_failures"]) == {"s1", "s2"}
+
+        result = store.append_or_merge([_make_item(url="https://c.com")], source_failures=["s3"])
+        assert result["source_failures"] == ["s3"]
 
     def test_index_json_structure(self, tmp_path: Path):
         store = IngestionStore(root_dir=tmp_path)
