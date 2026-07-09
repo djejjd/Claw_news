@@ -7,44 +7,38 @@ from collectors.base import Category, HotItem, normalize_category, time_modifier
 # =============================================================================
 
 SOURCE_WEIGHTS = {
-    "huggingface": 4.0,
     "qbitai": 3.0,
-    # 其他进入 ai_only 发布范围的 RSS AI 垂类来源默认 3.0
+    "leiphone": 3.0,
+    "jiqizhixin": 3.0,
+    "meituan_tech": 3.0,
+    "sspai": 3.0,
+    "ithome": 3.0,
+    "appinn": 3.0,
+    "cloudflare_cn": 3.0,
+    "yystv": 3.0,
+    "gcores": 3.0,
+    "chuapp": 3.0,
+    "indienova": 3.0,
+    "eurogamer": 3.0,
+    "huggingface": 4.0,
 }
-DEFAULT_AI_SOURCE_WEIGHT = 3.0
-DEFAULT_OTHER_SOURCE_WEIGHT = 2.0
-
-TOPIC_WEIGHTS = {
-    "model_release": 3.0,
-    "agent_workflow": 2.5,
-    "developer_tooling": 2.0,
-    "research_benchmark": 2.0,
-    "infrastructure": 1.5,
-    "application_case": 1.0,
-}
-DEFAULT_TOPIC_WEIGHT = 1.0
-KEYWORD_BONUS = 0.5  # 固定布尔加分
+DEFAULT_SOURCE_WEIGHT = 2.0
 
 
 def compute_final_score(item) -> float:
-    """统一评分：source_weight + topic_weight + keyword_bonus + time_modifier
+    """统一评分：source_weight + time_gravity
 
-    接受 CandidateItem 或任何有 topic/source_weight 等属性的对象。
+    所有源默认权重相同（3.0），时间按 24h 平顶后衰减。
+    不再使用关键词加分和话题权重。
     """
+    from collectors.base import time_gravity
+
     sw = getattr(item, "source_weight", None)
     if sw is None:
-        sw = SOURCE_WEIGHTS.get(getattr(item, "source", ""), DEFAULT_AI_SOURCE_WEIGHT)
-    tw = getattr(item, "topic_weight", None)
-    if tw is None:
-        tw = TOPIC_WEIGHTS.get(getattr(item, "topic", ""), DEFAULT_TOPIC_WEIGHT)
-    kb = (
-        KEYWORD_BONUS
-        if getattr(item, "keyword_bonus", None) or getattr(item, "keyword_hit", False)
-        else 0.0
-    )
+        sw = SOURCE_WEIGHTS.get(getattr(item, "source", ""), DEFAULT_SOURCE_WEIGHT)
     pub_date = getattr(item, "pub_date", None) or getattr(item, "published_at", "")
-    tm = time_modifier(pub_date, "morning")
-    return round(sw + tw + kb + tm, 1)
+    tg = time_gravity(pub_date)
+    return round(sw + tg, 1)
 
 
 # =============================================================================
@@ -109,7 +103,21 @@ class Merger:
             item.final_score = compute_final_score(item)
         deduped = self._dedup_by_url(items)
         deduped.sort(key=lambda x: x.final_score, reverse=True)
-        return deduped[: self.top_n]
+
+        # 分类保底：每类取最高分 1 条，剩余名额全量竞争
+        selected = []
+        seen_urls: set[str] = set()
+        for category in ("ai", "tool", "game"):
+            for item in deduped:
+                if normalize_category(item.category) == category and item.url not in seen_urls:
+                    selected.append(item)
+                    seen_urls.add(item.url)
+                    break
+
+        remaining = [i for i in deduped if i.url not in seen_urls]
+        selected.extend(remaining[: self.top_n - len(selected)])
+        selected.sort(key=lambda x: x.final_score, reverse=True)
+        return selected
 
     # ------------------------------------------------------------------
     # Legacy merge (保留原有行为)

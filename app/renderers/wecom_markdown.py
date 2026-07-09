@@ -20,13 +20,37 @@ DISPLAY_CATEGORY_ORDER = ("AI", "工具", "游戏")
 # or broken link syntax.
 _MARKDOWN_SPECIAL = re.compile(r"([*_`\[\]\\])")
 
+_SOURCE_LABEL = {
+    "qbitai": "量子位", "leiphone": "雷锋网", "jiqizhixin": "机器之心",
+    "meituan_tech": "美团技术", "openai_blog": "OpenAI",
+    "sspai": "少数派", "ithome": "IT之家", "appinn": "小众软件",
+    "cloudflare_cn": "Cloudflare",
+    "yystv": "游研社", "gcores": "机核", "chuapp": "触乐",
+    "indienova": "indienova", "eurogamer": "Eurogamer",
+    "huggingface": "HuggingFace", "github": "GitHub", "taptap": "TapTap",
+}
+_OVERSEAS_SOURCES = frozenset({
+    "openai_blog", "huggingface", "deepmind", "eurogamer",
+})
+
 
 def _escape_title(text: str) -> str:
     """Escape markdown meta-characters inside a title string."""
     return _MARKDOWN_SPECIAL.sub(r"\\\1", text)
 
 
-def render_digest(result: SummaryResult, github_items: list | None = None) -> str:
+def _source_display(source: str) -> str:
+    label = _SOURCE_LABEL.get(source, source)
+    region = "国外" if source in _OVERSEAS_SOURCES else "国内"
+    return f"{label} · {region}"
+
+
+def render_digest(
+    result: SummaryResult,
+    github_items: list | None = None,
+    pushed_urls: set[str] | None = None,
+    github_recommendations: dict[str, str] | None = None,
+) -> str:
     """Consume *result* and produce a single WeCom markdown string.
 
     The output follows the project's WeCom markdown convention:
@@ -59,13 +83,16 @@ def render_digest(result: SummaryResult, github_items: list | None = None) -> st
             url = item.url or ""
             topic_label = f"[{item.topic_label}] " if item.topic_label else ""
 
-            if url:
-                lines.append(f"**{item_number}.** {topic_label}[{safe_title}]({url})")
-            else:
-                lines.append(f"**{item_number}.** {topic_label}{safe_title}")
+            is_new = "新" if pushed_urls is None or url not in pushed_urls else "续"
+            marker = f"[{is_new}] "
 
-            source_part = f" — {item.source}" if item.source else ""
-            lines.append(f"> {item.core_summary} | 重要性：{item.importance} | 趋势：{item.trend}{source_part}")
+            if url:
+                lines.append(f"**{item_number}.** {topic_label}{marker}[{safe_title}]({url})")
+            else:
+                lines.append(f"**{item_number}.** {topic_label}{marker}{safe_title}")
+
+            source_display = _source_display(item.source) if item.source else ""
+            lines.append(f"> {item.core_summary} | 重要性：{item.importance} | 趋势：{item.trend} — {source_display}")
 
             item_number += 1
             rendered_item_count += 1
@@ -84,9 +111,11 @@ def render_digest(result: SummaryResult, github_items: list | None = None) -> st
         for i, item in enumerate(github_items[:3], 1):
             language = f" · {item.language}" if item.language else ""
             description = item.description or "暂无简介"
+            reason = (github_recommendations or {}).get(item.full_name, "")
+            reason_line = f" | 💡 {reason}" if reason else ""
             lines.append(f"**{i}.** [{item.full_name}]({item.url})")
             lines.append(f"> {description}")
-            lines.append(f"> ⭐ {item.stars}{language}")
+            lines.append(f"> ⭐ {item.stars}{language}{reason_line}")
             if i < min(len(github_items), 3):
                 lines.append("")
 

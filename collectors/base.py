@@ -29,8 +29,32 @@ class HotItem:
         return self.source_score + time_decay_bonus(self.timestamp)
 
 
+def time_gravity(published_at: str = "", flat_top_hours: float = 24.0) -> float:
+    """时间重力衰减：前 flat_top_hours 小时不衰减，之后平滑下降。
+
+    Args:
+        published_at: ISO 日期字符串 (yyyy-mm-dd) 或空
+        flat_top_hours: 平顶时长（小时），默认 24h，可调为 12h
+
+    Returns:
+        3.0 ~ 0.0，越新越高
+    """
+    if not published_at:
+        return 0.0
+    try:
+        pub_date = date.fromisoformat(published_at)
+        age_hours = (date.today() - pub_date).days * 24
+        if age_hours < 0:
+            age_hours = 0
+        if age_hours <= flat_top_hours:
+            return 3.0
+        return 3.0 / ((age_hours - flat_top_hours + 2) ** 0.6)
+    except (ValueError, TypeError):
+        return 0.0
+
+
 def time_modifier(pub_date: str, period: str = "morning") -> float:
-    """morning: today+yesterday=0, older=-2.0. evening: today=0, yesterday=-1.0, older=-2.0"""
+    """旧版兼容：morning=today+yesterday=0, older=-2.0。"""
     if not pub_date:
         return 0
     try:
@@ -45,7 +69,6 @@ def time_modifier(pub_date: str, period: str = "morning") -> float:
             return -2.0
     except ValueError:
         return 0
-
 
 def time_decay_bonus(ts: float, now: float | None = None) -> float:
     """24h: +2, 24-48h: +1, 48-72h: 0, then -1 per 12h"""

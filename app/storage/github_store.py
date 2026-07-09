@@ -4,13 +4,12 @@ import json
 from dataclasses import asdict
 from datetime import date
 from pathlib import Path
-from typing import Optional
 
 from collectors.github import GitHubRepoItem
 
 
 class GitHubStore:
-    def __init__(self, root_dir: Optional[Path] = None):
+    def __init__(self, root_dir: Path | None = None):
         if root_dir is None:
             root_dir = Path(__file__).resolve().parent.parent.parent
         self.github_dir = root_dir / "data" / "github"
@@ -27,7 +26,9 @@ class GitHubStore:
     def load_latest_snapshot(self) -> list[GitHubRepoItem]:
         if not self.github_dir.exists():
             return []
-        dated_dirs = sorted([d for d in self.github_dir.iterdir() if d.is_dir()], reverse=True)
+        dated_dirs = sorted(
+            [d for d in self.github_dir.iterdir() if d.is_dir()], reverse=True
+        )
         for day_dir in dated_dirs:
             path = day_dir / "repos.json"
             if not path.exists():

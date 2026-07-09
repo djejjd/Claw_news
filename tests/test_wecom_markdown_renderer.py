@@ -210,7 +210,7 @@ class TestRenderDigestLinkFormat:
         """Item without URL should still render title without link syntax."""
         result = make_result([make_item(title="No Link", url="")])
         md = render_digest(result)
-        assert "**1.** No Link" in md
+        assert "[新] No Link" in md
         assert "](" not in md
 
 
