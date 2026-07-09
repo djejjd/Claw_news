@@ -5,6 +5,9 @@ from app.github_ranking import rank_and_recommend
 from collectors.github import GitHubRepoItem
 
 
+_TODAY = date.today().isoformat()
+
+
 def _make_item(**kwargs) -> GitHubRepoItem:
     data = {
         "full_name": "owner/repo",
@@ -186,3 +189,31 @@ class TestTop3Output:
         result = rank_and_recommend(items, {}, top_n=5)
         scores = [r["final_score"] for r in result]
         assert scores == sorted(scores, reverse=True)
+
+
+class TestLowStarFilter:
+    def test_low_star_items_are_excluded(self):
+        today = date.today()
+        items = [
+            _make_item(full_name="owner/spam", stars=5, pushed_at=f"{today.isoformat()}T00:00:00Z"),
+            _make_item(full_name="owner/good", stars=100, pushed_at=f"{today.isoformat()}T00:00:00Z"),
+        ]
+        result = rank_and_recommend(items, {}, top_n=2)
+        names = [r["item"].full_name for r in result]
+        assert "owner/spam" not in names
+        assert "owner/good" in names
+
+    def test_all_low_star_returns_empty(self):
+        items = [
+            _make_item(full_name=f"owner/repo{i}", stars=i)
+            for i in range(5)
+        ]
+        result = rank_and_recommend(items, {}, top_n=3)
+        assert result == []
+
+    def test_exactly_at_threshold_is_kept(self):
+        today = date.today()
+        item = _make_item(full_name="owner/min", stars=10, pushed_at=f"{today.isoformat()}T00:00:00Z")
+        result = rank_and_recommend([item], {}, top_n=1)
+        assert len(result) == 1
+        assert result[0]["item"].full_name == "owner/min"

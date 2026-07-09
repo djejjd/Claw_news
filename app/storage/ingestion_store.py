@@ -61,11 +61,9 @@ class IngestionStore:
             seen.add(c.canonical_key)
         index["seen_keys"] = sorted(seen)
 
-        # 合并 source_failures
+        # source_failures 只保留本轮，不跨轮累积
         if source_failures:
-            existing_sf = set(index.get("source_failures", []))
-            existing_sf.update(source_failures)
-            index["source_failures"] = sorted(existing_sf)
+            index["source_failures"] = sorted(set(source_failures))
 
         index["item_count"] = index.get("item_count", 0) + len(candidates)
         index["updated_at"] = now_iso

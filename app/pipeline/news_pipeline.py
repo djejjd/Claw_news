@@ -12,6 +12,7 @@ from app.classifiers.topic_classifier import TopicClassifier
 from app.pipeline.context import RunContext
 from app.renderers.wecom_markdown import make_preview, render_digest
 from app.storage.github_store import GitHubStore
+from app.storage.ingest_status_store import IngestStatusStore
 from app.storage.ingestion_store import IngestionStore
 from app.storage.source_metrics_store import SourceMetricsStore
 from app.tools.llm import summarize_news
@@ -49,11 +50,22 @@ def _match_selected_candidate(selected: list, headline_item: dict):
     url = headline_item.get("url", "")
     title = headline_item.get("title", "")
 
+    # 1. exact URL match
     if url:
         for candidate in selected:
             if candidate.url == url:
                 return candidate
 
+    # 2. canonical_key fallback（title 可能相同，置信度高于 title 匹配）
+    if url:
+        from app.pipeline.candidate import CandidateItem
+        target_key = CandidateItem.make_canonical_key(url)
+        if target_key:
+            for candidate in selected:
+                if getattr(candidate, "canonical_key", "") == target_key:
+                    return candidate
+
+    # 3. exact title match（最低优先级，最后手段）
     if title:
         for candidate in selected:
             if candidate.title == title:
@@ -62,26 +74,9 @@ def _match_selected_candidate(selected: list, headline_item: dict):
     return None
 
 
-def _collect_source_failures(store: IngestionStore, start: str, end: str) -> list[str]:
-    """聚合时间窗口内所有 index.json 的 source_failures。"""
-    start_d = datetime.fromisoformat(start).date()
-    end_d = datetime.fromisoformat(end).date()
-    failures: set[str] = set()
-    if not store.ingestion_dir.exists():
-        return []
-    for d in store.ingestion_dir.iterdir():
-        if not d.is_dir():
-            continue
-        try:
-            dir_date = date.fromisoformat(d.name)
-        except ValueError:
-            continue
-        if not (start_d <= dir_date <= end_d):
-            continue
-        idx = store._load_index(d)
-        if "source_failures" in idx:
-            failures.update(idx["source_failures"])
-    return sorted(failures)
+def _collect_source_failures(ingest_status: dict) -> list[str]:
+    """从本次 publish 启动时捕获的 ingest status 快照中读取失败源。"""
+    return list(ingest_status.get("failed_sources", []))
 
 
 async def run_pipeline(ctx: RunContext, config) -> PublishResult:
@@ -99,6 +94,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     pushed_urls = state_store.load_pushed_urls()
     pushed_keys = state_store.load_published_keys()
     ingestion_store = IngestionStore()
+    ingest_status_snapshot = IngestStatusStore().load_status()
     metrics_store = SourceMetricsStore()
 
     # 1. 读池
@@ -110,6 +106,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     elif ctx.publish_scope == "all_digest":
         candidates = [item for item in candidates if item.category in {"ai", "tool", "game"}]
     if not candidates:
+        _write_publish_status(_make_publish_status("skipped", 0, False, []))
         return PublishResult(
             status="skipped",
             selected_count=0,
@@ -157,6 +154,8 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         github_projects=github_dicts if github_dicts else None,
     )
     if "_parse_error" in llm_result and not llm_result.get("headline_items"):
+        _write_publish_status(_make_publish_status(
+            "failed", len(selected), False, [f"llm_parse: {llm_result['_parse_error']}"]))
         return PublishResult(
             status="failed",
             selected_count=len(selected),
@@ -208,16 +207,13 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         pushed_urls=pushed_urls,
     )
 
-    source_failures = _collect_source_failures(
-        ingestion_store,
-        ctx.time_window_start,
-        ctx.time_window_end,
-    )
+    source_failures = _collect_source_failures(ingest_status_snapshot)
 
     # 7. 推送
     try:
         pr = await WeComPusher(config.wecom_webhook_url).push_single_markdown(markdown)
     except Exception as exc:
+        _write_publish_status(_make_publish_status("failed", len(selected), False, [f"push: {exc}"]))
         return PublishResult(
             status="failed",
             selected_count=len(selected),
@@ -227,6 +223,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             errors=[f"push: {exc}"],
         )
     if not pr.success:
+        _write_publish_status(_make_publish_status("failed", len(selected), False, ["push_failed"]))
         return PublishResult(
             status="failed",
             selected_count=len(selected),
@@ -270,24 +267,66 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
                         "core_summary": it["core_summary"],
                         "importance": it["importance"],
                         "trend": it["trend"],
+                        "source": matched.source if matched else "",
+                        "display_category": _display_category_for(matched) if matched else "AI",
+                        "topic_label": _topic_label_for(matched) if matched else None,
+                        "topic_confidence": matched.topic_confidence if matched else None,
+                        "final_score": matched.final_score if matched else None,
                     }
                     for it in llm_result["headline_items"]
+                    for matched in [_match_selected_candidate(selected, it)]
                 ],
                 daily_judgement=llm_result["daily_judgement"],
                 source_failures=source_failures,
                 published_urls=published_urls,
                 published_keys=published_keys_list,
-                github_projects=llm_result.get("github_projects", []),
+                github_projects=[
+                    {
+                        "full_name": r["item"].full_name,
+                        "final_score": r["final_score"],
+                        "activity": r["activity"],
+                        "popularity": r["popularity"],
+                        "relevance": r["relevance"],
+                        "penalty": r["penalty"],
+                        "recommendation": r["recommendation"],
+                        "matched_topics": r["item"].matched_topics,
+                        "matched_keywords": r["item"].matched_keywords,
+                    }
+                    for r in github_ranked
+                ],
+                errors=errors,
             )
         )
     except Exception:
         errors.append("state_write_failed")
 
+    publish_ok = len(errors) == 0
+    _write_publish_status(_make_publish_status(
+        "ok" if publish_ok else "degraded", len(selected), True, errors))
     return PublishResult(
-        status="ok",
+        status="ok" if publish_ok else "degraded",
         selected_count=len(selected),
         pushed=True,
         message_type="markdown",
         summary_preview=make_preview(markdown),
         errors=errors,
     )
+
+
+def _make_publish_status(status, selected_count, pushed, errors):
+    return {
+        "status": status,
+        "selected_count": selected_count,
+        "pushed": pushed,
+        "errors": errors,
+        "recorded_at": datetime.now().isoformat(),
+    }
+
+
+def _write_publish_status(payload: dict) -> None:
+    """写入 durable publish 状态，供 /health 和后续排查使用。"""
+    path = _DATA_DIR / "publish_status.json"
+    import json
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)

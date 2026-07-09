@@ -95,7 +95,7 @@ class NewsAgent:
             return {
                 "status": "failed",
                 "fetched_count": 0,
-                "pushed": True,
+                "pushed": False,
                 "summary_preview": "",
                 "errors": [f"pipeline: {detail}"],
             }

@@ -4,6 +4,7 @@ These tests mock the pipeline's internal dependencies to verify core
 behaviours: success, push failure, state persistence, and no-candidate skip.
 """
 
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -276,6 +277,10 @@ class TestPipelineNoCandidates:
         assert result.status == "skipped"
         assert result.selected_count == 0
         assert result.pushed is False
+        publish_status = json.loads((tmp_path / "publish_status.json").read_text(encoding="utf-8"))
+        assert publish_status["status"] == "skipped"
+        assert publish_status["selected_count"] == 0
+        assert publish_status["pushed"] is False
 
 
 class TestPipelinePublishScope:
@@ -301,6 +306,7 @@ class TestPipelinePublishScope:
             ) as mock_llm,
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
         ):
             mock_is_inst = MagicMock()
             mock_is_inst.load_window_candidates.return_value = [ai_candidate, game_candidate]
@@ -312,6 +318,7 @@ class TestPipelinePublishScope:
             mock_pusher = MagicMock()
             mock_pusher.push_single_markdown = AsyncMock(return_value=push_result)
             mock_pusher_cls.return_value = mock_pusher
+            mock_metrics_store_cls.return_value.write_selected_counts.return_value = 1
 
             result = await run_pipeline(ctx, config)
 
@@ -353,6 +360,7 @@ class TestPipelineGitHubSupplement:
             ) as mock_llm,
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
         ):
             mock_is_inst = MagicMock()
             mock_is_inst.load_window_candidates.return_value = [candidate]
@@ -363,6 +371,7 @@ class TestPipelineGitHubSupplement:
             mock_pusher = MagicMock()
             mock_pusher.push_single_markdown = AsyncMock(return_value=push_result)
             mock_pusher_cls.return_value = mock_pusher
+            mock_metrics_store_cls.return_value.write_selected_counts.return_value = 1
 
             result = await run_pipeline(ctx, config)
 
@@ -378,6 +387,37 @@ class TestPipelineGitHubSupplement:
         pushed_markdown = mock_pusher.push_single_markdown.await_args.args[0]
         assert "今日值得看项目" in pushed_markdown
         assert "owner/repo" in pushed_markdown
+
+    @pytest.mark.asyncio
+    async def test_llm_parse_failure_writes_failed_publish_status(self, tmp_path: Path):
+        from app.pipeline.news_pipeline import run_pipeline
+
+        config = _make_config()
+        ctx = _make_ctx()
+        candidate = _make_candidate()
+        llm_result = {"_parse_error": "bad json", "headline_items": []}
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=llm_result),
+            ),
+            patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
+        ):
+            mock_is.return_value.load_window_candidates.return_value = [candidate]
+            mock_cls.return_value = MagicMock()
+
+            result = await run_pipeline(ctx, config)
+
+        assert result.status == "failed"
+        assert result.pushed is False
+        publish_status = json.loads((tmp_path / "publish_status.json").read_text(encoding="utf-8"))
+        assert publish_status["status"] == "failed"
+        assert publish_status["selected_count"] == 1
+        assert publish_status["pushed"] is False
+        assert publish_status["errors"] == ["llm_parse: bad json"]
 
     @pytest.mark.asyncio
     async def test_github_exposure_recorded_only_after_successful_push(self, tmp_path: Path):
@@ -476,6 +516,63 @@ class TestPipelineGitHubSupplement:
 
         assert result.status == "failed"
         mock_exposure.return_value.record.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_source_failures_use_pipeline_start_snapshot(self, tmp_path: Path):
+        from app.pipeline.news_pipeline import run_pipeline
+
+        config = _make_config()
+        ctx = _make_ctx()
+        candidate = _make_candidate(url="https://example.com/ai", category="ai")
+        llm_result = _make_llm_result()
+        push_result = _make_push_result(success=True)
+
+        async def mutate_status_before_push(markdown: str):
+            return push_result
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=llm_result),
+            ),
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
+            patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
+            patch("app.pipeline.news_pipeline.StateStore") as mock_state_store_cls,
+            patch("app.pipeline.news_pipeline.IngestStatusStore") as mock_ingest_status_store_cls,
+        ):
+            mock_is.return_value.load_window_candidates.return_value = [candidate]
+            mock_cls.return_value = MagicMock()
+            mock_pusher_cls.return_value.push_single_markdown = AsyncMock(
+                side_effect=mutate_status_before_push
+            )
+            mock_metrics_store_cls.return_value.write_selected_counts.return_value = 1
+            mock_state_store_cls.return_value.load_pushed_urls.return_value = set()
+            mock_state_store_cls.return_value.load_published_keys.return_value = set()
+            mock_ingest_status_store_cls.return_value.load_status.side_effect = [
+                {
+                    "last_ingest_at": "2026-05-18T08:00:00",
+                    "last_item_count": 1,
+                    "successful_sources": ["qbitai"],
+                    "failed_sources": ["qbitai: timeout"],
+                    "skipped_sources": [],
+                },
+                {
+                    "last_ingest_at": "2026-05-18T08:30:00",
+                    "last_item_count": 1,
+                    "successful_sources": ["sspai"],
+                    "failed_sources": ["sspai: blocked"],
+                    "skipped_sources": [],
+                },
+            ]
+
+            result = await run_pipeline(ctx, config)
+
+        assert result.status == "ok"
+        digest_payload = mock_state_store_cls.return_value.write_digest.call_args.args[0]
+        assert digest_payload.source_failures == ["qbitai: timeout"]
 
 
 class TestPipelineDigestPresentation:

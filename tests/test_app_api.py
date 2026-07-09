@@ -1,10 +1,16 @@
 """Tests for app/main.py — FastAPI entrypoints and scheduler."""
 
 import asyncio
+import importlib
+import sys
+import types
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+_REAL_PATH_EXISTS = Path.exists
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -51,6 +57,27 @@ def _make_mock_agent_skipped():
     return mock
 
 
+def _load_app_module():
+    class _DummyScheduler:
+        def __init__(self, *args, **kwargs):
+            self.jobs = []
+
+        def add_job(self, *args, **kwargs):
+            self.jobs.append((args, kwargs))
+
+        def start(self):
+            return None
+
+        def shutdown(self, wait=False):
+            return None
+
+    scheduler_module = types.ModuleType("apscheduler.schedulers.asyncio")
+    scheduler_module.AsyncIOScheduler = _DummyScheduler
+
+    with patch.dict(sys.modules, {"apscheduler.schedulers.asyncio": scheduler_module}):
+        return importlib.import_module("app.main")
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -61,14 +88,17 @@ class TestHealthEndpoint:
         """GET /health returns 200 with healthy status."""
         from fastapi.testclient import TestClient
 
-        # Must import app.main AFTER env vars are set by the fixture
-        with (
-            patch("app.main.agent", _make_mock_agent()),
-            patch("app.main.scheduler", MagicMock()),
-        ):
-            from app.main import app
+        main_module = _load_app_module()
 
-            client = TestClient(app)
+        def _path_exists(path_obj: Path) -> bool:
+            return False if path_obj.name == "publish_status.json" else _REAL_PATH_EXISTS(path_obj)
+
+        with (
+            patch.object(main_module, "agent", _make_mock_agent()),
+            patch.object(main_module, "scheduler", MagicMock()),
+            patch("pathlib.Path.exists", autospec=True, side_effect=_path_exists),
+        ):
+            client = TestClient(main_module.app)
             resp = client.get("/health")
 
         assert resp.status_code == 200
@@ -79,26 +109,28 @@ class TestHealthEndpoint:
         """Service startup should not launch an immediate ingest task."""
         from fastapi.testclient import TestClient
 
+        main_module = _load_app_module()
         with (
-            patch("app.main.agent", _make_mock_agent()),
-            patch("app.main.scheduler", MagicMock()),
+            patch.object(main_module, "agent", _make_mock_agent()),
+            patch.object(main_module, "scheduler", MagicMock()),
         ):
-            from app.main import app
-
-            with TestClient(app):
+            with TestClient(main_module.app):
                 pass
 
     def test_health_includes_ingest_status(self):
         """GET /health exposes the latest ingest summary."""
         from fastapi.testclient import TestClient
 
-        with (
-            patch("app.main.agent", _make_mock_agent()),
-            patch("app.main.scheduler", MagicMock()),
-            patch("app.main.IngestStatusStore") as mock_store,
-        ):
-            from app.main import app
+        main_module = _load_app_module()
+        def _path_exists(path_obj: Path) -> bool:
+            return False if path_obj.name == "publish_status.json" else _REAL_PATH_EXISTS(path_obj)
 
+        with (
+            patch.object(main_module, "agent", _make_mock_agent()),
+            patch.object(main_module, "scheduler", MagicMock()),
+            patch.object(main_module, "IngestStatusStore") as mock_store,
+            patch("pathlib.Path.exists", autospec=True, side_effect=_path_exists),
+        ):
             mock_store.return_value.load_status.return_value = {
                 "last_ingest_at": "2026-05-18T08:00:00",
                 "last_item_count": 3,
@@ -106,23 +138,48 @@ class TestHealthEndpoint:
                 "failed_sources": [],
                 "skipped_sources": [],
             }
-            client = TestClient(app)
+            client = TestClient(main_module.app)
             resp = client.get("/health")
 
         assert resp.status_code == 200
         assert resp.json()["ingest"]["last_item_count"] == 3
 
+    def test_health_is_degraded_when_source_is_skipped(self):
+        """Skipped source should pull overall health down to degraded."""
+        from fastapi.testclient import TestClient
+
+        main_module = _load_app_module()
+        with (
+            patch.object(main_module, "agent", _make_mock_agent()),
+            patch.object(main_module, "scheduler", MagicMock()),
+            patch.object(main_module, "IngestStatusStore") as mock_store,
+        ):
+            mock_store.return_value.load_status.return_value = {
+                "last_ingest_at": "2099-05-18T08:00:00",
+                "last_item_count": 3,
+                "successful_sources": ["rss"],
+                "failed_sources": [],
+                "skipped_sources": ["github: optional"],
+            }
+
+            client = TestClient(main_module.app)
+            resp = client.get("/health")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "degraded"
+        assert data["sources"]["github"] == "degraded"
+
     def test_root_returns_200(self):
         """GET / returns 200 with service info."""
         from fastapi.testclient import TestClient
 
+        main_module = _load_app_module()
         with (
-            patch("app.main.agent", _make_mock_agent()),
-            patch("app.main.scheduler", MagicMock()),
+            patch.object(main_module, "agent", _make_mock_agent()),
+            patch.object(main_module, "scheduler", MagicMock()),
         ):
-            from app.main import app
-
-            client = TestClient(app)
+            client = TestClient(main_module.app)
             resp = client.get("/")
 
         assert resp.status_code == 200
@@ -138,13 +195,12 @@ class TestRunNewsEndpoint:
 
         mock_agent = _make_mock_agent()
 
+        main_module = _load_app_module()
         with (
-            patch("app.main.agent", mock_agent),
-            patch("app.main.scheduler", MagicMock()),
+            patch.object(main_module, "agent", mock_agent),
+            patch.object(main_module, "scheduler", MagicMock()),
         ):
-            from app.main import app
-
-            client = TestClient(app)
+            client = TestClient(main_module.app)
             resp = client.post("/run/news")
 
         assert resp.status_code == 200
@@ -160,13 +216,12 @@ class TestRunNewsEndpoint:
 
         mock_agent = _make_mock_agent_skipped()
 
+        main_module = _load_app_module()
         with (
-            patch("app.main.agent", mock_agent),
-            patch("app.main.scheduler", MagicMock()),
+            patch.object(main_module, "agent", mock_agent),
+            patch.object(main_module, "scheduler", MagicMock()),
         ):
-            from app.main import app
-
-            client = TestClient(app)
+            client = TestClient(main_module.app)
             resp = client.post("/run/news")
 
         assert resp.status_code == 200
@@ -257,7 +312,7 @@ class TestRunNewsEndpoint:
                 )
             )
 
-        assert result.status == "ok"
+        assert result.status == "degraded"  # push ok but source_metrics write short
         fake_metrics_store.write_selected_counts.assert_called_once_with(
             {"qbitai": 1, "huggingface": 1}
         )
@@ -346,7 +401,7 @@ class TestRunNewsEndpoint:
                 )
             )
 
-        assert result.status == "ok"
+        assert result.status == "degraded"  # push ok but state write partially failed
         assert "source_metrics_write_failed" in result.errors
 
 
