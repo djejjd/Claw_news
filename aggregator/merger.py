@@ -24,6 +24,18 @@ SOURCE_WEIGHTS = {
 }
 DEFAULT_SOURCE_WEIGHT = 2.0
 
+# 同一源已入选 n 条时对新候选的分数惩罚
+_SOURCE_PENALTY = {0: 0.0, 1: -1.0, 2: -2.0, 3: -3.5, 4: -5.0}
+
+
+def _source_diversity_penalty(already_selected: int) -> float:
+    """已入选 n 条时，该源后续候选的额外扣分。"""
+    if already_selected <= 0:
+        return 0.0
+    if already_selected >= 4:
+        return -5.0
+    return _SOURCE_PENALTY.get(already_selected, -5.0)
+
 
 def compute_final_score(item) -> float:
     """统一评分：source_weight + time_gravity
@@ -107,15 +119,36 @@ class Merger:
         # 分类保底：每类取最高分 1 条，剩余名额全量竞争
         selected = []
         seen_urls: set[str] = set()
+        source_counts: dict[str, int] = {}
         for category in ("ai", "tool", "game"):
             for item in deduped:
                 if normalize_category(item.category) == category and item.url not in seen_urls:
                     selected.append(item)
                     seen_urls.add(item.url)
+                    source_counts[item.source] = source_counts.get(item.source, 0) + 1
                     break
 
+        # 剩余名额：逐条选取，已多次入选的源逐步加压（多样性加分/惩罚）
         remaining = [i for i in deduped if i.url not in seen_urls]
-        selected.extend(remaining[: self.top_n - len(selected)])
+        while len(selected) < self.top_n and remaining:
+            best = None
+            best_score = -999.0
+            best_idx = -1
+            for idx, item in enumerate(remaining):
+                n = source_counts.get(item.source, 0)
+                penalty = _source_diversity_penalty(n)
+                effective = item.final_score + penalty
+                if effective > best_score:
+                    best_score = effective
+                    best = item
+                    best_idx = idx
+            if best is None:
+                break
+            selected.append(best)
+            seen_urls.add(best.url)
+            source_counts[best.source] = source_counts.get(best.source, 0) + 1
+            remaining.pop(best_idx)
+
         selected.sort(key=lambda x: x.final_score, reverse=True)
         return selected
 
