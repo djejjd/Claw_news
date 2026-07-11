@@ -56,6 +56,7 @@
 - 允许并行：无，必须先完成
 - 预计修改：`AGENTS.md`、`CLAUDE.md`
 - 不得修改：业务代码、测试、配置和设计文档
+- 完成状态：complete（`e6855c1..af51e5d` 已由主审核 AI 审核）
 - 独立交付：所有后续 AI 能从统一入口获得规则和命令
 
 ### 1. 背景
@@ -156,8 +157,9 @@ git diff -- AGENTS.md CLAUDE.md
 - 依赖任务：Task 1
 - 允许并行：完成后 Task 3、Task 4 可并行
 - 预计创建：`app/content/__init__.py`、`app/content/source_policy.py`、`app/content/time_policy.py`、`tests/test_source_policy.py`、`tests/test_time_policy.py`
-- 预计修改：`feeds.example.yaml`、`collectors/ai_rss.py`、`collectors/rss_sources.py`、`collectors/base.py`、`app/pipeline/candidate.py`、相关测试
-- 不得修改：`aggregator/merger.py`、`app/pipeline/news_pipeline.py`、GitHub 链路
+- 预计修改：`feeds.example.yaml`、`collectors/ai_rss.py`、`collectors/rss_sources.py`、`collectors/base.py`、`app/pipeline/candidate.py`、`tests/test_ai_rss.py`、`tests/test_rss_collector.py`、`tests/test_data_contracts.py`
+- 不得修改：`aggregator/merger.py`、`app/pipeline/news_pipeline.py`、`app/ingest/source_policy.py`、GitHub 链路、运行时本地 `feeds.yaml`
+- 完成状态：pending
 
 ### 1. 背景
 
@@ -186,6 +188,7 @@ class SourcePolicy:
 
 def build_source_policy_registry(feeds: list[dict]) -> dict[str, SourcePolicy]: ...
 def resolve_source_policy(source: str, registry: dict[str, SourcePolicy]) -> SourcePolicy: ...
+def load_feed_configuration(path: Path | None = None) -> dict[str, Any] | None: ...
 def candidate_effective_at(item: CandidateItem) -> tuple[datetime | None, str]: ...
 def freshness_score(age_hours: float) -> float: ...
 def is_today(value: datetime, now: datetime, tz_name: str) -> bool: ...
@@ -193,11 +196,15 @@ def is_today(value: datetime, now: datetime, tz_name: str) -> bool: ...
 
 `CandidateItem.published_at` 保持字段名不变，但值允许完整 ISO 时间；新增 `published_time_source: str = ""`，允许值 `rss / fetched_at / legacy_date / unknown`。
 
+`app/content/source_policy.py` 是来源质量、有效期与相关性 profile 的新 registry；它不得替代、迁移或改变现有 `app/ingest/source_policy.py` 的采集准入和动态拉取数量语义。
+`load_feed_configuration()` 定义在 `collectors/ai_rss.py`，是唯一读取 `feeds.yaml` 的公开解析入口：返回完整顶层映射并保留可选的 `relevance_rules`；现有 `_load_yaml_feeds()` 只从该结果提取 `feeds` 分类并保持旧调用兼容。
+
 ### 5. 修改范围
 
 - 策略字段随 feed dict 保留。
 - 环境变量形式新增源没有策略时使用保守默认值。
 - RSS `published_parsed` 转完整 ISO 时间；无发布时间时不伪造发布时间，由回退函数使用 `fetched_at`。
+- “更新所有默认 feed”仅指代码内 `DEFAULT_*_RSS_FEEDS` 与受版本控制的 `feeds.example.yaml`；不得修改开发者本地的运行时 `feeds.yaml`。
 
 ### 6. 禁止事项
 
@@ -211,6 +218,8 @@ def is_today(value: datetime, now: datetime, tz_name: str) -> bool: ...
 - [ ] 先为默认值、合法策略、非法 tier/时长/权重/profile 写失败测试。
 - [ ] 先为 24/48/72 边界、时区今日判断和旧日期回退写失败测试。
 - [ ] 再实现最小策略与时间模块。
+- [ ] 先为 YAML feed 的 `tier/retention_hours/quality_weight/filter_profile` 字段完整保留并传入 registry 写失败测试。
+- [ ] 先为顶层 `relevance_rules` 被完整保留、且旧 `_load_yaml_feeds()` 仍只返回分类 feeds 写失败测试。
 - [ ] 更新所有默认 feed 和示例配置。
 
 ### 8. 实施步骤
@@ -267,6 +276,8 @@ def test_effective_time_falls_back_to_fetched_at():
 3. 完整发布时间从 RSS 传到 `CandidateItem`。
 4. 旧 `yyyy-mm-dd` 和空发布时间存在明确回退。
 5. 时间分段和 `Asia/Shanghai` 今日边界被测试锁定。
+6. YAML 中的策略字段不会在 RSS 加载过程中丢失，且运行时本地 `feeds.yaml` 未被修改。
+7. 顶层 `relevance_rules` 可由后续 pipeline 通过 `load_feed_configuration()` 获取，且不改变现有 RSS feed 加载结果。
 
 ### 10. 检查命令
 
@@ -300,6 +311,7 @@ def test_effective_time_falls_back_to_fetched_at():
 - 允许并行：Task 4
 - 预计修改：`app/storage/ingestion_store.py`、`app/scheduler/jobs.py`、`tests/test_ingestion_store.py`、`tests/test_ingest_job.py`
 - 不得修改：相关性规则、最终选材、评分常量、GitHub 链路
+- 完成状态：pending
 
 ### 1. 背景
 
@@ -334,6 +346,8 @@ def filter_unexpired_candidates(
 ```
 
 第二个返回值是拒绝审计，至少包含 `canonical_key/source/reason/age_hours/retention_hours`。
+
+`load_recent_candidates()` 与 `filter_unexpired_candidates()` 都定义在 `app/storage/ingestion_store.py`；不得为这两个接口新建计划外模块。
 
 ### 5. 修改范围
 
@@ -429,6 +443,7 @@ def test_source_retention_filters_independently():
 - 预计创建：`app/classifiers/relevance_filter.py`、`tests/test_relevance_filter.py`
 - 预计修改：`app/classifiers/__init__.py`、`feeds.example.yaml`
 - 不得修改：storage、Merger、pipeline 编排、GitHub 链路
+- 完成状态：pending
 
 ### 1. 背景
 
@@ -457,9 +472,12 @@ class RelevanceFilter:
     def evaluate(self, item: CandidateItem, policy: SourcePolicy) -> RelevanceResult: ...
     def evaluate_batch(self, items: list[CandidateItem], policies: dict[str, SourcePolicy]) \
             -> tuple[list[CandidateItem], list[dict]]: ...
+
+def build_relevance_filter(config: Mapping[str, Any] | None = None) -> RelevanceFilter: ...
 ```
 
 `reason` 固定使用：`negative_rule`、`positive_rule`、`classifier_pass`、`below_threshold`、`rule_conflict`。
+`build_relevance_filter()` 只解析已加载的顶层 `relevance_rules` 映射并合并缺省规则，不读取 YAML、不访问网络；Task 6 负责把运行时已加载配置传入该工厂。
 
 ### 5. 修改范围
 
@@ -517,6 +535,7 @@ def test_lenient_deep_source_accepts_summary_evidence():
 - [ ] 运行 `./venv/bin/pytest tests/test_relevance_filter.py -v`，预期模块不存在失败。
 - [ ] 实现归一化、正负匹配、冲突优先级、置信度和 batch 审计。
 - [ ] 在示例配置中增加可覆盖的 `relevance_rules` 顶层结构；代码内只保留缺省规则。
+- [ ] 为配置覆盖、非法规则配置和缺省回退增加失败测试；不得由 `RelevanceFilter` 自行读取配置文件。
 - [ ] 运行 Task 检查命令。
 
 ### 9. 验收标准
@@ -525,6 +544,7 @@ def test_lenient_deep_source_accepts_summary_evidence():
 2. 三档 profile 只改变复核阈值，不绕过排除规则。
 3. 每次判断都有稳定 reason 和命中证据。
 4. 组件无 I/O、无网络、给定输入输出确定。
+5. `relevance_rules` 可通过纯配置工厂覆盖，且不会被过滤器自行读取文件。
 
 ### 10. 检查命令
 
@@ -557,6 +577,7 @@ def test_lenient_deep_source_accepts_summary_evidence():
 - 预计创建：`app/pipeline/selection.py`、`tests/test_content_selection.py`
 - 预计修改：`aggregator/merger.py`、`tests/test_merger.py`
 - 不得修改：storage、collector、相关性规则、GitHub 链路
+- 完成状态：pending
 
 ### 1. 背景
 
@@ -588,6 +609,7 @@ class SelectionResult:
     category_counts: dict[str, int]
 
 def compute_final_score(item: CandidateItem, policy: SourcePolicy, now: datetime) -> float: ...
+def source_diversity_penalty(selected_count: int) -> float: ...
 def select_digest(items: list[CandidateItem], policies: dict[str, SourcePolicy],
                   now: datetime, tz_name: str = "Asia/Shanghai",
                   top_n: int = 10) -> SelectionResult: ...
@@ -696,6 +718,7 @@ def test_source_counts_accumulate_across_phases():
 - 允许并行：无
 - 预计修改：`app/pipeline/news_pipeline.py`、`app/tools/summary_result.py`、`app/storage/source_metrics_store.py`、`tests/test_news_pipeline.py`、`tests/test_main.py`、`tests/test_source_metrics_store.py`
 - 不得修改：collector、规则常量、GitHub ranking、renderer 文案
+- 完成状态：pending
 
 ### 1. 背景
 
@@ -733,6 +756,7 @@ def append_publish_source_metrics(
 ### 5. 修改范围
 
 - 使用 `config.tz` 判断今日。
+- 通过 Task 2 的 `load_feed_configuration()` 获取运行时已加载的 `relevance_rules` 映射，再传给 `build_relevance_filter()`；不得在 pipeline 中重新解析 YAML 或复制 Task 4 规则。
 - 相关性 rejected 不进入 LLM 输入。
 - 历史读取失败降级到今日 loader，并把 publish 状态设为 `degraded`。
 - publish metrics 按真实 item.source 聚合；ingest metrics 继续表达 collector=`rss` 的采集轮次，两者不得互相覆盖。
@@ -809,9 +833,10 @@ async def test_historical_read_failure_degrades_to_today(monkeypatch):
 
 - 依赖任务：Task 6
 - 允许并行：无
-- 预计创建：`scripts/replay-content-selection.py`、`tests/test_content_replay.py`
+- 预计创建：`app/tools/content_replay.py`、`scripts/replay-content-selection.py`、`tests/test_content_replay.py`
 - 预计修改：`feeds.example.yaml`、`docs/operations/daily-checklist.md`、`docs/operations/troubleshooting.md`、`docs/README.md`
 - 不得修改：生产推送状态、GitHub 链路、评分常量
+- 完成状态：pending
 
 ### 1. 背景
 
@@ -830,7 +855,7 @@ Task 6 已能生成 selection/relevance evidence。
 命令：
 
 ```bash
-python scripts/replay-content-selection.py --data-dir data --at 2026-07-11T09:00:00+08:00 --format json
+./venv/bin/python scripts/replay-content-selection.py --data-dir data --at 2026-07-11T09:00:00+08:00 --format json
 ```
 
 JSON 至少输出 `candidate_count/eligible_count/selected_count/source_distribution/category_distribution/today_count/backfill_count/rejection_reasons/selected`。
@@ -838,6 +863,7 @@ JSON 至少输出 `candidate_count/eligible_count/selected_count/source_distribu
 ### 5. 修改范围
 
 - 脚本只调用纯读取、过滤和 selection 接口。
+- 可导入的 `run_replay()` 放在 `app/tools/content_replay.py`；`scripts/replay-content-selection.py` 只保留 CLI 参数解析、调用和输出，避免以带连字符的脚本文件作为 Python import 目标。
 - 支持 `--format json` 和默认可读文本。
 - 文档说明如何调整源策略和如何回放。
 
@@ -890,9 +916,9 @@ def test_replay_reports_backfill_and_rejections(tmp_path):
 
 ```bash
 ./venv/bin/pytest tests/test_content_replay.py -v
-./venv/bin/ruff check scripts/replay-content-selection.py tests/test_content_replay.py
-./venv/bin/ruff format --check scripts/replay-content-selection.py tests/test_content_replay.py
-python scripts/replay-content-selection.py --help
+./venv/bin/ruff check app/tools/content_replay.py scripts/replay-content-selection.py tests/test_content_replay.py
+./venv/bin/ruff format --check app/tools/content_replay.py scripts/replay-content-selection.py tests/test_content_replay.py
+./venv/bin/python scripts/replay-content-selection.py --help
 ```
 
 ### 11. 交付前自检
@@ -914,8 +940,9 @@ python scripts/replay-content-selection.py --help
 
 - 依赖任务：Task 1 至 Task 7
 - 允许并行：可把代码审查和历史回放交给不同审核 AI，但不得同时修改代码
-- 预计修改：仅测试修正、任务直接相关缺陷和 `docs/operations/content-selection-acceptance.md`
-- 不得修改：已批准常量、范围外重构、GitHub 链路、新功能
+- 预计修改：`docs/operations/content-selection-acceptance.md`
+- 不得修改：业务代码、测试、已批准常量、范围外重构、GitHub 链路、新功能
+- 完成状态：pending
 
 ### 1. 背景
 
@@ -935,8 +962,8 @@ python scripts/replay-content-selection.py --help
 
 ### 5. 修改范围
 
-- 允许修复本功能直接导致的测试或语义缺陷。
-- 每个修复必须先增加复现测试并单独审核。
+- 本 Task 不直接修复代码、测试或语义缺陷；发现缺陷时必须停止验收并新建一个范围独立的纠正 Task。
+- 每个纠正 Task 必须先增加复现测试、单独审核、单独提交；修复完成后 Task 8 重新执行受影响检查与完整验证。
 - 新想法写入报告后续项，不实现。
 
 ### 6. 禁止事项
@@ -975,7 +1002,7 @@ make lint
 - [ ] 逐条核对设计第 14 节 12 项验收标准；每项填写证据命令、输出摘要和结论。
 - [ ] 执行 spec compliance review：只检查实现是否忠实覆盖设计，不提范围外优化。
 - [ ] 执行 code quality review：检查边界、错误语义、可维护性和测试可信度。
-- [ ] 若发现缺陷，退回对应 Task 修复并重新执行受影响检查与完整验证。
+- [ ] 若发现缺陷，停止并创建范围独立的纠正 Task；该 Task 审核完成后重新执行受影响检查与完整验证。
 
 ### 9. 验收标准
 
@@ -994,7 +1021,7 @@ git diff --check
 make test
 make lint
 ./venv/bin/ruff format --check .
-python scripts/replay-content-selection.py --data-dir data --at 2026-07-11T09:00:00+08:00 --format json
+./venv/bin/python scripts/replay-content-selection.py --data-dir data --at 2026-07-11T09:00:00+08:00 --format json
 ```
 
 预期：工作区改动均有归属；diff check、测试、lint、format 通过；回放退出码 0。
