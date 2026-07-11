@@ -1,4 +1,4 @@
-"""Task 4: relevance_filter 失败测试 — 模块/接口不存在时预期失败。"""
+"""Task 4: 跨分类相关性过滤测试。"""
 
 import pytest
 
@@ -198,7 +198,63 @@ def test_invalid_rule_config_uses_default():
 
 # ---- 所有 5 个 reason 值 ----
 
+def test_classifier_pass_for_ai_item():
+    """AI 项无正向词但 TopicClassifier 匹配时应通过 classifier_pass。"""
+    from app.classifiers.relevance_filter import RelevanceFilter
+    from app.content.source_policy import SourcePolicy
+
+    policy = SourcePolicy("qbitai", "vertical", 48, 3.5, "standard")
+    result = RelevanceFilter().evaluate(
+        _make_item(
+            title="分布式系统延迟优化",
+            summary="latency reduction for inference serving",
+            source="qbitai", category="ai",
+        ),
+        policy,
+    )
+    assert result.accepted is True
+    assert result.reason == "classifier_pass"
+    assert result.confidence >= 0.5
+
+
+def test_tool_game_fallback_confidence_zero_without_keywords():
+    """tool/game 无正向词命中时 fallback 置信度为 0.1。"""
+    from app.classifiers.relevance_filter import RelevanceFilter
+    from app.content.source_policy import SourcePolicy
+
+    policy = SourcePolicy("ithome", "fast_news", 24, 2.0, "strict")
+    result = RelevanceFilter().evaluate(
+        _make_item(
+            title="普通资讯报道", summary="近期社会热点新闻汇总",
+            source="ithome", category="tool",
+        ),
+        policy,
+    )
+    assert result.accepted is False
+    assert result.reason == "below_threshold"
+
+
+def test_tool_game_fallback_confidence_with_keywords():
+    """tool/game 有正向词命中时走 positive_rule 而非 classifier_pass。"""
+    from app.classifiers.relevance_filter import RelevanceFilter
+    from app.content.source_policy import SourcePolicy
+
+    policy = SourcePolicy("gcores", "deep", 72, 4.0, "lenient")
+    result = RelevanceFilter().evaluate(
+        _make_item(
+            title="独立游戏开发心得", summary="使用 Unity 引擎制作",
+            source="gcores", category="game",
+        ),
+        policy,
+    )
+    assert result.accepted is True
+    assert result.reason == "positive_rule"
+
+
 def test_all_reason_values_appear():
     """验证 5 个 reason 枚举值在测试中都被覆盖。"""
-    reasons = {"negative_rule", "positive_rule", "rule_conflict", "below_threshold"}
-    assert len(reasons) == 4  # classifier_pass 在 TopicClassifier 命中时出现
+    reasons = {
+        "negative_rule", "positive_rule", "rule_conflict",
+        "below_threshold", "classifier_pass",
+    }
+    assert len(reasons) == 5

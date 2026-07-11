@@ -91,8 +91,8 @@ class RelevanceFilter:
 
         # 1. 检查排除词（跨类检查，防止 IT之家汽车促销被误标为 AI）
         all_neg_words: set[str] = set(neg_words)
-        for cat_rules in self._rules.values():
-            all_neg_words.update(cat_rules.get("negative", []))
+        for other_rules in self._rules.values():
+            all_neg_words.update(other_rules.get("negative", []))
         matched_neg = tuple(w for w in all_neg_words if w in text)
 
         # 2. 检查正向词
@@ -161,27 +161,24 @@ class RelevanceFilter:
     # ---- Internal ----
 
     def _classifier_confidence(self, item: CandidateItem) -> float:
-        """调用 TopicClassifier 获取跨分类置信度。
+        """获取跨分类置信度，不污染 item.topic。
 
+        tool/game 用正向词命中数做轻量判断（TopicClassifier 只面向 AI）。
         置信度映射：0.9 / 0.7 / 0.5 / 0.3 / 0.1
         """
+        # TopicClassifier 只面向 AI，对 tool/game 不适用
+        if item.category in ("tool", "game"):
+            cat_rules = self._rules.get(item.category, {})
+            pos_words = cat_rules.get("positive", [])
+            text = f"{item.title} {item.summary or ''}".lower()
+            pos_hits = sum(1 for w in pos_words if w in text)
+            return 0.5 if pos_hits else 0.1
+
         from app.classifiers.topic_classifier import TopicClassifier
 
         tc = TopicClassifier()
         tc.classify(item)
         tc_conf = item.topic_confidence or 0.0
-
-        # TopicClassifier 只面向 AI，对 tool/game 的 fallback 不可信
-        if item.category in ("tool", "game"):
-            # 用正向词做轻量补充判断
-            cat_rules = self._rules.get(item.category, {})
-            pos_words = cat_rules.get("positive", [])
-            text = f"{item.title} {item.summary or ''}".lower()
-            pos_hits = sum(1 for w in pos_words if w in text)
-            if pos_hits:
-                return 0.5
-            return 0.1
-
         return tc_conf if tc_conf > 0 else 0.1
 
 
@@ -199,6 +196,9 @@ def build_relevance_filter(config: Mapping[str, Any] | None = None) -> Relevance
         raw_rules = config.get("relevance_rules")
         if isinstance(raw_rules, dict) and raw_rules:
             return RelevanceFilter(rules=raw_rules)
-    except Exception:
-        pass
+    except (TypeError, KeyError):
+        import logging
+        logging.getLogger(__name__).warning(
+            "relevance_rules 配置解析失败，使用默认规则"
+        )
     return RelevanceFilter()
