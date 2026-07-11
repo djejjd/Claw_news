@@ -17,39 +17,128 @@ from app.pipeline.candidate import CandidateItem
 _DEFAULT_RULES: dict[str, dict[str, list[str]]] = {
     "ai": {
         "positive": [
-            "ai", "大模型", "gpt", "llm", "agent", "智能体",
-            "训练", "推理", "开源", "模型", "深度学习", "机器学习",
-            "神经网络", "transformer", "扩散", "多模态", "embedd",
-            "fine-tun", "预训练", "对齐", "rlhf", "benchmark",
-            "评测", "论文", "研究", "发布", "api", "token",
-            "算力", "gpu", "集群", "部署",
+            "ai",
+            "大模型",
+            "gpt",
+            "llm",
+            "agent",
+            "智能体",
+            "训练",
+            "推理",
+            "开源",
+            "模型",
+            "深度学习",
+            "机器学习",
+            "神经网络",
+            "transformer",
+            "扩散",
+            "多模态",
+            "embedd",
+            "fine-tun",
+            "预训练",
+            "对齐",
+            "rlhf",
+            "benchmark",
+            "评测",
+            "论文",
+            "研究",
+            "发布",
+            "api",
+            "token",
+            "算力",
+            "gpu",
+            "集群",
+            "部署",
         ],
         "negative": [],
     },
     "tool": {
         "positive": [
-            "工具", "app", "软件", "硬件", "效率", "插件", "扩展",
-            "开发", "编程", "代码", "开源项目", "框架", "库",
-            "sdk", "api", "ide", "编辑器", "终端", "命令行",
-            "自动化", "脚本", "部署", "运维", "监控", "安全",
-            "芯片", "处理器", "手机", "笔记本", "系统更新",
+            "工具",
+            "app",
+            "软件",
+            "硬件",
+            "效率",
+            "插件",
+            "扩展",
+            "开发",
+            "编程",
+            "代码",
+            "开源项目",
+            "框架",
+            "库",
+            "sdk",
+            "api",
+            "ide",
+            "编辑器",
+            "终端",
+            "命令行",
+            "自动化",
+            "脚本",
+            "部署",
+            "运维",
+            "监控",
+            "安全",
+            "芯片",
+            "处理器",
+            "手机",
+            "笔记本",
+            "系统更新",
         ],
         "negative": [
-            "汽车促销", "限时促销", "大降价", "清仓",
-            "运营商套餐", "话费", "流量包", "宽带优惠",
-            "电影票房", "暑期档", "国庆档", "热播剧", "综艺",
-            "家电降价", "空调促销", "冰箱洗衣机",
-            "天气", "气温", "降雨", "台风",
-            "股票", "基金", "期货", "理财",
+            "汽车促销",
+            "限时促销",
+            "大降价",
+            "清仓",
+            "运营商套餐",
+            "话费",
+            "流量包",
+            "宽带优惠",
+            "电影票房",
+            "暑期档",
+            "国庆档",
+            "热播剧",
+            "综艺",
+            "家电降价",
+            "空调促销",
+            "冰箱洗衣机",
+            "天气",
+            "气温",
+            "降雨",
+            "台风",
+            "股票",
+            "基金",
+            "期货",
+            "理财",
         ],
     },
     "game": {
         "positive": [
-            "游戏", "主机", "steam", "switch", "ps5", "xbox",
-            "手游", "上线", "赛季", "联动", "版本更新",
-            "新游", "评测", "发售", "dlc", "资料片",
-            "独立游戏", "3a", "电竞", "比赛", "战队",
-            "玩法", "剧情", "画面", "引擎",
+            "游戏",
+            "主机",
+            "steam",
+            "switch",
+            "ps5",
+            "xbox",
+            "手游",
+            "上线",
+            "赛季",
+            "联动",
+            "版本更新",
+            "新游",
+            "评测",
+            "发售",
+            "dlc",
+            "资料片",
+            "独立游戏",
+            "3a",
+            "电竞",
+            "比赛",
+            "战队",
+            "玩法",
+            "剧情",
+            "画面",
+            "引擎",
         ],
         "negative": [],
     },
@@ -101,14 +190,19 @@ class RelevanceFilter:
         # 3. 正负冲突 → 拒绝
         if matched_neg and matched_pos:
             return RelevanceResult(
-                accepted=False, confidence=0.0, reason="rule_conflict",
-                matched_positive=matched_pos, matched_negative=matched_neg,
+                accepted=False,
+                confidence=0.0,
+                reason="rule_conflict",
+                matched_positive=matched_pos,
+                matched_negative=matched_neg,
             )
 
         # 4. 排除词命中 → 拒绝
         if matched_neg:
             return RelevanceResult(
-                accepted=False, confidence=0.0, reason="negative_rule",
+                accepted=False,
+                confidence=0.0,
+                reason="negative_rule",
                 matched_negative=matched_neg,
             )
 
@@ -116,7 +210,9 @@ class RelevanceFilter:
         if matched_pos:
             confidence = 0.9 if len(matched_pos) >= 2 else 0.7
             return RelevanceResult(
-                accepted=True, confidence=confidence, reason="positive_rule",
+                accepted=True,
+                confidence=confidence,
+                reason="positive_rule",
                 matched_positive=matched_pos,
             )
 
@@ -125,14 +221,20 @@ class RelevanceFilter:
         threshold = _PROFILE_THRESHOLDS.get(policy.filter_profile, 0.5)
         if confidence >= threshold:
             return RelevanceResult(
-                accepted=True, confidence=confidence, reason="classifier_pass",
+                accepted=True,
+                confidence=confidence,
+                reason="classifier_pass",
             )
         return RelevanceResult(
-            accepted=False, confidence=confidence, reason="below_threshold",
+            accepted=False,
+            confidence=confidence,
+            reason="below_threshold",
         )
 
     def evaluate_batch(
-        self, items: list[CandidateItem], policies: dict[str, SourcePolicy],
+        self,
+        items: list[CandidateItem],
+        policies: dict[str, SourcePolicy],
     ) -> tuple[list[CandidateItem], list[dict]]:
         """批量评估，返回 (保留列表, 拒绝审计)。"""
         kept: list[CandidateItem] = []
@@ -145,17 +247,18 @@ class RelevanceFilter:
             if result.accepted:
                 kept.append(item)
             else:
-                ck = item.canonical_key or CandidateItem.make_canonical_key(
-                    item.url or "")
-                rejected.append({
-                    "canonical_key": ck,
-                    "source": item.source,
-                    "category": item.category,
-                    "reason": result.reason,
-                    "confidence": result.confidence,
-                    "matched_positive": list(result.matched_positive),
-                    "matched_negative": list(result.matched_negative),
-                })
+                ck = item.canonical_key or CandidateItem.make_canonical_key(item.url or "")
+                rejected.append(
+                    {
+                        "canonical_key": ck,
+                        "source": item.source,
+                        "category": item.category,
+                        "reason": result.reason,
+                        "confidence": result.confidence,
+                        "matched_positive": list(result.matched_positive),
+                        "matched_negative": list(result.matched_negative),
+                    }
+                )
         return kept, rejected
 
     # ---- Internal ----
@@ -184,6 +287,7 @@ class RelevanceFilter:
 
 # ---- 工厂 ----
 
+
 def build_relevance_filter(config: Mapping[str, Any] | None = None) -> RelevanceFilter:
     """从已加载配置构建 RelevanceFilter。
 
@@ -198,7 +302,6 @@ def build_relevance_filter(config: Mapping[str, Any] | None = None) -> Relevance
             return RelevanceFilter(rules=raw_rules)
     except (TypeError, KeyError):
         import logging
-        logging.getLogger(__name__).warning(
-            "relevance_rules 配置解析失败，使用默认规则"
-        )
+
+        logging.getLogger(__name__).warning("relevance_rules 配置解析失败，使用默认规则")
     return RelevanceFilter()

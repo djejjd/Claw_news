@@ -7,14 +7,18 @@ from app.pipeline.candidate import CandidateItem
 
 def _make_item(**kwargs) -> CandidateItem:
     data = {
-        "title": "T", "url": "https://x.test", "summary": "S",
-        "source": "test", "category": "ai",
+        "title": "T",
+        "url": "https://x.test",
+        "summary": "S",
+        "source": "test",
+        "category": "ai",
     }
     data.update(kwargs)
     return CandidateItem(**data)
 
 
 # ---- 模块导入 ----
+
 
 def test_module_importable():
     """模块可导入 — 实现前应失败 (ModuleNotFoundError)。"""
@@ -27,12 +31,16 @@ def test_module_importable():
 
 # ---- strict 排除规则 ----
 
-@pytest.mark.parametrize("title", [
-    "汽车限时促销",
-    "运营商套餐降价",
-    "暑期电影票房",
-    "家电大降价",
-])
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "汽车限时促销",
+        "运营商套餐降价",
+        "暑期电影票房",
+        "家电大降价",
+    ],
+)
 def test_strict_tool_source_rejects_known_noise(title):
     """IT之家 strict 模式下拒绝已知噪音（汽车/运营商/影视/家电）。"""
     from app.classifiers.relevance_filter import RelevanceFilter
@@ -49,6 +57,7 @@ def test_strict_tool_source_rejects_known_noise(title):
 
 # ---- 正负冲突优先拒绝 ----
 
+
 def test_negative_rule_wins_conflict():
     """同时命中正向词和排除词时返回 rule_conflict 且拒绝。"""
     from app.classifiers.relevance_filter import RelevanceFilter
@@ -56,8 +65,10 @@ def test_negative_rule_wins_conflict():
 
     policy = SourcePolicy("ithome", "fast_news", 24, 2.0, "strict")
     item = _make_item(
-        title="AI 手机汽车促销", summary="",
-        source="ithome", category="ai",
+        title="AI 手机汽车促销",
+        summary="",
+        source="ithome",
+        category="ai",
     )
     result = RelevanceFilter().evaluate(item, policy)
     assert result.accepted is False
@@ -68,6 +79,7 @@ def test_negative_rule_wins_conflict():
 
 # ---- lenient 深度源 ----
 
+
 def test_lenient_deep_source_accepts_summary_evidence():
     """深度源标题弱但摘要明确相关，lenient 门槛 0.3 应接受。"""
     from app.classifiers.relevance_filter import RelevanceFilter
@@ -77,7 +89,8 @@ def test_lenient_deep_source_accepts_summary_evidence():
     item = _make_item(
         title="一次实践复盘",
         summary="分布式推理集群延迟优化方案",
-        source="meituan_tech", category="ai",
+        source="meituan_tech",
+        category="ai",
     )
     result = RelevanceFilter().evaluate(item, policy)
     assert result.accepted is True
@@ -85,6 +98,7 @@ def test_lenient_deep_source_accepts_summary_evidence():
 
 
 # ---- 正向规则 ----
+
 
 def test_ai_positive_words_accept():
     """AI 正向词命中时接受。"""
@@ -103,6 +117,7 @@ def test_ai_positive_words_accept():
 
 # ---- 游戏类 ----
 
+
 def test_game_positive_words_accept():
     """游戏正向词命中时接受。"""
     from app.classifiers.relevance_filter import RelevanceFilter
@@ -113,7 +128,8 @@ def test_game_positive_words_accept():
         _make_item(
             title="黑神话悟空新版本评测",
             summary="Steam 销量破千万",
-            source="yystv", category="game",
+            source="yystv",
+            category="game",
         ),
         policy,
     )
@@ -121,6 +137,7 @@ def test_game_positive_words_accept():
 
 
 # ---- below_threshold ----
+
 
 def test_irrelevant_item_below_threshold():
     """完全不相关的文章在标准门槛下被拒绝。"""
@@ -130,8 +147,10 @@ def test_irrelevant_item_below_threshold():
     policy = SourcePolicy("ithome", "fast_news", 24, 2.0, "strict")
     result = RelevanceFilter().evaluate(
         _make_item(
-            title="聊聊日常生活中的小事", summary="今天去超市买了点东西",
-            source="ithome", category="tool",
+            title="聊聊日常生活中的小事",
+            summary="今天去超市买了点东西",
+            source="ithome",
+            category="tool",
         ),
         policy,
     )
@@ -140,6 +159,7 @@ def test_irrelevant_item_below_threshold():
 
 
 # ---- batch 评估 ----
+
 
 def test_evaluate_batch_returns_kept_and_rejected():
     """batch 评估返回 (保留列表, 拒绝审计)。"""
@@ -161,6 +181,7 @@ def test_evaluate_batch_returns_kept_and_rejected():
 
 
 # ---- 配置工厂 ----
+
 
 def test_build_filter_with_empty_config():
     """空配置返回默认规则过滤器。"""
@@ -188,6 +209,7 @@ def test_build_filter_with_custom_rules():
 
 # ---- 非法配置 ----
 
+
 def test_invalid_rule_config_uses_default():
     """非法规则配置不崩溃，回退到默认。"""
     from app.classifiers.relevance_filter import build_relevance_filter
@@ -197,6 +219,7 @@ def test_invalid_rule_config_uses_default():
 
 
 # ---- 所有 5 个 reason 值 ----
+
 
 def test_classifier_pass_for_ai_item():
     """AI 项无正向词但 TopicClassifier 匹配时应通过 classifier_pass。"""
@@ -208,7 +231,8 @@ def test_classifier_pass_for_ai_item():
         _make_item(
             title="分布式系统延迟优化",
             summary="latency reduction for inference serving",
-            source="qbitai", category="ai",
+            source="qbitai",
+            category="ai",
         ),
         policy,
     )
@@ -225,8 +249,10 @@ def test_tool_game_fallback_confidence_zero_without_keywords():
     policy = SourcePolicy("ithome", "fast_news", 24, 2.0, "strict")
     result = RelevanceFilter().evaluate(
         _make_item(
-            title="普通资讯报道", summary="近期社会热点新闻汇总",
-            source="ithome", category="tool",
+            title="普通资讯报道",
+            summary="近期社会热点新闻汇总",
+            source="ithome",
+            category="tool",
         ),
         policy,
     )
@@ -242,8 +268,10 @@ def test_tool_game_fallback_confidence_with_keywords():
     policy = SourcePolicy("gcores", "deep", 72, 4.0, "lenient")
     result = RelevanceFilter().evaluate(
         _make_item(
-            title="独立游戏开发心得", summary="使用 Unity 引擎制作",
-            source="gcores", category="game",
+            title="独立游戏开发心得",
+            summary="使用 Unity 引擎制作",
+            source="gcores",
+            category="game",
         ),
         policy,
     )
@@ -254,7 +282,10 @@ def test_tool_game_fallback_confidence_with_keywords():
 def test_all_reason_values_appear():
     """验证 5 个 reason 枚举值在测试中都被覆盖。"""
     reasons = {
-        "negative_rule", "positive_rule", "rule_conflict",
-        "below_threshold", "classifier_pass",
+        "negative_rule",
+        "positive_rule",
+        "rule_conflict",
+        "below_threshold",
+        "classifier_pass",
     }
     assert len(reasons) == 5
