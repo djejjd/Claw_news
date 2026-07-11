@@ -36,36 +36,58 @@ def _parse_configured_feeds(raw: str) -> list[dict]:
     return feeds
 
 
-def _load_yaml_feeds() -> dict[str, list[dict]] | None:
-    """Read feeds from feeds.yaml if it exists, return None if missing or unparseable."""
-    if not FEEDS_YAML_PATH.exists():
+def load_feed_configuration(path: Path | None = None) -> dict | None:
+    """读取 feeds.yaml 完整顶层映射。
+
+    返回包含 feeds 和可选的 relevance_rules 的完整 dict。
+    文件不存在或解析失败返回 None。
+    此为唯一读取 feeds.yaml 的公开入口。
+    """
+    target = path or FEEDS_YAML_PATH
+    if not target.exists():
         return None
     try:
         import yaml
 
-        with open(FEEDS_YAML_PATH, "r", encoding="utf-8") as f:
+        with open(target, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
-        if not isinstance(data, dict) or "feeds" not in data:
+        if not isinstance(data, dict):
             return None
-        raw = data["feeds"]
-        result: dict[str, list[dict]] = {}
-        for category in ("ai", "tool", "game"):
-            entries = raw.get(category, [])
-            if isinstance(entries, list):
-                result[category] = [
-                    {
+        return data
+    except Exception:
+        return None
+
+
+def _load_yaml_feeds() -> dict[str, list[dict]] | None:
+    """Read feed categories from feeds.yaml；委托 load_feed_configuration()。
+
+    保留策略字段 (tier/retention_hours/quality_weight/filter_profile)，供后续任务使用。
+    """
+    config = load_feed_configuration()
+    if config is None or "feeds" not in config:
+        return None
+    raw = config["feeds"]
+    result: dict[str, list[dict]] = {}
+    for category in ("ai", "tool", "game"):
+        entries = raw.get(category, [])
+        if isinstance(entries, list):
+            result[category] = []
+            for e in entries:
+                if isinstance(e, dict) and "url" in e:
+                    feed = {
                         "url": e["url"],
                         "category": category,
                         "source": e.get("source", category),
                     }
-                    for e in entries
-                    if isinstance(e, dict) and "url" in e
-                ]
-            else:
-                result[category] = []
-        return result
-    except Exception:
-        return None
+                    # 保留来源策略字段
+                    for key in ("tier", "retention_hours", "quality_weight", "filter_profile"):
+                        if key in e:
+                            feed[key] = e[key]
+                    result[category].append(feed)
+        else:
+            result[category] = []
+    return result
+    # 解析异常由 load_feed_configuration 内部 catch
 
 
 def _get_defaults_for(category: str) -> list[dict]:

@@ -46,7 +46,7 @@ def test_parse_entry_full():
     }
     feed = {"url": "https://qbitai.com/feed", "category": "ai", "source": "qbitai"}
     item = collector._parse_entry(entry, feed)
-    assert item.pub_date == "2026-05-15"
+    assert item.pub_date.startswith("2026-05-15")
     assert "<" not in item.summary
     assert "GPT-5" in item.title
     assert item.source == "qbitai"

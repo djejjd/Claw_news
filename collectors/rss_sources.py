@@ -7,8 +7,8 @@ from typing import List
 import feedparser
 import httpx
 
-from collectors.base import BROWSER_HEADERS, HotItem
 from collectors.ai_rss import load_all_rss_feeds
+from collectors.base import BROWSER_HEADERS, HotItem
 
 # 设置 feedparser 的 User-Agent，防止被 RSS 源拦截
 feedparser.USER_AGENT = BROWSER_HEADERS["User-Agent"]
@@ -23,9 +23,26 @@ def strip_html(text: str) -> str:
 
 
 def extract_pub_date(published_parsed) -> str:
+    """返回 yyyy-mm-dd（向后兼容）。"""
     if published_parsed and len(published_parsed) >= 3:
         return f"{published_parsed[0]:04d}-{published_parsed[1]:02d}-{published_parsed[2]:02d}"
     return ""
+
+
+def format_published_iso(published_parsed) -> str:
+    """将 feedparser 的 published_parsed 转为完整 ISO 时间。
+
+    返回 yyyy-mm-ddTHH:MM:SS 或空字符串。
+    """
+    if not published_parsed or len(published_parsed) < 6:
+        return ""
+    try:
+        return (
+            f"{published_parsed[0]:04d}-{published_parsed[1]:02d}-{published_parsed[2]:02d}"
+            f"T{published_parsed[3]:02d}:{published_parsed[4]:02d}:{published_parsed[5]:02d}"
+        )
+    except (TypeError, IndexError):
+        return ""
 
 
 class RssCollector:
@@ -78,7 +95,9 @@ class RssCollector:
         url = entry.get("link", "")
         summary = strip_html(entry.get("summary", ""))
         ts = _parse_timestamp(entry)
-        pub_date = extract_pub_date(entry.get("published_parsed"))
+        pp = entry.get("published_parsed")
+        # 优先完整 ISO 时间，回退到 yyyy-mm-dd
+        pub_date = format_published_iso(pp) or extract_pub_date(pp)
         cat = feed["category"]
         source_name = feed.get("source", cat)
 

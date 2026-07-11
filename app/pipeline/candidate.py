@@ -9,8 +9,9 @@ class CandidateItem:
     summary: str
     source: str
     category: str  # "ai" | "game" | "tool"
-    published_at: str = ""  # yyyy-mm-dd
+    published_at: str = ""  # yyyy-mm-dd 或完整 ISO 时间
     fetched_at: str = ""  # ISO format
+    published_time_source: str = ""  # rss / fetched_at / legacy_date / unknown
     canonical_key: str = ""  # domain+path, no query/fragment
     ingest_run_id: str = ""  # 哪轮 ingest 产出的
     topic: Optional[str] = None
