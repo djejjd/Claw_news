@@ -165,10 +165,10 @@ async def run_ingest():
 
 
 async def run_ingest_with_cleanup():
-    """Ingest + expire stale candidates beyond 3 days."""
+    """Ingest + expire stale candidates beyond 7 days."""
     await run_ingest()
     store = IngestionStore()
-    store.prune_expired(keep_days=3)
+    store.prune_expired(keep_days=7)
 
 
 # ------------------------------------------------------------------

@@ -179,6 +179,109 @@ class IngestionStore:
 
         return result
 
+    # ---- Task 3: 72 小时读取与按源过期 ----
+
+    def load_recent_candidates(
+        self,
+        window_end: str,
+        lookback_hours: int = 72,
+        pushed_urls: set[str] | None = None,
+        pushed_keys: set[str] | None = None,
+    ) -> list[CandidateItem]:
+        """读取 window_end 前 lookback_hours 内所有候选。
+
+        按 fetched_at 过滤采集窗口，按 canonical_key 折叠去重，
+        排除已发布 URL/key。
+        """
+        if pushed_urls is None:
+            pushed_urls = set()
+        if pushed_keys is None:
+            pushed_keys = set()
+
+        end_dt = datetime.fromisoformat(window_end)
+        start_dt = end_dt - timedelta(hours=lookback_hours)
+        start_date = start_dt.date()
+        end_date = end_dt.date()
+
+        raw_items: list[CandidateItem] = []
+        if self.ingestion_dir.exists():
+            for day_dir in sorted(self.ingestion_dir.iterdir()):
+                if not day_dir.is_dir():
+                    continue
+                try:
+                    dir_date = date.fromisoformat(day_dir.name)
+                except ValueError:
+                    continue
+                if not (start_date <= dir_date <= end_date):
+                    continue
+
+                jsonl_path = day_dir / "candidates.jsonl"
+                if not jsonl_path.exists():
+                    continue
+                with open(jsonl_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            data = json.loads(line)
+                            fields = {k: v for k, v in data.items()
+                                      if k in _CANDIDATE_FIELD_NAMES}
+                            item = CandidateItem(**fields)
+                            # 按 fetched_at 限制采集窗口
+                            ft = item.fetched_at
+                            if ft:
+                                try:
+                                    ft_dt = datetime.fromisoformat(ft)
+                                except ValueError:
+                                    ft_dt = None
+                                if ft_dt is not None and not (
+                                    start_dt <= ft_dt <= end_dt
+                                ):
+                                    continue
+                            raw_items.append(item)
+                        except (TypeError, json.JSONDecodeError):
+                            continue
+
+        # 按 canonical_key 折叠（优先级同 load_window_candidates）
+        folded: dict[str, CandidateItem] = {}
+        for item in raw_items:
+            ck = item.canonical_key or CandidateItem.make_canonical_key(item.url)
+            if not ck:
+                continue
+            existing = folded.get(ck)
+            if existing is None:
+                folded[ck] = item
+                continue
+            # 1. published_at 更新者优先
+            cmp = self._compare_str_field(
+                item.published_at or "", existing.published_at or ""
+            )
+            if cmp > 0:
+                folded[ck] = item
+            elif cmp == 0:
+                # 2. fetched_at 作为 tiebreaker
+                cmp2 = self._compare_str_field(
+                    item.fetched_at or "", existing.fetched_at or ""
+                )
+                if cmp2 > 0:
+                    folded[ck] = item
+                elif cmp2 == 0:
+                    # 3. summary 更长优先
+                    if len(item.summary or "") > len(existing.summary or ""):
+                        folded[ck] = item
+
+        # 过滤已发布
+        result = []
+        for item in folded.values():
+            if item.url in pushed_urls:
+                continue
+            if item.canonical_key in pushed_keys:
+                continue
+            result.append(item)
+
+        return result
+
     def load_recent_seen_canonical_keys(self, keep_days: int = 3) -> set[str]:
         """加载最近 keep_days 天内已见过的 canonical_key。"""
         keys: set[str] = set()
@@ -294,3 +397,74 @@ class IngestionStore:
             encoding="utf-8",
         )
         tmp_path.replace(index_path)
+
+
+# ---- Task 3: 按源有效期过滤 ----
+
+def filter_unexpired_candidates(
+    items: list[CandidateItem],
+    now: datetime,
+    policies: dict,
+) -> tuple[list[CandidateItem], list[dict]]:
+    """按各自 SourcePolicy.retention_hours 过滤过期候选。
+
+    Args:
+        items: 候选列表
+        now: 当前时间
+        policies: {source: SourcePolicy} registry
+
+    Returns:
+        (保留列表, 拒绝审计)。审计行至少包含
+        canonical_key/source/reason/age_hours/retention_hours。
+    """
+    from app.content.time_policy import candidate_effective_at
+
+    kept: list[CandidateItem] = []
+    rejected: list[dict] = []
+    warned_sources: set[str] = set()
+
+    for item in items:
+        policy = policies.get(item.source)
+        if policy is None:
+            if item.source not in warned_sources:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "来源 '%s' 不在策略 registry 中，使用默认 48h", item.source
+                )
+                warned_sources.add(item.source)
+        retention = policy.retention_hours if policy else 48
+
+        effective_at, _ = candidate_effective_at(item)
+        if effective_at is None:
+            rejected.append({
+                "canonical_key": item.canonical_key,
+                "source": item.source,
+                "reason": "unknown_effective_time",
+                "age_hours": -1,
+                "retention_hours": retention,
+            })
+            continue
+
+        # 确保 naive/aware 一致后再相减
+        if effective_at.tzinfo is not None and now.tzinfo is None:
+            effective_at = effective_at.replace(tzinfo=None)
+        elif effective_at.tzinfo is None and now.tzinfo is not None:
+            effective_at = effective_at.replace(tzinfo=now.tzinfo)
+
+        age_hours = (
+            round((now - effective_at).total_seconds() / 3600, 1)
+            if now > effective_at else 0
+        )
+        if age_hours > retention:
+            rejected.append({
+                "canonical_key": item.canonical_key,
+                "source": item.source,
+                "reason": "expired",
+                "age_hours": age_hours,
+                "retention_hours": retention,
+            })
+            continue
+
+        kept.append(item)
+
+    return kept, rejected

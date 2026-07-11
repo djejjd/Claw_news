@@ -661,3 +661,20 @@ def test_update_fetch_count_from_metrics_clamps_out_of_bounds_when_runs_too_low(
     assert updated["fetch_count"] == 6
     assert updated["cooldown_remaining"] == 0
     assert updated["last_adjusted_at"] == "2026-05-19T09:00:00"
+
+
+@pytest.mark.asyncio
+async def test_run_ingest_cleanup_prunes_at_7_days():
+    """run_ingest_with_cleanup 以 keep_days=7 调用 prune_expired（Task 3）。"""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from app.scheduler.jobs import run_ingest_with_cleanup
+
+    with (
+        patch("app.scheduler.jobs.run_ingest", new=AsyncMock()),
+        patch("app.scheduler.jobs.IngestionStore") as store_cls,
+    ):
+        mock_store = MagicMock()
+        store_cls.return_value = mock_store
+        await run_ingest_with_cleanup()
+
+    mock_store.prune_expired.assert_called_once_with(keep_days=7)

@@ -468,3 +468,164 @@ class TestPruneExpired:
         deleted = store.prune_expired(keep_days=3)
         assert deleted == 1
         assert (ing / "not-a-date").is_dir()  # 未被删除
+
+
+# ---- Task 3: load_recent_candidates ----
+
+_FIXED_WINDOW_END = "2026-07-11T09:00:00+08:00"
+
+
+def _make_candidate_in_dir(
+    day_dir: Path, url: str, fetched_at: str, **kwargs
+) -> CandidateItem:
+    """创建候选并写入指定日期的 JSONL。"""
+    item = _make_item(
+        url=url,
+        fetched_at=fetched_at,
+        canonical_key=CandidateItem.make_canonical_key(url),
+        **kwargs,
+    )
+    _write_jsonl(day_dir, [item])
+    return item
+
+
+def test_recent_loader_reads_72_hours_across_calendar_directories(tmp_path):
+    """72 小时滚动窗口跨越自然日目录，只读窗口内的候选。"""
+    store = IngestionStore(root_dir=tmp_path)
+    ing = tmp_path / "data" / "ingestion"
+
+    # 2026-07-08 08:00 → 距 window_end 73h → 应被排除
+    d1 = ing / "2026-07-08"
+    _make_candidate_in_dir(d1, url="https://outside.test",
+                           fetched_at="2026-07-08T08:00:00+08:00")
+    # 2026-07-08 10:00 → 距 window_end 71h → 应在窗口内
+    _make_candidate_in_dir(d1, url="https://inside.test",
+                           fetched_at="2026-07-08T10:00:00+08:00")
+
+    # 2026-07-09 → 绝对在窗口内
+    d2 = ing / "2026-07-09"
+    _make_candidate_in_dir(d2, url="https://mid.test",
+                           fetched_at="2026-07-09T12:00:00+08:00")
+
+    result = store.load_recent_candidates(
+        window_end=_FIXED_WINDOW_END, lookback_hours=72)
+    urls = {item.url for item in result}
+    assert "https://outside.test" not in urls
+    assert "https://inside.test" in urls
+    assert "https://mid.test" in urls
+
+
+def test_recent_loader_filters_pushed_urls_and_keys(tmp_path):
+    """已发布的 URL 和 canonical_key 被排除。"""
+    store = IngestionStore(root_dir=tmp_path)
+    ing = tmp_path / "data" / "ingestion" / "2026-07-11"
+    _make_candidate_in_dir(ing, url="https://pushed.test",
+                           fetched_at="2026-07-11T08:00:00+08:00")
+    _make_candidate_in_dir(ing, url="https://fresh.test",
+                           fetched_at="2026-07-11T08:00:00+08:00")
+
+    result = store.load_recent_candidates(
+        window_end=_FIXED_WINDOW_END, lookback_hours=72,
+        pushed_urls={"https://pushed.test"},
+        pushed_keys={CandidateItem.make_canonical_key("https://pushed.test")},
+    )
+    urls = {item.url for item in result}
+    assert "https://pushed.test" not in urls
+    assert "https://fresh.test" in urls
+
+
+# ---- Task 3: filter_unexpired_candidates ----
+
+
+def test_source_retention_filters_independently():
+    """按各自 SourcePolicy 的 retention_hours 独立过期。"""
+    from app.content.source_policy import SourcePolicy
+    from app.storage.ingestion_store import filter_unexpired_candidates
+
+    now = datetime.fromisoformat("2026-07-11T09:00:00+08:00")
+    items = [
+        _make_item(source="vertical_47h", url="https://v.test",
+                   published_at="2026-07-09T10:00:00+08:00"),
+        _make_item(source="deep_71h", url="https://d.test",
+                   published_at="2026-07-08T10:00:00+08:00"),
+        _make_item(source="fast_25h", url="https://f.test",
+                   published_at="2026-07-10T08:00:00+08:00"),
+    ]
+    policies = {
+        "vertical_47h": SourcePolicy("vertical_47h", "vertical", 48, 3.0, "standard"),
+        "deep_71h": SourcePolicy("deep_71h", "deep", 72, 4.0, "lenient"),
+        "fast_25h": SourcePolicy("fast_25h", "fast_news", 24, 2.0, "strict"),
+    }
+    kept, rejected = filter_unexpired_candidates(items, now, policies)
+    kept_sources = {item.source for item in kept}
+    assert kept_sources == {"vertical_47h", "deep_71h"}
+    assert all(row["reason"] == "expired" for row in rejected)
+    assert len(rejected) == 1
+
+
+def test_filter_rejection_audit_has_required_fields():
+    """拒绝审计包含 canonical_key/source/reason/age_hours/retention_hours。"""
+    from app.content.source_policy import SourcePolicy
+    from app.storage.ingestion_store import filter_unexpired_candidates
+
+    now = datetime.fromisoformat("2026-07-11T09:00:00+08:00")
+    items = [
+        _make_item(source="old", url="https://old.test",
+                   published_at="2026-07-08T09:00:00+08:00"),
+    ]
+    policies = {"old": SourcePolicy("old", "fast_news", 24, 2.0, "strict")}
+    _, rejected = filter_unexpired_candidates(items, now, policies)
+    assert len(rejected) == 1
+    row = rejected[0]
+    assert row["canonical_key"] == CandidateItem.make_canonical_key("https://old.test")
+    assert row["source"] == "old"
+    assert row["reason"] == "expired"
+    assert row["age_hours"] > 24
+    assert row["retention_hours"] == 24
+
+
+def test_filter_keeps_items_within_retention():
+    """retention_hours 内的候选被保留。"""
+    from app.content.source_policy import SourcePolicy
+    from app.storage.ingestion_store import filter_unexpired_candidates
+
+    now = datetime.fromisoformat("2026-07-11T09:00:00+08:00")
+    items = [
+        _make_item(source="fresh", url="https://fresh.test",
+                   published_at="2026-07-11T08:00:00+08:00"),
+    ]
+    policies = {"fresh": SourcePolicy("fresh", "fast_news", 24, 2.0, "strict")}
+    kept, rejected = filter_unexpired_candidates(items, now, policies)
+    assert len(kept) == 1
+    assert len(rejected) == 0
+
+
+def test_filter_rejects_items_without_effective_time():
+    """无法获得有效时间的候选被拒绝。"""
+    from app.content.source_policy import SourcePolicy
+    from app.storage.ingestion_store import filter_unexpired_candidates
+
+    now = datetime.fromisoformat("2026-07-11T09:00:00+08:00")
+    items = [
+        _make_item(source="no_time", url="https://no.test",
+                   published_at="", fetched_at=""),
+    ]
+    policies = {"no_time": SourcePolicy("no_time", "vertical", 48, 3.0, "standard")}
+    _, rejected = filter_unexpired_candidates(items, now, policies)
+    assert len(rejected) == 1
+    assert rejected[0]["reason"] == "unknown_effective_time"
+
+
+def test_date_only_published_at_does_not_crash():
+    """date-only (yyyy-mm-dd) 的 published_at 在 aware now 下不崩溃。"""
+    from app.content.source_policy import SourcePolicy
+    from app.storage.ingestion_store import filter_unexpired_candidates
+
+    now = datetime.fromisoformat("2026-07-11T09:00:00+08:00")
+    items = [
+        _make_item(source="test", url="https://test",
+                   published_at="2026-07-10"),
+    ]
+    policies = {"test": SourcePolicy("test", "vertical", 48, 3.0, "standard")}
+    kept, _ = filter_unexpired_candidates(items, now, policies)
+    assert len(kept) == 1  # 24h 内，应保留
