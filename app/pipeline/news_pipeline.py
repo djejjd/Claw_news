@@ -101,11 +101,13 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     # 尝试走新路径；无法导入或 feeds.yaml 缺失时回退旧路径
 
     try:
-        from app.pipeline.selection import select_digest  # noqa: F401
         from collectors.ai_rss import load_feed_configuration
         feed_config = load_feed_configuration()
-        use_new_pipeline = feed_config is not None and feed_config.get("feeds")
-    except ImportError:
+        use_new_pipeline = (
+            isinstance(feed_config, dict)
+            and bool(feed_config.get("feeds"))
+        )
+    except Exception:
         use_new_pipeline = False
 
     if use_new_pipeline:
@@ -279,7 +281,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     source_failures = _collect_source_failures(ingest_status_snapshot)
 
     errors: list[str] = []
-    if not candidates_used_historical:
+    if use_new_pipeline and not candidates_used_historical:
         errors.append("historical_candidates_read_failed")
 
     # 7. 推送

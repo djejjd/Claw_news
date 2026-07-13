@@ -19,6 +19,13 @@ from pusher.wecom import PushResult
 # Shared helper
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def _force_old_pipeline():
+    p = patch("collectors.ai_rss.load_feed_configuration", return_value=None)
+    p.start()
+    yield
+    p.stop()
+
 
 def _make_config(**kwargs) -> AppConfig:
     return AppConfig(
