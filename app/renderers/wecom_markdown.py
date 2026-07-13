@@ -21,17 +21,32 @@ DISPLAY_CATEGORY_ORDER = ("AI", "工具", "游戏")
 _MARKDOWN_SPECIAL = re.compile(r"([*_`\[\]\\])")
 
 _SOURCE_LABEL = {
-    "qbitai": "量子位", "leiphone": "雷锋网", "jiqizhixin": "机器之心",
-    "meituan_tech": "美团技术", "openai_blog": "OpenAI",
-    "sspai": "少数派", "ithome": "IT之家", "appinn": "小众软件",
+    "qbitai": "量子位",
+    "leiphone": "雷锋网",
+    "jiqizhixin": "机器之心",
+    "meituan_tech": "美团技术",
+    "openai_blog": "OpenAI",
+    "sspai": "少数派",
+    "ithome": "IT之家",
+    "appinn": "小众软件",
     "cloudflare_cn": "Cloudflare",
-    "yystv": "游研社", "gcores": "机核", "chuapp": "触乐",
-    "indienova": "indienova", "eurogamer": "Eurogamer",
-    "huggingface": "HuggingFace", "github": "GitHub", "taptap": "TapTap",
+    "yystv": "游研社",
+    "gcores": "机核",
+    "chuapp": "触乐",
+    "indienova": "indienova",
+    "eurogamer": "Eurogamer",
+    "huggingface": "HuggingFace",
+    "github": "GitHub",
+    "taptap": "TapTap",
 }
-_OVERSEAS_SOURCES = frozenset({
-    "openai_blog", "huggingface", "deepmind", "eurogamer",
-})
+_OVERSEAS_SOURCES = frozenset(
+    {
+        "openai_blog",
+        "huggingface",
+        "deepmind",
+        "eurogamer",
+    }
+)
 
 
 def _escape_title(text: str) -> str:
@@ -92,7 +107,10 @@ def render_digest(
                 lines.append(f"**{item_number}.** {topic_label}{marker}{safe_title}")
 
             source_display = _source_display(item.source) if item.source else ""
-            lines.append(f"> {item.core_summary} | 重要性：{item.importance} | 趋势：{item.trend} — {source_display}")
+            lines.append(
+                f"> {item.core_summary} | 重要性：{item.importance} | "
+                f"趋势：{item.trend} — {source_display}"
+            )
 
             item_number += 1
             rendered_item_count += 1

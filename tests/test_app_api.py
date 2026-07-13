@@ -122,6 +122,7 @@ class TestHealthEndpoint:
         from fastapi.testclient import TestClient
 
         main_module = _load_app_module()
+
         def _path_exists(path_obj: Path) -> bool:
             return False if path_obj.name == "publish_status.json" else _REAL_PATH_EXISTS(path_obj)
 
@@ -286,7 +287,7 @@ class TestRunNewsEndpoint:
                 return_value=fake_metrics_store,
             ),
             patch("app.pipeline.news_pipeline._collect_source_failures", return_value=[]),
-        patch("collectors.ai_rss.load_feed_configuration", return_value=None),
+            patch("collectors.ai_rss.load_feed_configuration", return_value=None),
         ):
             mock_ingestion_store.return_value.load_window_candidates.return_value = selected_items
             mock_merger_cls.return_value.merge.return_value = selected_items
@@ -376,7 +377,7 @@ class TestRunNewsEndpoint:
                 return_value=fake_metrics_store,
             ),
             patch("app.pipeline.news_pipeline._collect_source_failures", return_value=[]),
-        patch("collectors.ai_rss.load_feed_configuration", return_value=None),
+            patch("collectors.ai_rss.load_feed_configuration", return_value=None),
         ):
             mock_ingestion_store.return_value.load_window_candidates.return_value = selected_items
             mock_merger_cls.return_value.merge.return_value = selected_items

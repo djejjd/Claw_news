@@ -19,6 +19,7 @@ from pusher.wecom import PushResult
 # Shared helper
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def _force_old_pipeline():
     p = patch("collectors.ai_rss.load_feed_configuration", return_value=None)
@@ -662,13 +663,35 @@ class TestPipelineAllDigestScope:
         config = _make_config()
         ctx = _make_ctx(publish_scope="all_digest")
         ai_candidate = _make_candidate(url="https://example.com/ai", category="ai")
-        tool_candidate = _make_candidate(url="https://example.com/tool", category="tool", source="sspai")
-        game_candidate = _make_candidate(url="https://example.com/game", category="game", source="yystv")
+        tool_candidate = _make_candidate(
+            url="https://example.com/tool", category="tool", source="sspai"
+        )
+        game_candidate = _make_candidate(
+            url="https://example.com/game", category="game", source="yystv"
+        )
         llm_result = {
             "headline_items": [
-                {"title": "AI News", "url": "https://example.com/ai", "core_summary": "AI summary.", "importance": "高", "trend": "利好"},
-                {"title": "Tool News", "url": "https://example.com/tool", "core_summary": "Tool summary.", "importance": "中", "trend": "稳定"},
-                {"title": "Game News", "url": "https://example.com/game", "core_summary": "Game summary.", "importance": "高", "trend": "利好"},
+                {
+                    "title": "AI News",
+                    "url": "https://example.com/ai",
+                    "core_summary": "AI summary.",
+                    "importance": "高",
+                    "trend": "利好",
+                },
+                {
+                    "title": "Tool News",
+                    "url": "https://example.com/tool",
+                    "core_summary": "Tool summary.",
+                    "importance": "中",
+                    "trend": "稳定",
+                },
+                {
+                    "title": "Game News",
+                    "url": "https://example.com/game",
+                    "core_summary": "Game summary.",
+                    "importance": "高",
+                    "trend": "利好",
+                },
             ],
             "daily_judgement": "AI行业稳步发展",
             "github_projects": [],
@@ -678,14 +701,21 @@ class TestPipelineAllDigestScope:
         with (
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
-            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)),
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=llm_result),
+            ),
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
             patch("app.pipeline.news_pipeline.GitHubStore") as mock_github,
             patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
         ):
             mock_is_inst = MagicMock()
-            mock_is_inst.load_window_candidates.return_value = [ai_candidate, tool_candidate, game_candidate]
+            mock_is_inst.load_window_candidates.return_value = [
+                ai_candidate,
+                tool_candidate,
+                game_candidate,
+            ]
             mock_is.return_value = mock_is_inst
             mock_cls.return_value = MagicMock()
             mock_github.return_value.load_latest_snapshot.return_value = []
@@ -719,7 +749,10 @@ class TestPipelineAllDigestScope:
         with (
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
-            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)),
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=llm_result),
+            ),
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
             patch("app.pipeline.news_pipeline.GitHubStore") as mock_github,
@@ -751,14 +784,21 @@ class TestDisplayCategoryMapping:
         config = _make_config()
         ctx = _make_ctx(publish_scope="all_digest")
         candidate = _make_candidate(
-            title="效率工具推荐", url="https://sspai.com/post/tool",
-            source="sspai", category="tool",
+            title="效率工具推荐",
+            url="https://sspai.com/post/tool",
+            source="sspai",
+            category="tool",
         )
         llm_result = {
-            "headline_items": [{
-                "title": "效率工具推荐", "url": "https://sspai.com/post/tool",
-                "core_summary": "工具推荐。", "importance": "中", "trend": "关注",
-            }],
+            "headline_items": [
+                {
+                    "title": "效率工具推荐",
+                    "url": "https://sspai.com/post/tool",
+                    "core_summary": "工具推荐。",
+                    "importance": "中",
+                    "trend": "关注",
+                }
+            ],
             "daily_judgement": "工具资讯为主。",
         }
         push_result = _make_push_result(success=True)
@@ -766,7 +806,10 @@ class TestDisplayCategoryMapping:
         with (
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
-            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)),
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=llm_result),
+            ),
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
             patch("app.pipeline.news_pipeline.GitHubStore") as mock_github,
@@ -795,14 +838,21 @@ class TestDisplayCategoryMapping:
         config = _make_config()
         ctx = _make_ctx(publish_scope="all_digest")
         candidate = _make_candidate(
-            title="新游戏评测", url="https://yystv.cn/p/game",
-            source="yystv", category="game",
+            title="新游戏评测",
+            url="https://yystv.cn/p/game",
+            source="yystv",
+            category="game",
         )
         llm_result = {
-            "headline_items": [{
-                "title": "新游戏评测", "url": "https://yystv.cn/p/game",
-                "core_summary": "游戏评测。", "importance": "高", "trend": "利好",
-            }],
+            "headline_items": [
+                {
+                    "title": "新游戏评测",
+                    "url": "https://yystv.cn/p/game",
+                    "core_summary": "游戏评测。",
+                    "importance": "高",
+                    "trend": "利好",
+                }
+            ],
             "daily_judgement": "游戏资讯为主。",
         }
         push_result = _make_push_result(success=True)
@@ -810,7 +860,10 @@ class TestDisplayCategoryMapping:
         with (
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
-            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)),
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=llm_result),
+            ),
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
             patch("app.pipeline.news_pipeline.GitHubStore") as mock_github,
@@ -840,14 +893,36 @@ class TestDisplayCategoryMapping:
         ctx = _make_ctx(publish_scope="all_digest")
         candidates = [
             _make_candidate(title="AI新闻", url="https://a.com/1", source="qbitai", category="ai"),
-            _make_candidate(title="工具推荐", url="https://t.com/1", source="sspai", category="tool"),
-            _make_candidate(title="游戏评测", url="https://g.com/1", source="yystv", category="game"),
+            _make_candidate(
+                title="工具推荐", url="https://t.com/1", source="sspai", category="tool"
+            ),
+            _make_candidate(
+                title="游戏评测", url="https://g.com/1", source="yystv", category="game"
+            ),
         ]
         llm_result = {
             "headline_items": [
-                {"title": "AI新闻", "url": "https://a.com/1", "core_summary": "AI。", "importance": "高", "trend": "利好"},
-                {"title": "工具推荐", "url": "https://t.com/1", "core_summary": "工具。", "importance": "中", "trend": "稳定"},
-                {"title": "游戏评测", "url": "https://g.com/1", "core_summary": "游戏。", "importance": "高", "trend": "利好"},
+                {
+                    "title": "AI新闻",
+                    "url": "https://a.com/1",
+                    "core_summary": "AI。",
+                    "importance": "高",
+                    "trend": "利好",
+                },
+                {
+                    "title": "工具推荐",
+                    "url": "https://t.com/1",
+                    "core_summary": "工具。",
+                    "importance": "中",
+                    "trend": "稳定",
+                },
+                {
+                    "title": "游戏评测",
+                    "url": "https://g.com/1",
+                    "core_summary": "游戏。",
+                    "importance": "高",
+                    "trend": "利好",
+                },
             ],
             "daily_judgement": "三类资讯齐全。",
         }
@@ -856,7 +931,10 @@ class TestDisplayCategoryMapping:
         with (
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
-            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)),
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=llm_result),
+            ),
             patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
             patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
             patch("app.pipeline.news_pipeline.GitHubStore") as mock_github,

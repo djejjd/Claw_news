@@ -26,9 +26,7 @@ class GitHubStore:
     def load_latest_snapshot(self) -> list[GitHubRepoItem]:
         if not self.github_dir.exists():
             return []
-        dated_dirs = sorted(
-            [d for d in self.github_dir.iterdir() if d.is_dir()], reverse=True
-        )
+        dated_dirs = sorted([d for d in self.github_dir.iterdir() if d.is_dir()], reverse=True)
         for day_dir in dated_dirs:
             path = day_dir / "repos.json"
             if not path.exists():

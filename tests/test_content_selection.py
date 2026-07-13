@@ -14,8 +14,11 @@ _TZ = "Asia/Shanghai"
 
 def _make_item(**kwargs) -> CandidateItem:
     data = {
-        "title": "T", "url": "https://x.test", "summary": "S",
-        "source": "qbitai", "category": "ai",
+        "title": "T",
+        "url": "https://x.test",
+        "summary": "S",
+        "source": "qbitai",
+        "category": "ai",
         "published_at": f"{_TODAY}T08:00:00+08:00",
         "canonical_key": "",
     }
@@ -45,7 +48,8 @@ def test_final_score_is_quality_plus_freshness():
 
     now = datetime.fromisoformat("2026-07-11T09:00:00+08:00")
     item = _make_item(
-        source="qbitai", category="ai",
+        source="qbitai",
+        category="ai",
         published_at="2026-07-10T03:00:00+08:00",
     )
     policy = SourcePolicy("qbitai", "vertical", 48, 3.5, "standard")
@@ -53,9 +57,17 @@ def test_final_score_is_quality_plus_freshness():
     assert compute_final_score(item, policy, now) == 5.0
 
 
-@pytest.mark.parametrize(("count", "penalty"), [
-    (0, 0.0), (1, -1.0), (2, -2.0), (3, -3.5), (4, -5.0), (9, -5.0),
-])
+@pytest.mark.parametrize(
+    ("count", "penalty"),
+    [
+        (0, 0.0),
+        (1, -1.0),
+        (2, -2.0),
+        (3, -3.5),
+        (4, -5.0),
+        (9, -5.0),
+    ],
+)
 def test_diversity_penalty(count, penalty):
     """单源惩罚映射与设计一致。"""
     from app.pipeline.selection import source_diversity_penalty
@@ -73,27 +85,67 @@ def build_selection_fixture(now):
 
     items = [
         # 今日
-        _make_item(title="AI-今日1", url="https://ai1.test", source="qbitai",
-                   category="ai", published_at=f"{today}T08:00:00+08:00",
-                   canonical_key="ai-today-1"),
-        _make_item(title="AI-今日2", url="https://ai2.test", source="leiphone",
-                   category="ai", published_at=f"{today}T07:00:00+08:00",
-                   canonical_key="ai-today-2"),
-        _make_item(title="工具-今日1", url="https://t1.test", source="sspai",
-                   category="tool", published_at=f"{today}T08:00:00+08:00"),
-        _make_item(title="工具-今日2", url="https://t2.test", source="appinn",
-                   category="tool", published_at=f"{today}T08:00:00+08:00"),
-        _make_item(title="游戏-今日1", url="https://g1.test", source="yystv",
-                   category="game", published_at=f"{today}T08:00:00+08:00"),
-        _make_item(title="游戏-今日2", url="https://g2.test", source="gcores",
-                   category="game", published_at=f"{today}T08:00:00+08:00"),
+        _make_item(
+            title="AI-今日1",
+            url="https://ai1.test",
+            source="qbitai",
+            category="ai",
+            published_at=f"{today}T08:00:00+08:00",
+            canonical_key="ai-today-1",
+        ),
+        _make_item(
+            title="AI-今日2",
+            url="https://ai2.test",
+            source="leiphone",
+            category="ai",
+            published_at=f"{today}T07:00:00+08:00",
+            canonical_key="ai-today-2",
+        ),
+        _make_item(
+            title="工具-今日1",
+            url="https://t1.test",
+            source="sspai",
+            category="tool",
+            published_at=f"{today}T08:00:00+08:00",
+        ),
+        _make_item(
+            title="工具-今日2",
+            url="https://t2.test",
+            source="appinn",
+            category="tool",
+            published_at=f"{today}T08:00:00+08:00",
+        ),
+        _make_item(
+            title="游戏-今日1",
+            url="https://g1.test",
+            source="yystv",
+            category="game",
+            published_at=f"{today}T08:00:00+08:00",
+        ),
+        _make_item(
+            title="游戏-今日2",
+            url="https://g2.test",
+            source="gcores",
+            category="game",
+            published_at=f"{today}T08:00:00+08:00",
+        ),
         # 历史
-        _make_item(title="AI-历史1", url="https://old-ai.test", source="qbitai",
-                   category="ai", published_at=f"{yesterday}T12:00:00+08:00",
-                   canonical_key="old-ai-1"),
-        _make_item(title="工具-历史高分", url="https://old-tool.test", source="ithome",
-                   category="tool", published_at=f"{yesterday}T12:00:00+08:00",
-                   canonical_key="old-high-tool"),
+        _make_item(
+            title="AI-历史1",
+            url="https://old-ai.test",
+            source="qbitai",
+            category="ai",
+            published_at=f"{yesterday}T12:00:00+08:00",
+            canonical_key="old-ai-1",
+        ),
+        _make_item(
+            title="工具-历史高分",
+            url="https://old-tool.test",
+            source="ithome",
+            category="tool",
+            published_at=f"{yesterday}T12:00:00+08:00",
+            canonical_key="old-high-tool",
+        ),
     ]
     policies = {
         s: SourcePolicy(s, "vertical", 48, 3.0, "standard")
@@ -110,26 +162,61 @@ def build_cross_phase_same_source_fixture(now):
 
     items = [
         # Phase 1: 今日保底
-        _make_item(title="same-今日AI1", url="https://same-p1.test", source="same_src",
-                   category="ai", published_at=f"{today}T09:00:00+08:00",
-                   canonical_key="same-p1"),
+        _make_item(
+            title="same-今日AI1",
+            url="https://same-p1.test",
+            source="same_src",
+            category="ai",
+            published_at=f"{today}T09:00:00+08:00",
+            canonical_key="same-p1",
+        ),
         # Phase 2: 历史补位（同类 AI 不足时）
-        _make_item(title="same-历史AI", url="https://same-p2.test", source="same_src",
-                   category="ai", published_at=f"{yesterday}T12:00:00+08:00",
-                   canonical_key="same-p2"),
+        _make_item(
+            title="same-历史AI",
+            url="https://same-p2.test",
+            source="same_src",
+            category="ai",
+            published_at=f"{yesterday}T12:00:00+08:00",
+            canonical_key="same-p2",
+        ),
         # Phase 3: 今日竞争（也是 same_src）
-        _make_item(title="same-今日AI2", url="https://same-p3.test", source="same_src",
-                   category="ai", published_at=f"{today}T10:00:00+08:00",
-                   canonical_key="same-p3"),
+        _make_item(
+            title="same-今日AI2",
+            url="https://same-p3.test",
+            source="same_src",
+            category="ai",
+            published_at=f"{today}T10:00:00+08:00",
+            canonical_key="same-p3",
+        ),
         # 其他类确保够选
-        _make_item(title="工具-今日1", url="https://t1.test", source="sspai",
-                   category="tool", published_at=f"{today}T08:00:00+08:00"),
-        _make_item(title="工具-今日2", url="https://t2.test", source="appinn",
-                   category="tool", published_at=f"{today}T08:00:00+08:00"),
-        _make_item(title="游戏-今日1", url="https://g1.test", source="yystv",
-                   category="game", published_at=f"{today}T08:00:00+08:00"),
-        _make_item(title="游戏-今日2", url="https://g2.test", source="gcores",
-                   category="game", published_at=f"{today}T08:00:00+08:00"),
+        _make_item(
+            title="工具-今日1",
+            url="https://t1.test",
+            source="sspai",
+            category="tool",
+            published_at=f"{today}T08:00:00+08:00",
+        ),
+        _make_item(
+            title="工具-今日2",
+            url="https://t2.test",
+            source="appinn",
+            category="tool",
+            published_at=f"{today}T08:00:00+08:00",
+        ),
+        _make_item(
+            title="游戏-今日1",
+            url="https://g1.test",
+            source="yystv",
+            category="game",
+            published_at=f"{today}T08:00:00+08:00",
+        ),
+        _make_item(
+            title="游戏-今日2",
+            url="https://g2.test",
+            source="gcores",
+            category="game",
+            published_at=f"{today}T08:00:00+08:00",
+        ),
     ]
     policies = {
         s: SourcePolicy(s, "vertical", 48, 3.0, "standard")
@@ -161,10 +248,7 @@ def test_source_counts_accumulate_across_phases():
     items, policies = build_cross_phase_same_source_fixture(now)
     result = select_digest(items, policies, now)
 
-    same_evidence = [
-        e for e in result.evidence
-        if e.canonical_key.startswith("same-p")
-    ]
+    same_evidence = [e for e in result.evidence if e.canonical_key.startswith("same-p")]
     # 至少 1 条 same_src 入选（因多样性惩罚可能被竞争挤掉部分）
     assert len(same_evidence) >= 1
     # source_counts 跨阶段累计：penalty 不为 0 说明之前的入选被正确计数
@@ -180,22 +264,38 @@ def test_category_minimums_3_2_2():
     now = _NOW
     # 需要足够多候选才能测 3/2/2
     today = now.strftime("%Y-%m-%d")
-    items = [
-        _make_item(title=f"AI-{i}", url=f"https://ai{i}.test",
-                   source=f"src-ai{i}", category="ai",
-                   published_at=f"{today}T08:00:00+08:00")
-        for i in range(5)
-    ] + [
-        _make_item(title=f"工具-{i}", url=f"https://t{i}.test",
-                   source=f"src-t{i}", category="tool",
-                   published_at=f"{today}T08:00:00+08:00")
-        for i in range(5)
-    ] + [
-        _make_item(title=f"游戏-{i}", url=f"https://g{i}.test",
-                   source=f"src-g{i}", category="game",
-                   published_at=f"{today}T08:00:00+08:00")
-        for i in range(5)
-    ]
+    items = (
+        [
+            _make_item(
+                title=f"AI-{i}",
+                url=f"https://ai{i}.test",
+                source=f"src-ai{i}",
+                category="ai",
+                published_at=f"{today}T08:00:00+08:00",
+            )
+            for i in range(5)
+        ]
+        + [
+            _make_item(
+                title=f"工具-{i}",
+                url=f"https://t{i}.test",
+                source=f"src-t{i}",
+                category="tool",
+                published_at=f"{today}T08:00:00+08:00",
+            )
+            for i in range(5)
+        ]
+        + [
+            _make_item(
+                title=f"游戏-{i}",
+                url=f"https://g{i}.test",
+                source=f"src-g{i}",
+                category="game",
+                published_at=f"{today}T08:00:00+08:00",
+            )
+            for i in range(5)
+        ]
+    )
     policies = {}
     for i in range(5):
         policies[f"src-ai{i}"] = SourcePolicy(f"src-ai{i}", "vertical", 48, 3.0, "standard")
@@ -216,14 +316,17 @@ def test_top_n_limit():
     now = _NOW
     today = now.strftime("%Y-%m-%d")
     items = [
-        _make_item(title=f"Item-{i}", url=f"https://x{i}.test",
-                   source=f"src-{i}", category="ai",
-                   published_at=f"{today}T08:00:00+08:00")
+        _make_item(
+            title=f"Item-{i}",
+            url=f"https://x{i}.test",
+            source=f"src-{i}",
+            category="ai",
+            published_at=f"{today}T08:00:00+08:00",
+        )
         for i in range(30)
     ]
     policies = {
-        f"src-{i}": SourcePolicy(f"src-{i}", "vertical", 48, 3.0, "standard")
-        for i in range(30)
+        f"src-{i}": SourcePolicy(f"src-{i}", "vertical", 48, 3.0, "standard") for i in range(30)
     }
     result = select_digest(items, policies, now)
     assert len(result.selected) <= 10
@@ -236,14 +339,22 @@ def test_deterministic_output():
     now = _NOW
     today = now.strftime("%Y-%m-%d")
     items = [
-        _make_item(title="A", url="https://later.test",
-                   source="src-a", category="ai",
-                   published_at=f"{today}T09:00:00+08:00",
-                   canonical_key="later"),
-        _make_item(title="B", url="https://earlier.test",
-                   source="src-b", category="ai",
-                   published_at=f"{today}T08:00:00+08:00",
-                   canonical_key="earlier"),
+        _make_item(
+            title="A",
+            url="https://later.test",
+            source="src-a",
+            category="ai",
+            published_at=f"{today}T09:00:00+08:00",
+            canonical_key="later",
+        ),
+        _make_item(
+            title="B",
+            url="https://earlier.test",
+            source="src-b",
+            category="ai",
+            published_at=f"{today}T08:00:00+08:00",
+            canonical_key="earlier",
+        ),
     ]
     policies = {
         "src-a": SourcePolicy("src-a", "vertical", 48, 3.0, "standard"),

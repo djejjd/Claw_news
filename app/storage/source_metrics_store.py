@@ -145,7 +145,9 @@ class SourceMetricsStore:
     # ---- Task 6: 独立发布指标 ----
 
     def append_publish_source_metrics(
-        self, published_at: str, rows: list[dict],
+        self,
+        published_at: str,
+        rows: list[dict],
     ) -> Path:
         """按真实 source 写入发布指标，独立于 ingest metrics。"""
         today = datetime.fromisoformat(published_at).strftime("%Y-%m-%d")

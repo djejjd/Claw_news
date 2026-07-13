@@ -45,8 +45,11 @@ class SelectionResult:
 
 # ---- 评分 ----
 
+
 def compute_final_score(
-    item: CandidateItem, policy: SourcePolicy, now: datetime,
+    item: CandidateItem,
+    policy: SourcePolicy,
+    now: datetime,
 ) -> float:
     """final_score = source_quality_weight + freshness_score"""
     from app.content.time_policy import candidate_effective_at
@@ -78,6 +81,7 @@ def source_diversity_penalty(selected_count: int) -> float:
 
 # ---- 选材 ----
 
+
 def select_digest(
     items: list[CandidateItem],
     policies: dict[str, SourcePolicy],
@@ -104,6 +108,7 @@ def select_digest(
     for it in deduped.values():
         # 使用 candidate_effective_at 统一日期解析（兼容 yyyy-mm-dd 和 ISO 格式）
         from app.content.time_policy import candidate_effective_at
+
         eff, _ = candidate_effective_at(it)
         if eff is not None:
             pub_dt = eff
@@ -137,8 +142,7 @@ def select_digest(
             for cat in _CATEGORY_ORDER:
                 need = target_per_cat.get(cat, 0) if target_per_cat else 0
                 cat_items = [
-                    s for s in scored
-                    if s[0].category == cat and s[0].url not in seen_urls
+                    s for s in scored if s[0].category == cat and s[0].url not in seen_urls
                 ]
                 for it, sel_score, pen in cat_items:
                     if len(selected) >= top_n:
@@ -151,13 +155,15 @@ def select_digest(
                     source_counts[src] = source_counts.get(src, 0) + 1
                     category_counts[cat] += 1
                     ck2 = it.canonical_key or CandidateItem.make_canonical_key(it.url or "")
-                    evidence.append(SelectionEvidence(
-                        canonical_key=ck2,
-                        phase=phase,
-                        final_score=it.final_score,
-                        diversity_penalty=pen,
-                        selection_score=sel_score,
-                    ))
+                    evidence.append(
+                        SelectionEvidence(
+                            canonical_key=ck2,
+                            phase=phase,
+                            final_score=it.final_score,
+                            diversity_penalty=pen,
+                            selection_score=sel_score,
+                        )
+                    )
         else:
             for it, sel_score, pen in scored:
                 if len(selected) >= top_n:
@@ -172,13 +178,15 @@ def select_digest(
                 source_counts[src] = source_counts.get(src, 0) + 1
                 category_counts[cat] += 1
                 ck = it.canonical_key or CandidateItem.make_canonical_key(it.url or "")
-                evidence.append(SelectionEvidence(
-                    canonical_key=ck,
-                    phase=phase,
-                    final_score=it.final_score,
-                    diversity_penalty=pen,
-                    selection_score=sel_score,
-                ))
+                evidence.append(
+                    SelectionEvidence(
+                        canonical_key=ck,
+                        phase=phase,
+                        final_score=it.final_score,
+                        diversity_penalty=pen,
+                        selection_score=sel_score,
+                    )
+                )
 
     # Phase 1: 今日保底（逐类选取，保证先满足 AI→工具→游戏 最低目标）
     _greedy_pick(today_items, "today_guarantee", _CATEGORY_MINIMUMS, per_category=True)
@@ -200,6 +208,7 @@ def select_digest(
 
 
 # ---- 排序辅助 ----
+
 
 def _pub_ts(item: CandidateItem) -> float:
     """返回 published_at 的 timestamp 用于排序，新者更大。"""

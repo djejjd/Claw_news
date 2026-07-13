@@ -113,11 +113,19 @@ class Merger:
             src = getattr(item, "source", "")
             if src not in policies:
                 policies[src] = SourcePolicy(
-                    src, "vertical", 48, DEFAULT_SOURCE_WEIGHT, "standard",
+                    src,
+                    "vertical",
+                    48,
+                    DEFAULT_SOURCE_WEIGHT,
+                    "standard",
                 )
 
         result = select_digest(
-            items, policies, datetime.now(), "Asia/Shanghai", self.top_n,
+            items,
+            policies,
+            datetime.now(),
+            "Asia/Shanghai",
+            self.top_n,
         )
         return result.selected
 
@@ -125,7 +133,9 @@ class Merger:
     # Legacy merge (保留原有行为)
     # ------------------------------------------------------------------
 
-    def _merge_legacy(self, items: List[HotItem], period: str = "morning") -> Dict[Category, List[HotItem]]:
+    def _merge_legacy(
+        self, items: List[HotItem], period: str = "morning"
+    ) -> Dict[Category, List[HotItem]]:
         result: Dict[Category, List[HotItem]] = {"ai": [], "tool": [], "game": []}
 
         for category in result:

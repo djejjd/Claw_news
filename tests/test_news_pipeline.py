@@ -222,66 +222,109 @@ class TestPipelineSignature:
 
 class TestMatchSelectedCandidate:
     def test_exact_url_match(self):
-        from app.pipeline.news_pipeline import _match_selected_candidate
         from app.pipeline.candidate import CandidateItem
-        selected = [CandidateItem(title="T", url="https://a.com/1", summary="", source="x", category="ai")]
+        from app.pipeline.news_pipeline import _match_selected_candidate
+
+        selected = [
+            CandidateItem(title="T", url="https://a.com/1", summary="", source="x", category="ai")
+        ]
         result = _match_selected_candidate(selected, {"url": "https://a.com/1"})
         assert result is not None
         assert result.url == "https://a.com/1"
 
     def test_exact_title_match(self):
-        from app.pipeline.news_pipeline import _match_selected_candidate
         from app.pipeline.candidate import CandidateItem
-        selected = [CandidateItem(title="Exact Title", url="https://a.com/1", summary="", source="x", category="ai")]
+        from app.pipeline.news_pipeline import _match_selected_candidate
+
+        selected = [
+            CandidateItem(
+                title="Exact Title",
+                url="https://a.com/1",
+                summary="",
+                source="x",
+                category="ai",
+            )
+        ]
         result = _match_selected_candidate(selected, {"title": "Exact Title"})
         assert result is not None
         assert result.title == "Exact Title"
 
     def test_canonical_key_fallback(self):
         """When URL and title don't match exactly, canonical_key should still work."""
-        from app.pipeline.news_pipeline import _match_selected_candidate
         from app.pipeline.candidate import CandidateItem
+        from app.pipeline.news_pipeline import _match_selected_candidate
+
         ck = CandidateItem.make_canonical_key("https://a.com/article/123")
-        selected = [CandidateItem(
-            title="Some Title", url="https://a.com/article/123",
-            summary="", source="x", category="ai", canonical_key=ck,
-        )]
+        selected = [
+            CandidateItem(
+                title="Some Title",
+                url="https://a.com/article/123",
+                summary="",
+                source="x",
+                category="ai",
+                canonical_key=ck,
+            )
+        ]
         # LLM returned the same URL but with query params or different scheme
-        result = _match_selected_candidate(selected, {
-            "url": "https://a.com/article/123?utm=xxx",
-            "title": "Rewritten Title",
-        })
+        result = _match_selected_candidate(
+            selected,
+            {
+                "url": "https://a.com/article/123?utm=xxx",
+                "title": "Rewritten Title",
+            },
+        )
         assert result is not None
         assert result.url == "https://a.com/article/123"
 
     def test_canonical_key_beats_title_match(self):
         """当两个候选标题相同时，canonical_key 匹配优先于 title 匹配，
         防止 LLM 改写 URL 后被同标题的另一个候选截走。"""
-        from app.pipeline.news_pipeline import _match_selected_candidate
         from app.pipeline.candidate import CandidateItem
+        from app.pipeline.news_pipeline import _match_selected_candidate
+
         ck_a = CandidateItem.make_canonical_key("https://a.com/article/456")
         selected = [
-            CandidateItem(title="Same Title", url="https://a.com/article/123",
-                          summary="", source="x", category="ai",
-                          canonical_key=CandidateItem.make_canonical_key("https://a.com/article/123")),
-            CandidateItem(title="Same Title", url="https://a.com/article/456",
-                          summary="", source="y", category="tool", canonical_key=ck_a),
+            CandidateItem(
+                title="Same Title",
+                url="https://a.com/article/123",
+                summary="",
+                source="x",
+                category="ai",
+                canonical_key=CandidateItem.make_canonical_key("https://a.com/article/123"),
+            ),
+            CandidateItem(
+                title="Same Title",
+                url="https://a.com/article/456",
+                summary="",
+                source="y",
+                category="tool",
+                canonical_key=ck_a,
+            ),
         ]
         # LLM 返回了 candidate 2 的 URL（带 query param），标题相同
-        result = _match_selected_candidate(selected, {
-            "url": "https://a.com/article/456?ref=rss",
-            "title": "Same Title",
-        })
+        result = _match_selected_candidate(
+            selected,
+            {
+                "url": "https://a.com/article/456?ref=rss",
+                "title": "Same Title",
+            },
+        )
         assert result is not None
         assert result.url == "https://a.com/article/456"
         assert result.source == "y"  # canonical_key 命中，不是被 title 截到第一个
 
     def test_no_match_returns_none(self):
-        from app.pipeline.news_pipeline import _match_selected_candidate
         from app.pipeline.candidate import CandidateItem
-        selected = [CandidateItem(title="A", url="https://x.com/1", summary="", source="x", category="ai")]
-        result = _match_selected_candidate(selected, {
-            "url": "https://unrelated.com/2",
-            "title": "Unrelated",
-        })
+        from app.pipeline.news_pipeline import _match_selected_candidate
+
+        selected = [
+            CandidateItem(title="A", url="https://x.com/1", summary="", source="x", category="ai")
+        ]
+        result = _match_selected_candidate(
+            selected,
+            {
+                "url": "https://unrelated.com/2",
+                "title": "Unrelated",
+            },
+        )
         assert result is None

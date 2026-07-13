@@ -1,5 +1,4 @@
-"""GitHub 项目曝光历史存储。沿用 data/ github 目录，每天记录 push 过的项目。
-"""
+"""GitHub 项目曝光历史存储。沿用 data/ github 目录，每天记录 push 过的项目。"""
 
 from __future__ import annotations
 

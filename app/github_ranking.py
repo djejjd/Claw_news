@@ -6,12 +6,12 @@
 from __future__ import annotations
 
 import math
-from datetime import date, timedelta
+from datetime import date
 
 from collectors.github import GitHubRepoItem
 
-
 # ---- 活跃度评分 ----
+
 
 def _activity_score(item: GitHubRepoItem) -> float:
     """基于 pushed_at 的活跃度，越近越高分。
@@ -30,6 +30,7 @@ def _activity_score(item: GitHubRepoItem) -> float:
 
 # ---- 热度/质量评分 ----
 
+
 def _popularity_score(item: GitHubRepoItem) -> float:
     """综合 stars / forks / watchers，对数压缩防止头部垄断。
 
@@ -46,6 +47,7 @@ def _popularity_score(item: GitHubRepoItem) -> float:
 _RELEVANT_TOPICS = frozenset({"llm", "agent", "ai-tools", "machine-learning"})
 _RELEVANT_KEYWORDS = frozenset({"ai agent", "llm", "developer tooling", "game ai"})
 
+
 def _relevance_score(item: GitHubRepoItem) -> float:
     """topic 命中 + keyword 命中。
 
@@ -57,6 +59,7 @@ def _relevance_score(item: GitHubRepoItem) -> float:
 
 
 # ---- 曝光惩罚 ----
+
 
 def _exposure_penalty(item: GitHubRepoItem, exposure_dates: dict[str, date]) -> float:
     """基于最近一次曝光日期的惩罚。
@@ -80,6 +83,7 @@ def _exposure_penalty(item: GitHubRepoItem, exposure_dates: dict[str, date]) -> 
 
 
 # ---- 推荐理由 ----
+
 
 def _recommendation_reason(item: GitHubRepoItem) -> str:
     """基于结构化信号生成推荐理由，纯规则。"""
@@ -134,6 +138,7 @@ def _days_since(date_str: str) -> int | None:
 
 # ---- Public API ----
 
+
 def rank_and_recommend(
     candidates: list[GitHubRepoItem],
     exposure_dates: dict[str, date],
@@ -159,15 +164,17 @@ def rank_and_recommend(
         penalty = _exposure_penalty(item, exposure_dates)
         final = round(activity + popularity + relevance + penalty, 2)
 
-        scored.append({
-            "item": item,
-            "final_score": final,
-            "activity": activity,
-            "popularity": popularity,
-            "relevance": relevance,
-            "penalty": penalty,
-            "recommendation": _recommendation_reason(item),
-        })
+        scored.append(
+            {
+                "item": item,
+                "final_score": final,
+                "activity": activity,
+                "popularity": popularity,
+                "relevance": relevance,
+                "penalty": penalty,
+                "recommendation": _recommendation_reason(item),
+            }
+        )
 
     scored.sort(key=lambda x: x["final_score"], reverse=True)
     return scored[:top_n]

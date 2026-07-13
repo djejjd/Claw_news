@@ -63,7 +63,8 @@ async def health():
     last_ingest_at = ingest_status.get("last_ingest_at")
     if last_ingest_at:
         try:
-            from datetime import datetime, timezone
+            from datetime import datetime
+
             last_dt = datetime.fromisoformat(last_ingest_at)
             ingest_fresh = (datetime.now().replace(tzinfo=None) - last_dt).total_seconds() < 3600
         except ValueError:
@@ -71,11 +72,13 @@ async def health():
 
     # 加载最近 publish 结果
     from pathlib import Path
+
     publish_status_path = Path(__file__).resolve().parent.parent / "data" / "publish_status.json"
     publish_status = {}
     if publish_status_path.exists():
         try:
             import json
+
             publish_status = json.loads(publish_status_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             pass

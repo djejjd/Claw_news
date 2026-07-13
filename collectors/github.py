@@ -92,27 +92,27 @@ class GitHubCollector:
                         raw_repos[full_name] = repo
 
         if success_count == 0 and last_error is not None:
-            raise GitHubCollectorError(
-                f"all {len(queries)} GitHub queries failed"
-            ) from last_error
+            raise GitHubCollectorError(f"all {len(queries)} GitHub queries failed") from last_error
 
         items = []
         for repo_data in raw_repos.values():
-            items.append(GitHubRepoItem(
-                full_name=repo_data.get("full_name", ""),
-                url=repo_data.get("html_url", ""),
-                description=repo_data.get("description") or "",
-                stars=int(repo_data.get("stargazers_count", 0)),
-                forks=int(repo_data.get("forks_count", 0)),
-                watchers=int(repo_data.get("watchers_count", 0)),
-                language=repo_data.get("language") or "",
-                created_at=repo_data.get("created_at", ""),
-                updated_at=repo_data.get("updated_at", ""),
-                pushed_at=repo_data.get("pushed_at", ""),
-                matched_topics=_matched_topics(repo_data),
-                matched_keywords=_matched_keywords(repo_data),
-                fetched_at=fetched_at,
-            ))
+            items.append(
+                GitHubRepoItem(
+                    full_name=repo_data.get("full_name", ""),
+                    url=repo_data.get("html_url", ""),
+                    description=repo_data.get("description") or "",
+                    stars=int(repo_data.get("stargazers_count", 0)),
+                    forks=int(repo_data.get("forks_count", 0)),
+                    watchers=int(repo_data.get("watchers_count", 0)),
+                    language=repo_data.get("language") or "",
+                    created_at=repo_data.get("created_at", ""),
+                    updated_at=repo_data.get("updated_at", ""),
+                    pushed_at=repo_data.get("pushed_at", ""),
+                    matched_topics=_matched_topics(repo_data),
+                    matched_keywords=_matched_keywords(repo_data),
+                    fetched_at=fetched_at,
+                )
+            )
         return items
 
     async def _fetch_query(self, client: httpx.AsyncClient, q: str, headers: dict) -> list[dict]:
@@ -148,9 +148,13 @@ def _matched_topics(repo_data: dict) -> list[str]:
 
 def _matched_keywords(repo_data: dict) -> list[str]:
     keywords = ["ai agent", "llm", "developer tooling", "game ai"]
-    text = " ".join([
-        repo_data.get("description", "") or "",
-        repo_data.get("full_name", ""),
-        " ".join(repo_data.get("topics", []) if isinstance(repo_data.get("topics"), list) else []),
-    ]).lower()
+    text = " ".join(
+        [
+            repo_data.get("description", "") or "",
+            repo_data.get("full_name", ""),
+            " ".join(
+                repo_data.get("topics", []) if isinstance(repo_data.get("topics"), list) else []
+            ),
+        ]
+    ).lower()
     return [kw for kw in keywords if kw.lower() in text]

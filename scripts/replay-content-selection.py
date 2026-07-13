@@ -17,19 +17,18 @@ import sys
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="只读历史回放：模拟推送流程，输出选材分布"
-    )
+    parser = argparse.ArgumentParser(description="只读历史回放：模拟推送流程，输出选材分布")
     parser.add_argument("--data-dir", default="data", help="数据目录路径")
     parser.add_argument("--at", required=True, help="回放时间点，如 2026-07-11T09:00:00+08:00")
-    parser.add_argument("--format", choices=("text", "json"), default="text",
-                        help="输出格式 (默认 text)")
-    parser.add_argument("--lookback-hours", type=int, default=72,
-                        help="回看小时数 (默认 72)")
+    parser.add_argument(
+        "--format", choices=("text", "json"), default="text", help="输出格式 (默认 text)"
+    )
+    parser.add_argument("--lookback-hours", type=int, default=72, help="回看小时数 (默认 72)")
     args = parser.parse_args()
 
     try:
         from app.tools.content_replay import run_replay
+
         result = run_replay(
             data_dir=args.data_dir,
             at=args.at,

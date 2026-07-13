@@ -165,7 +165,9 @@ class TestComputeFinalScore:
     def test_unknown_source_default(self):
         """未知 source 使用 DEFAULT_SOURCE_WEIGHT"""
         item = _make_candidate(
-            source="unknown_source_xyz", source_weight=None, published_at=_TODAY,
+            source="unknown_source_xyz",
+            source_weight=None,
+            published_at=_TODAY,
         )
         score = compute_final_score(item)
         assert score == 5.0  # sw=2.0 + freshness=3.0
@@ -185,9 +187,19 @@ class TestComputeFinalScore:
     def test_all_default_sources_have_weights(self):
         """所有 feeds.yaml 中的默认源都有权重配置"""
         expected_sources = {
-            "qbitai", "leiphone", "jiqizhixin", "meituan_tech",
-            "sspai", "ithome", "appinn", "cloudflare_cn",
-            "yystv", "gcores", "chuapp", "indienova", "eurogamer",
+            "qbitai",
+            "leiphone",
+            "jiqizhixin",
+            "meituan_tech",
+            "sspai",
+            "ithome",
+            "appinn",
+            "cloudflare_cn",
+            "yystv",
+            "gcores",
+            "chuapp",
+            "indienova",
+            "eurogamer",
             "huggingface",
         }
         for src in expected_sources:
@@ -205,7 +217,9 @@ class TestMergerNewScoring:
         merger = Merger(top_n=5)
         items = [
             _make_candidate(title="Low", url="https://a.com/low", source_weight=1.0, category="ai"),
-            _make_candidate(title="High", url="https://a.com/high", source_weight=3.0, category="ai"),
+            _make_candidate(
+                title="High", url="https://a.com/high", source_weight=3.0, category="ai"
+            ),
             _make_candidate(title="Mid", url="https://a.com/mid", source_weight=2.0, category="ai"),
         ]
         result = merger.merge(items, use_new_scoring=True)
@@ -215,7 +229,12 @@ class TestMergerNewScoring:
     def test_respects_top_n(self):
         merger = Merger(top_n=3)
         items = [
-            _make_candidate(title=f"Item {i}", url=f"https://a.com/{i}", source_weight=float(i), category="ai")
+            _make_candidate(
+                title=f"Item {i}",
+                url=f"https://a.com/{i}",
+                source_weight=float(i),
+                category="ai",
+            )
             for i in range(8)
         ]
         result = merger.merge(items, use_new_scoring=True)
@@ -226,8 +245,20 @@ class TestMergerNewScoring:
         merger = Merger(top_n=6)
         items = [
             _make_candidate(title="AI 1", url="https://a.com/1", source_weight=3.0, category="ai"),
-            _make_candidate(title="Tool 1", url="https://t.com/1", source_weight=3.0, category="tool", source="sspai"),
-            _make_candidate(title="Game 1", url="https://g.com/1", source_weight=3.0, category="game", source="yystv"),
+            _make_candidate(
+                title="Tool 1",
+                url="https://t.com/1",
+                source_weight=3.0,
+                category="tool",
+                source="sspai",
+            ),
+            _make_candidate(
+                title="Game 1",
+                url="https://g.com/1",
+                source_weight=3.0,
+                category="game",
+                source="yystv",
+            ),
             _make_candidate(title="AI 2", url="https://a.com/2", source_weight=2.0, category="ai"),
             _make_candidate(title="AI 3", url="https://a.com/3", source_weight=2.0, category="ai"),
             _make_candidate(title="AI 4", url="https://a.com/4", source_weight=2.0, category="ai"),
@@ -253,8 +284,20 @@ class TestMergerNewScoring:
         items = [
             _make_candidate(title="AI 1", url="https://a.com/1", source_weight=3.0, category="ai"),
             _make_candidate(title="AI 2", url="https://a.com/2", source_weight=2.5, category="ai"),
-            _make_candidate(title="Tool 1", url="https://t.com/1", source_weight=2.0, category="tool", source="sspai"),
-            _make_candidate(title="Game 1", url="https://g.com/1", source_weight=1.5, category="game", source="yystv"),
+            _make_candidate(
+                title="Tool 1",
+                url="https://t.com/1",
+                source_weight=2.0,
+                category="tool",
+                source="sspai",
+            ),
+            _make_candidate(
+                title="Game 1",
+                url="https://g.com/1",
+                source_weight=1.5,
+                category="game",
+                source="yystv",
+            ),
         ]
         result = merger.merge(items, use_new_scoring=True)
         urls = [item.url for item in result]
@@ -269,7 +312,9 @@ class TestMergerNewScoring:
         merger = Merger(top_n=5)
         items = [
             _make_candidate(title="Low", url="https://dup.com/1", source_weight=1.0, category="ai"),
-            _make_candidate(title="High", url="https://dup.com/1", source_weight=3.0, category="ai"),
+            _make_candidate(
+                title="High", url="https://dup.com/1", source_weight=3.0, category="ai"
+            ),
         ]
         result = merger.merge(items, use_new_scoring=True)
         kept = next(item for item in result if item.url == "https://dup.com/1")
@@ -306,9 +351,19 @@ class TestSourceWeightsConstants:
     def test_all_thirteen_default_sources_configured(self):
         """13 个默认 feed 源全部有 SOURCE_WEIGHTS 配置"""
         expected = {
-            "qbitai", "leiphone", "jiqizhixin", "meituan_tech",
-            "sspai", "ithome", "appinn", "cloudflare_cn",
-            "yystv", "gcores", "chuapp", "indienova", "eurogamer",
+            "qbitai",
+            "leiphone",
+            "jiqizhixin",
+            "meituan_tech",
+            "sspai",
+            "ithome",
+            "appinn",
+            "cloudflare_cn",
+            "yystv",
+            "gcores",
+            "chuapp",
+            "indienova",
+            "eurogamer",
             "huggingface",
         }
         for src in expected:

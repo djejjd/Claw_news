@@ -44,6 +44,7 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
     feed_config = {}
     if feeds_path.exists():
         import yaml
+
         feed_config = yaml.safe_load(feeds_path.read_text(encoding="utf-8")) or {}
 
     # 2. 构建 SourcePolicy registry
@@ -81,10 +82,9 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
                     continue
                 try:
                     data = json.loads(line)
-                    candidates.append(CandidateItem(**{
-                        k: v for k, v in data.items()
-                        if k in _CANDIDATE_FIELDS
-                    }))
+                    candidates.append(
+                        CandidateItem(**{k: v for k, v in data.items() if k in _CANDIDATE_FIELDS})
+                    )
                 except (json.JSONDecodeError, TypeError):
                     continue
 
@@ -95,6 +95,7 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
 
     # 5. 相关性过滤
     from app.classifiers.relevance_filter import build_relevance_filter
+
     rf = build_relevance_filter(feed_config)
     candidates, relevance_rejected = rf.evaluate_batch(candidates, policies)
 
@@ -104,6 +105,7 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
 
     # 6. 三阶段选材
     from app.classifiers.topic_classifier import TopicClassifier
+
     TopicClassifier().classify_batch(candidates)
     result = select_digest(candidates, policies, now, "Asia/Shanghai", top_n=10)
 
@@ -141,5 +143,6 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
 
 
 _CANDIDATE_FIELDS = {
-    f.name for f in CandidateItem.__dataclass_fields__.values()  # type: ignore[attr-defined]
+    f.name
+    for f in CandidateItem.__dataclass_fields__.values()  # type: ignore[attr-defined]
 }

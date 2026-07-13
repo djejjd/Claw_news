@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
 from aggregator.merger import Merger
@@ -59,6 +59,7 @@ def _match_selected_candidate(selected: list, headline_item: dict):
     # 2. canonical_key fallback（title 可能相同，置信度高于 title 匹配）
     if url:
         from app.pipeline.candidate import CandidateItem
+
         target_key = CandidateItem.make_canonical_key(url)
         if target_key:
             for candidate in selected:
@@ -102,19 +103,17 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
 
     try:
         from collectors.ai_rss import load_feed_configuration
+
         feed_config = load_feed_configuration()
-        use_new_pipeline = (
-            isinstance(feed_config, dict)
-            and bool(feed_config.get("feeds"))
-        )
+        use_new_pipeline = isinstance(feed_config, dict) and bool(feed_config.get("feeds"))
     except Exception:
         use_new_pipeline = False
 
     if use_new_pipeline:
-        from app.content.source_policy import build_source_policy_registry
-        from app.storage.ingestion_store import filter_unexpired_candidates
         from app.classifiers.relevance_filter import build_relevance_filter
+        from app.content.source_policy import build_source_policy_registry
         from app.pipeline.selection import select_digest
+        from app.storage.ingestion_store import filter_unexpired_candidates
 
         candidates_used_historical = True
         relevance_rejected = []
@@ -133,13 +132,18 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         window_end = now.isoformat()
         try:
             candidates = ingestion_store.load_recent_candidates(
-                window_end, lookback_hours=72,
-                pushed_urls=pushed_urls, pushed_keys=pushed_keys,
+                window_end,
+                lookback_hours=72,
+                pushed_urls=pushed_urls,
+                pushed_keys=pushed_keys,
             )
         except Exception:
             logger.warning("历史候选读取失败，降级为当天窗口")
             candidates = ingestion_store.load_window_candidates(
-                ctx.time_window_start, ctx.time_window_end, pushed_urls, pushed_keys,
+                ctx.time_window_start,
+                ctx.time_window_end,
+                pushed_urls,
+                pushed_keys,
             )
             candidates_used_historical = False
 
@@ -150,8 +154,13 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
 
         if not candidates:
             _write_publish_status(_make_publish_status("skipped", 0, False, []))
-            return PublishResult(status="skipped", selected_count=0, pushed=False,
-                                 message_type="markdown", summary_preview="")
+            return PublishResult(
+                status="skipped",
+                selected_count=0,
+                pushed=False,
+                message_type="markdown",
+                summary_preview="",
+            )
 
         # 3. 按源有效期过滤
         candidates, expiry_rejected = filter_unexpired_candidates(candidates, now, policies)
@@ -162,8 +171,13 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
 
         if not candidates:
             _write_publish_status(_make_publish_status("skipped", 0, False, []))
-            return PublishResult(status="skipped", selected_count=0, pushed=False,
-                                 message_type="markdown", summary_preview="")
+            return PublishResult(
+                status="skipped",
+                selected_count=0,
+                pushed=False,
+                message_type="markdown",
+                summary_preview="",
+            )
 
         # 5. 分类 + 三阶段选材
         TopicClassifier().classify_batch(candidates)
@@ -177,7 +191,10 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         now = datetime.now()
 
         candidates = ingestion_store.load_window_candidates(
-            ctx.time_window_start, ctx.time_window_end, pushed_urls, pushed_keys,
+            ctx.time_window_start,
+            ctx.time_window_end,
+            pushed_urls,
+            pushed_keys,
         )
         if ctx.publish_scope == "ai_only":
             candidates = [i for i in candidates if i.category == "ai"]
@@ -186,8 +203,13 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
 
         if not candidates:
             _write_publish_status(_make_publish_status("skipped", 0, False, []))
-            return PublishResult(status="skipped", selected_count=0, pushed=False,
-                                 message_type="markdown", summary_preview="")
+            return PublishResult(
+                status="skipped",
+                selected_count=0,
+                pushed=False,
+                message_type="markdown",
+                summary_preview="",
+            )
 
         TopicClassifier().classify_batch(candidates)
         selected = Merger(top_n=10).merge(candidates, use_new_scoring=True)
@@ -225,8 +247,11 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         github_projects=github_dicts if github_dicts else None,
     )
     if "_parse_error" in llm_result and not llm_result.get("headline_items"):
-        _write_publish_status(_make_publish_status(
-            "failed", len(selected), False, [f"llm_parse: {llm_result['_parse_error']}"]))
+        _write_publish_status(
+            _make_publish_status(
+                "failed", len(selected), False, [f"llm_parse: {llm_result['_parse_error']}"]
+            )
+        )
         return PublishResult(
             status="failed",
             selected_count=len(selected),
@@ -259,8 +284,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
 
     # 6. 渲染 — 将 GitHub 描述替换为 LLM 翻译的中文版本
     translated_map: dict[str, str] = {
-        p["full_name"]: p.get("description_cn", "")
-        for p in llm_result.get("github_projects", [])
+        p["full_name"]: p.get("description_cn", "") for p in llm_result.get("github_projects", [])
     }
     if github_top3 and translated_map:
         for item in github_top3:
@@ -288,7 +312,9 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     try:
         pr = await WeComPusher(config.wecom_webhook_url).push_single_markdown(markdown)
     except Exception as exc:
-        _write_publish_status(_make_publish_status("failed", len(selected), False, [f"push: {exc}"]))
+        _write_publish_status(
+            _make_publish_status("failed", len(selected), False, [f"push: {exc}"])
+        )
         return PublishResult(
             status="failed",
             selected_count=len(selected),
@@ -316,22 +342,25 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
 
     # 独立 publish 指标（按真实 source 聚合）
     try:
-        from app.content.time_policy import candidate_effective_at, is_today as _time_is_today
+        from app.content.time_policy import candidate_effective_at
+        from app.content.time_policy import is_today as _time_is_today
 
         metric_rows = []
         for item in selected:
             eff, _ = candidate_effective_at(item)
             is_today_item = _time_is_today(eff, now, config.tz) if eff else False
-            metric_rows.append({
-                "source": item.source,
-                "category": item.category,
-                "candidate_count": 1,
-                "relevance_accepted_count": 1,
-                "relevance_rejected_count": 0,
-                "selected_today_count": 1 if is_today_item else 0,
-                "selected_backfill_count": 0 if is_today_item else 1,
-                "rejection_reasons": [],
-            })
+            metric_rows.append(
+                {
+                    "source": item.source,
+                    "category": item.category,
+                    "candidate_count": 1,
+                    "relevance_accepted_count": 1,
+                    "relevance_rejected_count": 0,
+                    "selected_today_count": 1 if is_today_item else 0,
+                    "selected_backfill_count": 0 if is_today_item else 1,
+                    "rejection_reasons": [],
+                }
+            )
         metrics_store.append_publish_source_metrics(now.isoformat(), metric_rows)
     except Exception:
         errors.append("publish_metrics_write_failed")
@@ -395,11 +424,17 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
                 errors=errors,
                 selection_evidence=(
                     [
-                        {"canonical_key": e.canonical_key, "phase": e.phase,
-                         "final_score": e.final_score, "diversity_penalty": e.diversity_penalty,
-                         "selection_score": e.selection_score}
+                        {
+                            "canonical_key": e.canonical_key,
+                            "phase": e.phase,
+                            "final_score": e.final_score,
+                            "diversity_penalty": e.diversity_penalty,
+                            "selection_score": e.selection_score,
+                        }
                         for e in selection_result.evidence
-                    ] if selection_result else []
+                    ]
+                    if selection_result
+                    else []
                 ),
                 relevance_rejections=relevance_rejected,
             )
@@ -408,8 +443,9 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         errors.append("state_write_failed")
 
     publish_ok = len(errors) == 0
-    _write_publish_status(_make_publish_status(
-        "ok" if publish_ok else "degraded", len(selected), True, errors))
+    _write_publish_status(
+        _make_publish_status("ok" if publish_ok else "degraded", len(selected), True, errors)
+    )
     return PublishResult(
         status="ok" if publish_ok else "degraded",
         selected_count=len(selected),
@@ -434,6 +470,7 @@ def _write_publish_status(payload: dict) -> None:
     """写入 durable publish 状态，供 /health 和后续排查使用。"""
     path = _DATA_DIR / "publish_status.json"
     import json
+
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(path)

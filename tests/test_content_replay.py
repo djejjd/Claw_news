@@ -18,9 +18,7 @@ def _snapshot_hashes(root: Path) -> dict[str, str]:
     hashes = {}
     for entry in sorted(root.rglob("*")):
         if entry.is_file():
-            hashes[str(entry.relative_to(root))] = hashlib.sha256(
-                entry.read_bytes()
-            ).hexdigest()
+            hashes[str(entry.relative_to(root))] = hashlib.sha256(entry.read_bytes()).hexdigest()
     return hashes
 
 
@@ -32,22 +30,34 @@ def _seed_replay_fixture(tmp_path: Path) -> Path:
 
     items = [
         CandidateItem(
-            title="AI 今日", url="https://ai1.test", summary="AI news",
-            source="qbitai", category="ai",
+            title="AI 今日",
+            url="https://ai1.test",
+            summary="AI news",
+            source="qbitai",
+            category="ai",
             published_at="2026-07-11T08:00:00+08:00",
-            canonical_key="ai1", fetched_at="2026-07-11T08:00:00+08:00",
+            canonical_key="ai1",
+            fetched_at="2026-07-11T08:00:00+08:00",
         ),
         CandidateItem(
-            title="工具 今日", url="https://t1.test", summary="tool news",
-            source="sspai", category="tool",
+            title="工具 今日",
+            url="https://t1.test",
+            summary="tool news",
+            source="sspai",
+            category="tool",
             published_at="2026-07-11T08:00:00+08:00",
-            canonical_key="t1", fetched_at="2026-07-11T08:00:00+08:00",
+            canonical_key="t1",
+            fetched_at="2026-07-11T08:00:00+08:00",
         ),
         CandidateItem(
-            title="游戏 今日", url="https://g1.test", summary="game news",
-            source="yystv", category="game",
+            title="游戏 今日",
+            url="https://g1.test",
+            summary="game news",
+            source="yystv",
+            category="game",
             published_at="2026-07-11T08:00:00+08:00",
-            canonical_key="g1", fetched_at="2026-07-11T08:00:00+08:00",
+            canonical_key="g1",
+            fetched_at="2026-07-11T08:00:00+08:00",
         ),
     ]
     # Write candidates
@@ -55,6 +65,7 @@ def _seed_replay_fixture(tmp_path: Path) -> Path:
     with open(cand_path, "w", encoding="utf-8") as f:
         for item in items:
             from dataclasses import asdict
+
             f.write(json.dumps(asdict(item), ensure_ascii=False) + "\n")
 
     # Write index
@@ -64,19 +75,45 @@ def _seed_replay_fixture(tmp_path: Path) -> Path:
     # Create feeds.yaml-like config for policies
     feeds_path = tmp_path / "feeds.yaml"
     import yaml
-    feeds_path.write_text(yaml.dump({
-        "feeds": {
-            "ai": [{"url": "https://qbitai.com/feed", "source": "qbitai",
-                    "tier": "vertical", "retention_hours": 48, "quality_weight": 3.5,
-                    "filter_profile": "standard"}],
-            "tool": [{"url": "https://sspai.com/feed", "source": "sspai",
-                      "tier": "vertical", "retention_hours": 48, "quality_weight": 3.5,
-                      "filter_profile": "standard"}],
-            "game": [{"url": "https://yystv.cn/rss/feed", "source": "yystv",
-                      "tier": "vertical", "retention_hours": 48, "quality_weight": 3.5,
-                      "filter_profile": "standard"}],
-        }
-    }))
+
+    feeds_path.write_text(
+        yaml.dump(
+            {
+                "feeds": {
+                    "ai": [
+                        {
+                            "url": "https://qbitai.com/feed",
+                            "source": "qbitai",
+                            "tier": "vertical",
+                            "retention_hours": 48,
+                            "quality_weight": 3.5,
+                            "filter_profile": "standard",
+                        }
+                    ],
+                    "tool": [
+                        {
+                            "url": "https://sspai.com/feed",
+                            "source": "sspai",
+                            "tier": "vertical",
+                            "retention_hours": 48,
+                            "quality_weight": 3.5,
+                            "filter_profile": "standard",
+                        }
+                    ],
+                    "game": [
+                        {
+                            "url": "https://yystv.cn/rss/feed",
+                            "source": "yystv",
+                            "tier": "vertical",
+                            "retention_hours": 48,
+                            "quality_weight": 3.5,
+                            "filter_profile": "standard",
+                        }
+                    ],
+                }
+            }
+        )
+    )
 
     return data_dir
 
@@ -89,13 +126,20 @@ def _seed_fixture_with_history(tmp_path: Path) -> Path:
     ing_today = data_dir / "ingestion" / "2026-07-11"
     ing_today.mkdir(parents=True)
     today_items = [
-        CandidateItem(title=f"AI today {i}", url=f"https://ai-t{i}.test",
-                       summary="AI", source="qbitai", category="ai",
-                       published_at="2026-07-11T08:00:00+08:00",
-                       canonical_key=f"ai-t{i}", fetched_at="2026-07-11T08:00:00+08:00")
+        CandidateItem(
+            title=f"AI today {i}",
+            url=f"https://ai-t{i}.test",
+            summary="AI",
+            source="qbitai",
+            category="ai",
+            published_at="2026-07-11T08:00:00+08:00",
+            canonical_key=f"ai-t{i}",
+            fetched_at="2026-07-11T08:00:00+08:00",
+        )
         for i in range(2)
     ]
     from dataclasses import asdict
+
     with open(ing_today / "candidates.jsonl", "w") as f:
         for item in today_items:
             f.write(json.dumps(asdict(item), ensure_ascii=False) + "\n")
@@ -106,10 +150,16 @@ def _seed_fixture_with_history(tmp_path: Path) -> Path:
     ing_yesterday = data_dir / "ingestion" / "2026-07-10"
     ing_yesterday.mkdir(parents=True)
     yesterday_items = [
-        CandidateItem(title=f"AI yesterday {i}", url=f"https://ai-y{i}.test",
-                       summary="AI", source="qbitai", category="ai",
-                       published_at="2026-07-10T08:00:00+08:00",
-                       canonical_key=f"ai-y{i}", fetched_at="2026-07-10T08:00:00+08:00")
+        CandidateItem(
+            title=f"AI yesterday {i}",
+            url=f"https://ai-y{i}.test",
+            summary="AI",
+            source="qbitai",
+            category="ai",
+            published_at="2026-07-10T08:00:00+08:00",
+            canonical_key=f"ai-y{i}",
+            fetched_at="2026-07-10T08:00:00+08:00",
+        )
         for i in range(3)
     ]
     with open(ing_yesterday / "candidates.jsonl", "w") as f:
@@ -120,19 +170,32 @@ def _seed_fixture_with_history(tmp_path: Path) -> Path:
 
     # feeds.yaml
     import yaml
+
     feeds_path = tmp_path / "feeds.yaml"
-    feeds_path.write_text(yaml.dump({
-        "feeds": {
-            "ai": [{"url": "https://qbitai.com/feed", "source": "qbitai",
-                    "tier": "vertical", "retention_hours": 48, "quality_weight": 3.5,
-                    "filter_profile": "standard"}],
-        }
-    }))
+    feeds_path.write_text(
+        yaml.dump(
+            {
+                "feeds": {
+                    "ai": [
+                        {
+                            "url": "https://qbitai.com/feed",
+                            "source": "qbitai",
+                            "tier": "vertical",
+                            "retention_hours": 48,
+                            "quality_weight": 3.5,
+                            "filter_profile": "standard",
+                        }
+                    ],
+                }
+            }
+        )
+    )
 
     return data_dir
 
 
 # ---- 测试 ----
+
 
 def test_module_importable():
     """模块可导入。"""
