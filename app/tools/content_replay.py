@@ -55,6 +55,10 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
     policies = build_source_policy_registry(feeds_raw)
 
     # 3. 读取 72 小时内候选
+    # 注：回放按目录日期过滤（宽口径），不做 fetched_at 逐个过滤。
+    # production pipeline 的 load_recent_candidates() 会额外按 fetched_at 窗口裁剪，
+    # 回放为保持纯只读（不修改输入数据）采用目录级判断。对日常用法差异可忽略。
+
     start_dt = now - timedelta(hours=lookback_hours)
     candidates: list[CandidateItem] = []
     ingestion_dir = data_path / "ingestion"
@@ -109,8 +113,8 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
 
     today_count = 0
     backfill_count = 0
-    for it, ev in zip(result.selected, result.evidence):
-        if ev.phase == "today_competition" or ev.phase == "today_guarantee":
+    for ev in result.evidence:
+        if ev.phase in ("today_competition", "today_guarantee"):
             today_count += 1
         elif ev.phase == "historical_backfill":
             backfill_count += 1
