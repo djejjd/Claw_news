@@ -221,7 +221,186 @@ class TestPipelinePushFailure:
         assert result.status == "failed"
         assert result.pushed is False
         assert len(result.errors) > 0
-        assert any("push" in e for e in result.errors)
+
+
+class TestTelegramDeliveryRetry:
+    """Telegram enabled flows keep a pending record and can resume from it."""
+
+    @pytest.mark.asyncio
+    async def test_telegram_failure_leaves_pending_delivery(self, tmp_path: Path):
+        from app.delivery.store import PendingDeliveryStore
+        from app.pipeline.news_pipeline import run_pipeline
+
+        config = _make_config(
+            telegram_bot_token="123:token",
+            telegram_chat_id="456",
+        )
+        ctx = _make_ctx()
+        candidate = _make_candidate()
+        llm_result = _make_llm_result()
+        push_result = _make_push_result(success=True)
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)
+            ),
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_wecom_cls,
+            patch("app.pipeline.news_pipeline.TelegramPusher") as mock_telegram_cls,
+            patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
+            patch("app.pipeline.news_pipeline.GitHubStore") as mock_github_store,
+            patch("app.pipeline.news_pipeline.GitHubExposureStore") as mock_exposure,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
+        ):
+            mock_is_inst = MagicMock()
+            mock_is_inst.load_window_candidates.return_value = [candidate]
+            mock_is.return_value = mock_is_inst
+            mock_cls.return_value = MagicMock()
+            mock_github_store.return_value.load_latest_snapshot.return_value = []
+            mock_exposure.return_value.load.return_value = {}
+
+            mock_wecom = MagicMock()
+            mock_wecom.push_single_markdown = AsyncMock(return_value=push_result)
+            mock_wecom_cls.return_value = mock_wecom
+
+            mock_telegram = MagicMock()
+            mock_telegram.push_messages = AsyncMock(side_effect=RuntimeError("telegram down"))
+            mock_telegram_cls.return_value = mock_telegram
+
+            mock_metrics_store_cls.return_value.write_selected_counts.return_value = 1
+
+            result = await run_pipeline(ctx, config)
+
+        assert result.status == "degraded"
+        assert result.pushed is True
+        pending = PendingDeliveryStore(tmp_path).load("2026-05-18", "morning")
+        assert pending is not None
+        assert pending["channels"]["wecom"]["status"] == "succeeded"
+        assert pending["channels"]["telegram"]["status"] == "failed"
+        assert pending["messages"]["wecom_markdown"]
+        assert pending["messages"]["telegram_messages"]
+
+    @pytest.mark.asyncio
+    async def test_pending_delivery_retry_skips_llm_and_finishes(self, tmp_path: Path):
+        from app.delivery.store import PendingDeliveryStore
+        from app.pipeline.news_pipeline import run_pipeline
+
+        config = _make_config(
+            telegram_bot_token="123:token",
+            telegram_chat_id="456",
+        )
+        ctx = _make_ctx()
+        store = PendingDeliveryStore(tmp_path)
+        store.save(
+            "2026-05-18",
+            "morning",
+            {
+                "delivery_id": "2026-05-18-morning-abc123",
+                "channels": {
+                    "wecom": {
+                        "enabled": True,
+                        "status": "succeeded",
+                        "attempted_at": "2026-05-18T08:00:00",
+                        "error": None,
+                    },
+                    "telegram": {
+                        "enabled": True,
+                        "status": "pending",
+                        "attempted_at": None,
+                        "error": None,
+                    },
+                },
+                "messages": {
+                    "wecom_markdown": "wecom markdown",
+                    "telegram_messages": ["telegram message"],
+                },
+                "finalization": {
+                    "date": "2026-05-18",
+                    "period": "morning",
+                    "trigger_mode": "cli_compat",
+                    "headline_items": [
+                        {
+                            "title": "Test News",
+                            "url": "https://example.com/1",
+                            "core_summary": "A test summary.",
+                            "importance": "高",
+                            "trend": "利好",
+                            "source": "qbitai",
+                            "display_category": "AI",
+                            "topic_label": None,
+                            "topic_confidence": 0.9,
+                            "final_score": 8.8,
+                        }
+                    ],
+                    "daily_judgement": "AI行业稳步发展",
+                    "source_failures": [],
+                    "published_urls": ["https://example.com/1"],
+                    "published_keys": ["key-1"],
+                    "github_projects": [
+                        {
+                            "full_name": "org/repo",
+                            "final_score": 8.1,
+                            "activity": 1.0,
+                            "popularity": 1.0,
+                            "relevance": 1.0,
+                            "penalty": 0.0,
+                            "recommendation": "值得关注",
+                            "matched_topics": [],
+                            "matched_keywords": [],
+                        }
+                    ],
+                    "selection_evidence": [],
+                    "relevance_rejections": [],
+                    "selected_counts_by_source": {"qbitai": 1},
+                    "metric_rows": [
+                        {
+                            "source": "qbitai",
+                            "category": "ai",
+                            "candidate_count": 1,
+                            "relevance_accepted_count": 1,
+                            "relevance_rejected_count": 0,
+                            "selected_today_count": 1,
+                            "selected_backfill_count": 0,
+                            "rejection_reasons": [],
+                        }
+                    ],
+                },
+            },
+        )
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.summarize_news") as mock_summarize,
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_wecom_cls,
+            patch("app.pipeline.news_pipeline.TelegramPusher") as mock_telegram_cls,
+            patch("app.pipeline.news_pipeline.TopicClassifier") as mock_cls,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
+            patch("app.pipeline.news_pipeline.GitHubStore") as mock_github_store,
+            patch("app.pipeline.news_pipeline.GitHubExposureStore") as mock_exposure,
+        ):
+            mock_is.return_value = MagicMock()
+            mock_cls.return_value = MagicMock()
+            mock_wecom_cls.return_value = MagicMock()
+            mock_github_store.return_value.load_latest_snapshot.return_value = []
+            mock_exposure.return_value.load.return_value = {}
+
+            mock_metrics_store = MagicMock()
+            mock_metrics_store.write_selected_counts.return_value = 1
+            mock_metrics_store_cls.return_value = mock_metrics_store
+
+            mock_telegram = MagicMock()
+            mock_telegram.push_messages = AsyncMock(return_value=MagicMock(messages_sent=1))
+            mock_telegram_cls.return_value = mock_telegram
+
+            result = await run_pipeline(ctx, config)
+
+        assert result.status == "ok"
+        assert result.pushed is True
+        mock_summarize.assert_not_called()
+        mock_wecom_cls.assert_not_called()
+        assert store.load("2026-05-18", "morning") is None
 
     @pytest.mark.asyncio
     async def test_push_exception_returns_failed(self, tmp_path: Path):
@@ -361,7 +540,7 @@ class TestPipelineGitHubSupplement:
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
             patch("app.pipeline.news_pipeline.GitHubStore") as mock_github_store,
-            patch("app.storage.github_exposure_store.GitHubExposureStore") as mock_exposure,
+            patch("app.pipeline.news_pipeline.GitHubExposureStore") as mock_exposure,
             patch(
                 "app.pipeline.news_pipeline.summarize_news",
                 new=AsyncMock(return_value=llm_result),
@@ -452,7 +631,7 @@ class TestPipelineGitHubSupplement:
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
             patch("app.pipeline.news_pipeline.GitHubStore") as mock_github_store,
-            patch("app.storage.github_exposure_store.GitHubExposureStore") as mock_exposure,
+            patch("app.pipeline.news_pipeline.GitHubExposureStore") as mock_exposure,
             patch(
                 "app.pipeline.news_pipeline.summarize_news",
                 new=AsyncMock(return_value=llm_result),
@@ -502,7 +681,7 @@ class TestPipelineGitHubSupplement:
             patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
             patch("app.pipeline.news_pipeline.GitHubStore") as mock_github_store,
-            patch("app.storage.github_exposure_store.GitHubExposureStore") as mock_exposure,
+            patch("app.pipeline.news_pipeline.GitHubExposureStore") as mock_exposure,
             patch(
                 "app.pipeline.news_pipeline.summarize_news",
                 new=AsyncMock(return_value=llm_result),

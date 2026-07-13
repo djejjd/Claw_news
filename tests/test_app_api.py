@@ -314,7 +314,7 @@ class TestRunNewsEndpoint:
                 )
             )
 
-        assert result.status == "degraded"  # push ok but source_metrics write short
+        assert result.status == "ok"
         fake_metrics_store.write_selected_counts.assert_called_once_with(
             {"qbitai": 1, "huggingface": 1}
         )

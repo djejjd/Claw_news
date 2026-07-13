@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
 from aggregator.merger import Merger
 from app.category_policy import display_category_for_runtime, normalize_category
 from app.classifiers.topic_classifier import TopicClassifier
+from app.delivery.state import ChannelResult, DeliveryState, make_delivery_id
+from app.delivery.store import PendingDeliveryCorruptError, PendingDeliveryStore
 from app.pipeline.context import RunContext
+from app.renderers.telegram_html import render_telegram_digest
 from app.renderers.wecom_markdown import make_preview, render_digest
+from app.storage.github_exposure_store import GitHubExposureStore
 from app.storage.github_store import GitHubStore
 from app.storage.ingest_status_store import IngestStatusStore
 from app.storage.ingestion_store import IngestionStore
@@ -18,6 +23,7 @@ from app.storage.source_metrics_store import SourceMetricsStore
 from app.tools.llm import summarize_news
 from app.tools.summary_result import DigestPayload, PublishResult, SummaryItem, SummaryResult
 from infra.storage.state_store import StateStore
+from pusher.telegram import TelegramError, TelegramPusher
 from pusher.wecom import WeComPusher
 
 logger = logging.getLogger(__name__)
@@ -80,6 +86,530 @@ def _collect_source_failures(ingest_status: dict) -> list[str]:
     return list(ingest_status.get("failed_sources", []))
 
 
+def _config_string(config, name: str) -> str | None:
+    value = getattr(config, name, None)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _has_telegram_delivery(config) -> bool:
+    return bool(
+        _config_string(config, "telegram_bot_token")
+        and _config_string(config, "telegram_chat_id")
+    )
+
+
+def _pending_store() -> PendingDeliveryStore:
+    return PendingDeliveryStore(_DATA_DIR)
+
+
+def _delivery_state_from_payload(payload: dict) -> DeliveryState:
+    channels = {
+        name: ChannelResult(**channel_payload)
+        for name, channel_payload in payload.get("channels", {}).items()
+    }
+    return DeliveryState(delivery_id=payload["delivery_id"], channels=channels)
+
+
+def _make_channel_payload(
+    enabled: bool,
+    status: str,
+    attempted_at: str | None = None,
+    error: str | None = None,
+) -> dict:
+    return asdict(
+        ChannelResult(enabled=enabled, status=status, attempted_at=attempted_at, error=error)
+    )
+
+
+def _build_headline_items(selected: list, llm_result: dict) -> tuple[list[SummaryItem], list[dict]]:
+    summary_items: list[SummaryItem] = []
+    payload_items: list[dict] = []
+    for it in llm_result["headline_items"]:
+        matched = _match_selected_candidate(selected, it)
+        if not matched:
+            continue
+        summary_items.append(
+            SummaryItem(
+                title=it["title"],
+                url=it["url"],
+                core_summary=it["core_summary"],
+                importance=it["importance"],
+                trend=it["trend"],
+                source=matched.source if matched else "",
+                display_category=_display_category_for(matched) if matched else "AI",
+                topic_label=_topic_label_for(matched) if matched else None,
+            )
+        )
+        payload_items.append(
+            {
+                "title": it["title"],
+                "url": it["url"],
+                "core_summary": it["core_summary"],
+                "importance": it["importance"],
+                "trend": it["trend"],
+                "source": matched.source if matched else "",
+                "display_category": _display_category_for(matched) if matched else "AI",
+                "topic_label": _topic_label_for(matched) if matched else None,
+                "topic_confidence": getattr(matched, "topic_confidence", None) if matched else None,
+                "final_score": getattr(matched, "final_score", None) if matched else None,
+            }
+        )
+    return summary_items, payload_items
+
+
+def _build_metric_rows(selected: list, now: datetime, tz: str) -> list[dict]:
+    from app.content.time_policy import candidate_effective_at
+    from app.content.time_policy import is_today as _time_is_today
+
+    metric_rows = []
+    for item in selected:
+        eff, _ = candidate_effective_at(item)
+        is_today_item = _time_is_today(eff, now, tz) if eff else False
+        metric_rows.append(
+            {
+                "source": item.source,
+                "category": item.category,
+                "candidate_count": 1,
+                "relevance_accepted_count": 1,
+                "relevance_rejected_count": 0,
+                "selected_today_count": 1 if is_today_item else 0,
+                "selected_backfill_count": 0 if is_today_item else 1,
+                "rejection_reasons": [],
+            }
+        )
+    return metric_rows
+
+
+def _build_github_projects_payload(github_ranked: list[dict]) -> list[dict]:
+    return [
+        {
+            "full_name": r["item"].full_name,
+            "final_score": r["final_score"],
+            "activity": r["activity"],
+            "popularity": r["popularity"],
+            "relevance": r["relevance"],
+            "penalty": r["penalty"],
+            "recommendation": r["recommendation"],
+            "matched_topics": r["item"].matched_topics,
+            "matched_keywords": r["item"].matched_keywords,
+        }
+        for r in github_ranked
+    ]
+
+
+def _build_pending_payload(
+    *,
+    ctx: RunContext,
+    markdown: str,
+    telegram_messages: list[str],
+    selected_count: int,
+    daily_judgement: str,
+    source_failures: list[str],
+    headline_payload: list[dict],
+    github_ranked: list[dict],
+    github_recommendations: dict[str, str],
+    published_urls: list[str],
+    published_keys: list[str],
+    selection_evidence: list[dict],
+    relevance_rejected: list[dict],
+    selected_counts_by_source: dict[str, int],
+    metric_rows: list[dict],
+) -> dict:
+    date = ctx.time_window_start[:10]
+    delivery_id = make_delivery_id(date, ctx.period, markdown)
+    return {
+        "delivery_id": delivery_id,
+        "date": date,
+        "period": ctx.period,
+        "messages": {
+            "wecom_markdown": markdown,
+            "telegram_messages": telegram_messages,
+        },
+        "channels": {
+            "wecom": _make_channel_payload(True, "pending"),
+            "telegram": _make_channel_payload(True, "pending"),
+        },
+        "selected_count": selected_count,
+        "finalization": {
+            "date": date,
+            "period": ctx.period,
+            "trigger_mode": ctx.trigger_mode,
+            "headline_items": headline_payload,
+            "daily_judgement": daily_judgement,
+            "source_failures": source_failures,
+            "published_urls": published_urls,
+            "published_keys": published_keys,
+            "github_projects": _build_github_projects_payload(github_ranked),
+            "github_recommendations": github_recommendations,
+            "selection_evidence": selection_evidence,
+            "relevance_rejections": relevance_rejected,
+            "selected_counts_by_source": selected_counts_by_source,
+            "metric_rows": metric_rows,
+        },
+    }
+
+
+def _build_publish_payload_from_pending(
+    pending_payload: dict,
+    *,
+    errors: list[str],
+) -> DigestPayload:
+    finalization = pending_payload["finalization"]
+    return DigestPayload(
+        date=finalization["date"],
+        period=finalization["period"],
+        published_at=datetime.now().isoformat(),
+        trigger_mode=finalization["trigger_mode"],
+        headline_items=finalization["headline_items"],
+        daily_judgement=finalization["daily_judgement"],
+        source_failures=finalization["source_failures"],
+        published_urls=finalization["published_urls"],
+        published_keys=finalization["published_keys"],
+        github_projects=finalization["github_projects"],
+        errors=errors,
+        selection_evidence=finalization["selection_evidence"],
+        relevance_rejections=finalization["relevance_rejections"],
+    )
+
+
+async def _attempt_wecom(markdown: str, webhook_url: str) -> tuple[bool, str | None]:
+    try:
+        result = await WeComPusher(webhook_url).push_single_markdown(markdown)
+    except Exception as exc:
+        return False, f"push: {exc}"
+    if not result.success:
+        return False, "push_failed"
+    return True, None
+
+
+async def _attempt_telegram(
+    messages: list[str], bot_token: str, chat_id: str
+) -> tuple[bool, str | None]:
+    try:
+        await TelegramPusher(bot_token, chat_id).push_messages(messages)
+    except TelegramError as exc:
+        return False, str(exc)
+    except Exception as exc:
+        return False, f"telegram_push: {type(exc).__name__}"
+    return True, None
+
+
+def _finalize_delivery(
+    *,
+    ctx: RunContext,
+    pending_payload: dict,
+    state_store: StateStore,
+    metrics_store: SourceMetricsStore,
+    exposure_store,
+) -> list[str]:
+    errors: list[str] = []
+    finalization = pending_payload["finalization"]
+
+    try:
+        exposure_store.record([r["full_name"] for r in finalization["github_projects"]])
+    except Exception:
+        errors.append("github_exposure_write_failed")
+
+    try:
+        metrics_store.append_publish_source_metrics(
+            datetime.now().isoformat(), finalization["metric_rows"]
+        )
+    except Exception:
+        errors.append("publish_metrics_write_failed")
+
+    try:
+        written_sources = metrics_store.write_selected_counts(
+            finalization["selected_counts_by_source"]
+        )
+        if written_sources < len(finalization["selected_counts_by_source"]):
+            errors.append("source_metrics_write_failed")
+    except Exception:
+        errors.append("source_metrics_write_failed")
+
+    try:
+        state_store.merge_pushed_urls(set(finalization["published_urls"]))
+        state_store.merge_published_keys(finalization["published_keys"])
+        state_store.write_digest(
+            _build_publish_payload_from_pending(pending_payload, errors=errors)
+        )
+    except Exception:
+        errors.append("state_write_failed")
+
+    return errors
+
+
+def _update_pending_channel(
+    pending_payload: dict, channel: str, status: str, error: str | None = None
+) -> None:
+    pending_payload["channels"][channel]["status"] = status
+    pending_payload["channels"][channel]["attempted_at"] = datetime.now().isoformat()
+    pending_payload["channels"][channel]["error"] = error
+
+
+def _pending_completion_status(pending_payload: dict) -> tuple[str, bool, bool]:
+    statuses = [channel.get("status") for channel in pending_payload.get("channels", {}).values()]
+    any_succeeded = any(status == "succeeded" for status in statuses)
+    all_succeeded = all(status == "succeeded" for status in statuses if status is not None)
+    if all_succeeded and statuses:
+        return "ok", True, True
+    if any_succeeded:
+        return "degraded", True, False
+    return "failed", False, False
+
+
+async def _resume_pending_delivery(
+    *,
+    ctx: RunContext,
+    config,
+    pending_payload: dict,
+    state_store: StateStore,
+    metrics_store: SourceMetricsStore,
+    exposure_store,
+    pending_store: PendingDeliveryStore,
+) -> PublishResult:
+    try:
+        delivery_state = _delivery_state_from_payload(pending_payload)
+    except Exception as exc:
+        _write_publish_status(
+            _make_publish_status("failed", 0, False, [f"pending_delivery_corrupt: {exc}"])
+        )
+        return PublishResult(
+            status="failed",
+            selected_count=0,
+            pushed=False,
+            message_type="markdown",
+            summary_preview="",
+            errors=[f"pending_delivery_corrupt: {exc}"],
+        )
+
+    if not _has_telegram_delivery(config):
+        errors = ["telegram_config_missing"]
+        _write_publish_status(
+            _make_publish_status("failed", 0, False, errors)
+        )
+        return PublishResult(
+            status="failed",
+            selected_count=len(pending_payload["finalization"]["published_urls"]),
+            pushed=False,
+            message_type="markdown",
+            summary_preview=make_preview(pending_payload["messages"]["wecom_markdown"]),
+            errors=errors,
+        )
+
+    messages = pending_payload["messages"]
+    finalization = pending_payload["finalization"]
+    errors: list[str] = []
+    selected_count = len(finalization["published_urls"])
+    summary_preview = make_preview(messages["wecom_markdown"])
+
+    if delivery_state.can_attempt("wecom"):
+        ok, error = await _attempt_wecom(messages["wecom_markdown"], config.wecom_webhook_url)
+        _update_pending_channel(
+            pending_payload,
+            "wecom",
+            "succeeded" if ok else "failed",
+            error,
+        )
+        if not ok and error:
+            errors.append(error)
+    if delivery_state.can_attempt("telegram"):
+        ok, error = await _attempt_telegram(
+            messages["telegram_messages"], config.telegram_bot_token, config.telegram_chat_id
+        )
+        _update_pending_channel(
+            pending_payload,
+            "telegram",
+            "succeeded" if ok else "failed",
+            error,
+        )
+        if not ok and error:
+            errors.append(error)
+
+    pending_store.save(ctx.time_window_start[:10], ctx.period, pending_payload)
+
+    status, any_succeeded, all_succeeded = _pending_completion_status(pending_payload)
+    if not any_succeeded:
+        _write_publish_status(_make_publish_status(status, selected_count, False, errors))
+        return PublishResult(
+            status=status,
+            selected_count=selected_count,
+            pushed=False,
+            message_type="markdown",
+            summary_preview=summary_preview,
+            errors=errors,
+        )
+
+    if not all_succeeded:
+        _write_publish_status(_make_publish_status(status, selected_count, True, errors))
+        return PublishResult(
+            status=status,
+            selected_count=selected_count,
+            pushed=True,
+            message_type="markdown",
+            summary_preview=summary_preview,
+            errors=errors,
+        )
+
+    final_errors = _finalize_delivery(
+        ctx=ctx,
+        pending_payload=pending_payload,
+        state_store=state_store,
+        metrics_store=metrics_store,
+        exposure_store=exposure_store,
+    )
+    errors.extend(final_errors)
+    status = "ok" if not errors else "degraded"
+    _write_publish_status(_make_publish_status(status, selected_count, True, errors))
+    if not final_errors:
+        pending_store.delete(ctx.time_window_start[:10], ctx.period)
+    return PublishResult(
+        status=status,
+        selected_count=selected_count,
+        pushed=True,
+        message_type="markdown",
+        summary_preview=summary_preview,
+        errors=errors,
+    )
+
+
+async def _deliver_with_pending(
+    *,
+    ctx: RunContext,
+    config,
+    markdown: str,
+    telegram_messages: list[str],
+    selected_count: int,
+    daily_judgement: str,
+    source_failures: list[str],
+    headline_payload: list[dict],
+    github_ranked: list[dict],
+    github_recommendations: dict[str, str],
+    published_urls: list[str],
+    published_keys: list[str],
+    selection_evidence: list[dict],
+    relevance_rejected: list[dict],
+    selected_counts_by_source: dict[str, int],
+    metric_rows: list[dict],
+    state_store: StateStore,
+    metrics_store: SourceMetricsStore,
+    exposure_store,
+) -> PublishResult:
+    pending_store = _pending_store()
+    pending_payload = _build_pending_payload(
+        ctx=ctx,
+        markdown=markdown,
+        telegram_messages=telegram_messages,
+        selected_count=selected_count,
+        daily_judgement=daily_judgement,
+        source_failures=source_failures,
+        headline_payload=headline_payload,
+        github_ranked=github_ranked,
+        github_recommendations=github_recommendations,
+        published_urls=published_urls,
+        published_keys=published_keys,
+        selection_evidence=selection_evidence,
+        relevance_rejected=relevance_rejected,
+        selected_counts_by_source=selected_counts_by_source,
+        metric_rows=metric_rows,
+    )
+    try:
+        pending_store.save(ctx.time_window_start[:10], ctx.period, pending_payload)
+    except Exception as exc:
+        _write_publish_status(
+            _make_publish_status("failed", selected_count, False, [f"pending_write_failed: {exc}"])
+        )
+        return PublishResult(
+            status="failed",
+            selected_count=selected_count,
+            pushed=False,
+            message_type="markdown",
+            summary_preview=make_preview(markdown),
+            errors=[f"pending_write_failed: {exc}"],
+        )
+
+    errors: list[str] = []
+    wecom_ok, wecom_error = await _attempt_wecom(markdown, config.wecom_webhook_url)
+    _update_pending_channel(
+        pending_payload,
+        "wecom",
+        "succeeded" if wecom_ok else "failed",
+        wecom_error,
+    )
+    if not wecom_ok and wecom_error:
+        errors.append(wecom_error)
+    try:
+        pending_store.save(ctx.time_window_start[:10], ctx.period, pending_payload)
+    except Exception as exc:
+        errors.append(f"pending_write_failed: {exc}")
+
+    telegram_ok = False
+    telegram_error = None
+    if _has_telegram_delivery(config):
+        telegram_ok, telegram_error = await _attempt_telegram(
+            telegram_messages, config.telegram_bot_token, config.telegram_chat_id
+        )
+        _update_pending_channel(
+            pending_payload,
+            "telegram",
+            "succeeded" if telegram_ok else "failed",
+            telegram_error,
+        )
+        if not telegram_ok and telegram_error:
+            errors.append(telegram_error)
+        try:
+            pending_store.save(ctx.time_window_start[:10], ctx.period, pending_payload)
+        except Exception as exc:
+            errors.append(f"pending_write_failed: {exc}")
+
+    status, any_succeeded, all_succeeded = _pending_completion_status(pending_payload)
+    if not any_succeeded:
+        _write_publish_status(
+            _make_publish_status(status, selected_count, bool(wecom_ok or telegram_ok), errors)
+        )
+        return PublishResult(
+            status=status,
+            selected_count=selected_count,
+            pushed=bool(wecom_ok or telegram_ok),
+            message_type="markdown",
+            summary_preview=make_preview(markdown),
+            errors=errors,
+        )
+
+    if not all_succeeded:
+        _write_publish_status(_make_publish_status(status, selected_count, True, errors))
+        return PublishResult(
+            status=status,
+            selected_count=selected_count,
+            pushed=True,
+            message_type="markdown",
+            summary_preview=make_preview(markdown),
+            errors=errors,
+        )
+
+    final_errors = _finalize_delivery(
+        ctx=ctx,
+        pending_payload=pending_payload,
+        state_store=state_store,
+        metrics_store=metrics_store,
+        exposure_store=exposure_store,
+    )
+    errors.extend(final_errors)
+    status = "ok" if not errors else "degraded"
+    _write_publish_status(_make_publish_status(status, selected_count, True, errors))
+    if not final_errors:
+        pending_store.delete(ctx.time_window_start[:10], ctx.period)
+    return PublishResult(
+        status=status,
+        selected_count=selected_count,
+        pushed=True,
+        message_type="markdown",
+        summary_preview=make_preview(markdown),
+        errors=errors,
+    )
+
+
 async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     """统一发布主链路。HTTP/scheduler/CLI 都走这条链路。
 
@@ -97,6 +627,32 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     ingestion_store = IngestionStore()
     ingest_status_snapshot = IngestStatusStore().load_status()
     metrics_store = SourceMetricsStore()
+    pending_store = _pending_store()
+
+    if _has_telegram_delivery(config):
+        try:
+            pending_payload = pending_store.load(ctx.time_window_start[:10], ctx.period)
+        except PendingDeliveryCorruptError as exc:
+            errors = [f"pending_delivery_corrupt: {exc}"]
+            _write_publish_status(_make_publish_status("failed", 0, False, errors))
+            return PublishResult(
+                status="failed",
+                selected_count=0,
+                pushed=False,
+                message_type="markdown",
+                summary_preview="",
+                errors=errors,
+            )
+        if pending_payload is not None:
+            return await _resume_pending_delivery(
+                ctx=ctx,
+                config=config,
+                pending_payload=pending_payload,
+                state_store=state_store,
+                metrics_store=metrics_store,
+                exposure_store=GitHubExposureStore(),
+                pending_store=pending_store,
+            )
 
     # ---- Task 6: 统一发布链路 ----
     # 尝试走新路径；无法导入或 feeds.yaml 缺失时回退旧路径
@@ -222,7 +778,6 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     github_raw = GitHubStore().load_latest_snapshot()
     # 综合评分 + 曝光惩罚 → top3
     from app.github_ranking import rank_and_recommend
-    from app.storage.github_exposure_store import GitHubExposureStore
 
     exposure_store = GitHubExposureStore()
     exposure_dates = exposure_store.load()
@@ -262,20 +817,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         )
 
     # 5. 构建 SummaryResult
-    headline_items = [
-        SummaryItem(
-            title=it["title"],
-            url=it["url"],
-            core_summary=it["core_summary"],
-            importance=it["importance"],
-            trend=it["trend"],
-            source=matched.source if matched else "",
-            display_category=_display_category_for(matched) if matched else "AI",
-            topic_label=_topic_label_for(matched) if matched else None,
-        )
-        for it in llm_result["headline_items"]
-        for matched in [_match_selected_candidate(selected, it)]
-    ]
+    headline_items, headline_payload = _build_headline_items(selected, llm_result)
     summary = SummaryResult(
         headline_items=headline_items,
         daily_judgement=llm_result["daily_judgement"],
@@ -301,12 +843,62 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         github_recommendations=github_recommendations,
         pushed_urls=pushed_urls,
     )
+    telegram_messages = render_telegram_digest(
+        summary,
+        github_items=github_top3,
+        github_recommendations=github_recommendations,
+        pushed_urls=pushed_urls,
+    )
 
     source_failures = _collect_source_failures(ingest_status_snapshot)
+    selected_count = len(selected)
+    published_urls = [it.url for it in selected]
+    published_keys_list = [it.canonical_key for it in selected]
+    selected_counts_by_source: dict[str, int] = {}
+    for item in selected:
+        selected_counts_by_source[item.source] = selected_counts_by_source.get(item.source, 0) + 1
+    metric_rows = _build_metric_rows(selected, now, config.tz)
+    selection_evidence = (
+        [
+            {
+                "canonical_key": e.canonical_key,
+                "phase": e.phase,
+                "final_score": e.final_score,
+                "diversity_penalty": e.diversity_penalty,
+                "selection_score": e.selection_score,
+            }
+            for e in selection_result.evidence
+        ]
+        if selection_result
+        else []
+    )
 
     errors: list[str] = []
     if use_new_pipeline and not candidates_used_historical:
         errors.append("historical_candidates_read_failed")
+
+    if _has_telegram_delivery(config):
+        return await _deliver_with_pending(
+            ctx=ctx,
+            config=config,
+            markdown=markdown,
+            telegram_messages=telegram_messages,
+            selected_count=selected_count,
+            daily_judgement=summary.daily_judgement,
+            source_failures=source_failures,
+            headline_payload=headline_payload,
+            github_ranked=github_ranked,
+            github_recommendations=github_recommendations,
+            published_urls=published_urls,
+            published_keys=published_keys_list,
+            selection_evidence=selection_evidence,
+            relevance_rejected=relevance_rejected,
+            selected_counts_by_source=selected_counts_by_source,
+            metric_rows=metric_rows,
+            state_store=state_store,
+            metrics_store=metrics_store,
+            exposure_store=GitHubExposureStore(),
+        )
 
     # 7. 推送
     try:
@@ -397,8 +989,10 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
                         "source": matched.source if matched else "",
                         "display_category": _display_category_for(matched) if matched else "AI",
                         "topic_label": _topic_label_for(matched) if matched else None,
-                        "topic_confidence": matched.topic_confidence if matched else None,
-                        "final_score": matched.final_score if matched else None,
+                        "topic_confidence": getattr(matched, "topic_confidence", None)
+                        if matched
+                        else None,
+                        "final_score": getattr(matched, "final_score", None) if matched else None,
                     }
                     for it in llm_result["headline_items"]
                     for matched in [_match_selected_candidate(selected, it)]
