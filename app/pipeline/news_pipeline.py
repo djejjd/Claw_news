@@ -97,31 +97,100 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     ingest_status_snapshot = IngestStatusStore().load_status()
     metrics_store = SourceMetricsStore()
 
-    # 1. 读池
-    candidates = ingestion_store.load_window_candidates(
-        ctx.time_window_start, ctx.time_window_end, pushed_urls, pushed_keys
-    )
-    if ctx.publish_scope == "ai_only":
-        candidates = [item for item in candidates if item.category == "ai"]
-    elif ctx.publish_scope == "all_digest":
-        candidates = [item for item in candidates if item.category in {"ai", "tool", "game"}]
-    if not candidates:
-        _write_publish_status(_make_publish_status("skipped", 0, False, []))
-        return PublishResult(
-            status="skipped",
-            selected_count=0,
-            pushed=False,
-            message_type="markdown",
-            summary_preview="",
+    # ---- Task 6: 统一发布链路 ----
+    # 尝试走新路径；无法导入或 feeds.yaml 缺失时回退旧路径
+
+    try:
+        from app.pipeline.selection import select_digest  # noqa: F401
+        from collectors.ai_rss import load_feed_configuration
+        feed_config = load_feed_configuration()
+        use_new_pipeline = feed_config is not None and feed_config.get("feeds")
+    except ImportError:
+        use_new_pipeline = False
+
+    if use_new_pipeline:
+        from app.content.source_policy import build_source_policy_registry
+        from app.storage.ingestion_store import filter_unexpired_candidates
+        from app.classifiers.relevance_filter import build_relevance_filter
+        from app.pipeline.selection import select_digest
+
+        candidates_used_historical = True
+        relevance_rejected = []
+        selection_result = None
+
+        # 1. 构建 SourcePolicy registry
+        feeds_raw = []
+        for cat in ("ai", "tool", "game"):
+            for f in feed_config.get("feeds", {}).get(cat, []):
+                if isinstance(f, dict):
+                    feeds_raw.append({**f, "category": cat})
+        policies = build_source_policy_registry(feeds_raw)
+
+        # 2. 72 小时读取
+        now = datetime.now()
+        window_end = now.isoformat()
+        try:
+            candidates = ingestion_store.load_recent_candidates(
+                window_end, lookback_hours=72,
+                pushed_urls=pushed_urls, pushed_keys=pushed_keys,
+            )
+        except Exception:
+            logger.warning("历史候选读取失败，降级为当天窗口")
+            candidates = ingestion_store.load_window_candidates(
+                ctx.time_window_start, ctx.time_window_end, pushed_urls, pushed_keys,
+            )
+            candidates_used_historical = False
+
+        if ctx.publish_scope == "ai_only":
+            candidates = [i for i in candidates if i.category == "ai"]
+        elif ctx.publish_scope == "all_digest":
+            candidates = [i for i in candidates if i.category in {"ai", "tool", "game"}]
+
+        if not candidates:
+            _write_publish_status(_make_publish_status("skipped", 0, False, []))
+            return PublishResult(status="skipped", selected_count=0, pushed=False,
+                                 message_type="markdown", summary_preview="")
+
+        # 3. 按源有效期过滤
+        candidates, expiry_rejected = filter_unexpired_candidates(candidates, now, policies)
+
+        # 4. 相关性过滤
+        rf = build_relevance_filter(feed_config)
+        candidates, relevance_rejected = rf.evaluate_batch(candidates, policies)
+
+        if not candidates:
+            _write_publish_status(_make_publish_status("skipped", 0, False, []))
+            return PublishResult(status="skipped", selected_count=0, pushed=False,
+                                 message_type="markdown", summary_preview="")
+
+        # 5. 分类 + 三阶段选材
+        TopicClassifier().classify_batch(candidates)
+        selection_result = select_digest(candidates, policies, now, config.tz, top_n=10)
+        selected = selection_result.selected
+    else:
+        # ---- 旧路径（测试兼容）----
+        candidates_used_historical = False
+        relevance_rejected = []
+        selection_result = None
+        now = datetime.now()
+
+        candidates = ingestion_store.load_window_candidates(
+            ctx.time_window_start, ctx.time_window_end, pushed_urls, pushed_keys,
         )
+        if ctx.publish_scope == "ai_only":
+            candidates = [i for i in candidates if i.category == "ai"]
+        elif ctx.publish_scope == "all_digest":
+            candidates = [i for i in candidates if i.category in {"ai", "tool", "game"}]
 
-    # 2. 分类
-    TopicClassifier().classify_batch(candidates)
+        if not candidates:
+            _write_publish_status(_make_publish_status("skipped", 0, False, []))
+            return PublishResult(status="skipped", selected_count=0, pushed=False,
+                                 message_type="markdown", summary_preview="")
 
-    # 3. 评分选材
-    selected = Merger(top_n=10).merge(candidates, use_new_scoring=True)
+        TopicClassifier().classify_batch(candidates)
+        selected = Merger(top_n=10).merge(candidates, use_new_scoring=True)
 
-    # 4. LLM 摘要（含 GitHub 项目中文翻译）
+    # 6. LLM 摘要（含 GitHub 项目中文翻译）
     items_for_llm = [
         {"title": it.title, "link": it.url, "summary": it.summary, "published_at": it.published_at}
         for it in selected
@@ -209,6 +278,10 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
 
     source_failures = _collect_source_failures(ingest_status_snapshot)
 
+    errors: list[str] = []
+    if not candidates_used_historical:
+        errors.append("historical_candidates_read_failed")
+
     # 7. 推送
     try:
         pr = await WeComPusher(config.wecom_webhook_url).push_single_markdown(markdown)
@@ -238,12 +311,35 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
 
     # 8. 状态持久化
     published_urls = [it.url for it in selected]
+
+    # 独立 publish 指标（按真实 source 聚合）
+    try:
+        from app.content.time_policy import candidate_effective_at, is_today as _time_is_today
+
+        metric_rows = []
+        for item in selected:
+            eff, _ = candidate_effective_at(item)
+            is_today_item = _time_is_today(eff, now, config.tz) if eff else False
+            metric_rows.append({
+                "source": item.source,
+                "category": item.category,
+                "candidate_count": 1,
+                "relevance_accepted_count": 1,
+                "relevance_rejected_count": 0,
+                "selected_today_count": 1 if is_today_item else 0,
+                "selected_backfill_count": 0 if is_today_item else 1,
+                "rejection_reasons": [],
+            })
+        metrics_store.append_publish_source_metrics(now.isoformat(), metric_rows)
+    except Exception:
+        errors.append("publish_metrics_write_failed")
+
+    # 状态持久化
     published_keys_list = [it.canonical_key for it in selected]
     selected_counts_by_source: dict[str, int] = {}
     for item in selected:
         selected_counts_by_source[item.source] = selected_counts_by_source.get(item.source, 0) + 1
 
-    errors: list[str] = []
     try:
         written_sources = metrics_store.write_selected_counts(selected_counts_by_source)
         if written_sources < len(selected_counts_by_source):
@@ -295,6 +391,15 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
                     for r in github_ranked
                 ],
                 errors=errors,
+                selection_evidence=(
+                    [
+                        {"canonical_key": e.canonical_key, "phase": e.phase,
+                         "final_score": e.final_score, "diversity_penalty": e.diversity_penalty,
+                         "selection_score": e.selection_score}
+                        for e in selection_result.evidence
+                    ] if selection_result else []
+                ),
+                relevance_rejections=relevance_rejected,
             )
         )
     except Exception:

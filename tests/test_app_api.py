@@ -286,6 +286,7 @@ class TestRunNewsEndpoint:
                 return_value=fake_metrics_store,
             ),
             patch("app.pipeline.news_pipeline._collect_source_failures", return_value=[]),
+        patch("collectors.ai_rss.load_feed_configuration", return_value=None),
         ):
             mock_ingestion_store.return_value.load_window_candidates.return_value = selected_items
             mock_merger_cls.return_value.merge.return_value = selected_items
@@ -375,6 +376,7 @@ class TestRunNewsEndpoint:
                 return_value=fake_metrics_store,
             ),
             patch("app.pipeline.news_pipeline._collect_source_failures", return_value=[]),
+        patch("collectors.ai_rss.load_feed_configuration", return_value=None),
         ):
             mock_ingestion_store.return_value.load_window_candidates.return_value = selected_items
             mock_merger_cls.return_value.merge.return_value = selected_items

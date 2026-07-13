@@ -141,3 +141,18 @@ class SourceMetricsStore:
         if latest_path is None or latest_rows is None or latest_index is None:
             return None
         return latest_path, latest_rows, latest_index
+
+    # ---- Task 6: 独立发布指标 ----
+
+    def append_publish_source_metrics(
+        self, published_at: str, rows: list[dict],
+    ) -> Path:
+        """按真实 source 写入发布指标，独立于 ingest metrics。"""
+        today = datetime.fromisoformat(published_at).strftime("%Y-%m-%d")
+        publish_dir = self.metrics_dir / today
+        publish_dir.mkdir(parents=True, exist_ok=True)
+        path = publish_dir / "publish.jsonl"
+        with open(path, "a", encoding="utf-8") as f:
+            for row in rows:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        return path
