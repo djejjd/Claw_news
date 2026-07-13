@@ -4,7 +4,7 @@
 
 **目标：** 清除进入 Task 8 前的质量门禁与验收资产缺口，使最终验收可复现、脱敏且有完整运维入口。
 
-**架构：** 纠正 Task A 仅修复 Ruff 风格问题；纠正 Task B 补齐 Task 7 漏交的合成回放样本、场景断言、运维入口与完成状态。两者均不改变选材、评分、过滤、采集或发布语义。
+**架构：** 纠正 Task A 仅修复 Ruff 风格问题；纠正 Task B 补齐 Task 7 漏交的合成回放样本、场景断言、运维入口与完成状态；纠正 Task C 为合成样本增加人工相关性标注证据。三者均不改变选材、评分、过滤、采集或发布语义。
 
 **技术栈：** Python 3.11+、pytest、Ruff、YAML、Markdown。
 
@@ -27,7 +27,7 @@
 - 允许并行：纠正 Task B
 - 预计修改：仅 `make lint` 当前报告的 Python 文件
 - 不得修改：业务逻辑、测试断言语义、Ruff 配置、`pyproject.toml`、`Makefile`、设计常量
-- 完成状态：pending
+- 完成状态：complete（审核提交：`37966ec`）
 
 ### 1. 背景
 
@@ -105,7 +105,7 @@ git status --short
 - 预计创建：`tests/fixtures/content_replay/` 下的合成脱敏 fixture
 - 预计修改：`tests/test_content_replay.py`、`docs/operations/daily-checklist.md`、`docs/operations/troubleshooting.md`、`docs/README.md`、主实施计划
 - 不得修改：生产回放实现、生产状态目录、评分/过滤/发布代码、GitHub 链路
-- 完成状态：pending
+- 完成状态：complete（审核提交：`3062986`）
 
 ### 1. 背景
 
@@ -182,9 +182,89 @@ git status --short
 
 ---
 
++---
+
+## 纠正 Task C：合成样本人工相关性标注证据
+
+**任务元数据**
+
+- 依赖任务：纠正 Task B（`3062986`）
+- 允许并行：无
+- 预计创建：`tests/fixtures/content_replay/relevance-annotations.json`
+- 预计修改：`tests/test_content_replay.py`、`tests/fixtures/content_replay/ithome-majority/expected.json`、对应候选 JSONL
+- 不得修改：`app/`、回放 CLI、生产状态、评分/过滤/发布代码、Task 8 验收报告
+- 完成状态：pending
+
+### 1. 背景
+
+设计第 14 节第 12 项要求历史样本回放能够对比人工相关性评价。现有合成 fixture 能证明来源、补位和有效期，但没有版本化人工标注，Task 8 不得在验收中临时造数。
+
+### 2. 目标
+
+为合成样本中明确无关的高频来源候选提供可审计人工标注，并证明其被相关性过滤拒绝；为 Task 8 报告提供可复算的标注总数、拒绝数和未拒绝数。
+
+### 3. 前置依赖
+
+使用已提交的合成 fixture、`run_replay()` 返回的 `rejection_reasons` 与现有只读 hash 辅助。标注仅服务于固定合成样本，不得推导真实来源质量或自动分级。
+
+### 4. 输入与输出契约
+
+`relevance-annotations.json` 必须包含：`scenario`、`url`、`manual_label`（只允许 `obviously_irrelevant`）、`reason`（中文、说明与 AI/tool/game 无关）和 `expected_rejection_reason`。测试读取该文件，在 `tmp_path` 副本中运行回放，验证每个标注 URL 未入选且对应聚合拒绝原因存在；同时断言标注条目、URL 和标签均唯一、所有 URL 为 `.test`。
+
+### 5. 修改范围
+
+- 在 `ithome-majority` fixture 加入至少一条明显无关、虚构、`.test` URL 的候选；候选仍使用现有支持分类。
+- 新增标注 JSON 与最小测试断言。
+- 如需更新 `expected.json`，只可增加与标注有关的计数预期。
+
+### 6. 禁止事项
+
+- 不改相关性规则或回放实现来配合样本。
+- 不使用真实标题、URL、人工身份、生产标注或敏感数据。
+- 不把“明显无关”之外的主观质量判断写入标注。
+
+### 7. 执行要求
+
+测试先行；fixture 与标注在 `tmp_path` 副本回放；递归 SHA-256 仍须证明输入未变；记录标注数量和对应拒绝原因，不依赖当前日期或网络。
+
+### 8. 实施步骤
+
+- [ ] 增加标注验证测试，运行其确认缺失 fixture/标注时失败。
+- [ ] 增加一条虚构明显无关的 `ithome` 候选和 `relevance-annotations.json`，使用现有 source policy 与固定时间。
+- [ ] 运行回放测试，确认该 URL 未入选、标注数为 1、`expected_rejection_reason` 在回放拒绝原因中出现，且 hash 不变。
+- [ ] 运行回放测试、Ruff check/format 与 `git diff --check`；主审核 AI 审核完整 diff 后再 commit。
+
+### 9. 验收标准
+
+1. 版本控制中存在脱敏且格式可校验的人工标注文件。
+2. 每个标注 URL 都未入选，且有对应过滤拒绝原因。
+3. 标注输入与回放一样只读，未修改生产代码或相关性规则。
+4. Task 8 可从该文件复算人工标注的总数、拒绝数和未拒绝数。
+
+### 10. 检查命令
+
+```bash
+./venv/bin/pytest tests/test_content_replay.py -v
+./venv/bin/ruff check tests/test_content_replay.py
+./venv/bin/ruff format --check tests/test_content_replay.py
+git diff --check
+git status --short
+```
+
+### 11. 交付前自检
+
+- [ ] 标注中的 URL 全为 `.test`，没有真实内容或人工身份信息。
+- [ ] 测试证明标注候选未入选且输入 hash 不变。
+- [ ] 标注只声明明显无关，不包含来源总体质量判断。
+- [ ] 未修改生产实现、规则或 Task 8 报告。
+
+### 12. 交付格式
+
+按 `AGENTS.md` 固定格式，额外列出标注 schema、标注计数、拒绝原因、TDD 的 RED/GREEN 证据和精确 commit；等待主审核 AI 批准。
+
 ## Task 8 启动门槛
 
-仅在纠正 Task A 与 Task B 都通过独立审核，且以下命令均通过后，才可启动原 Task 8：
+仅在纠正 Task A、纠正 Task B 与纠正 Task C 都通过独立审核，且以下命令均通过后，才可启动原 Task 8：
 
 ```bash
 make test
