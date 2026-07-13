@@ -1,0 +1,7 @@
+{
+  "at": "2026-07-11T09:00:00+08:00",
+  "within_72h_url": "https://deep-within.test/article",
+  "exactly_72h_url": "https://deep-exact.test/article",
+  "expired_over_72h_url": "https://deep-expired.test/article",
+  "expired_count": 1
+}

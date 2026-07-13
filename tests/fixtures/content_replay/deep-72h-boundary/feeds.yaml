@@ -1,0 +1,8 @@
+feeds:
+  ai:
+    - source: gcores
+      url: https://gcores.test/feed
+      tier: deep
+      retention_hours: 72
+      quality_weight: 4.0
+      filter_profile: lenient

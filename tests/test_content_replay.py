@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ import pytest
 from app.pipeline.candidate import CandidateItem
 
 _FIXED_AT = "2026-07-11T09:00:00+08:00"
+_FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "content_replay"
 
 
 def _snapshot_hashes(root: Path) -> dict[str, str]:
@@ -20,6 +22,28 @@ def _snapshot_hashes(root: Path) -> dict[str, str]:
         if entry.is_file():
             hashes[str(entry.relative_to(root))] = hashlib.sha256(entry.read_bytes()).hexdigest()
     return hashes
+
+
+def _copy_scenario_fixture(tmp_path: Path, scenario: str) -> tuple[Path, dict]:
+    """复制版本控制的合成样本，确保回放永不写入原始 fixture。"""
+    source = _FIXTURE_ROOT / scenario
+    target = tmp_path / scenario
+    shutil.copytree(source, target)
+    expected = json.loads((target / "expected.json").read_text(encoding="utf-8"))
+    return target, expected
+
+
+def _run_scenario_replay(tmp_path: Path, monkeypatch, scenario: str) -> tuple[dict, dict]:
+    """在临时副本回放一个样本，并证明所有输入文件的 hash 未变化。"""
+    fixture_dir, expected = _copy_scenario_fixture(tmp_path, scenario)
+    before = _snapshot_hashes(fixture_dir)
+    monkeypatch.chdir(fixture_dir)
+
+    from app.tools.content_replay import run_replay
+
+    result = run_replay(data_dir="data", at=expected["at"])
+    assert _snapshot_hashes(fixture_dir) == before
+    return result, expected
 
 
 def _seed_replay_fixture(tmp_path: Path) -> Path:
@@ -259,3 +283,37 @@ def test_replay_missing_data_dir(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     with pytest.raises(FileNotFoundError):
         run_replay(data_dir="nonexistent", at=_FIXED_AT)
+
+
+def test_replay_fixture_ithome_candidate_majority_is_not_final_majority(tmp_path, monkeypatch):
+    """高频 ithome 即使占候选多数，也不能只凭数量占最终多数。"""
+    result, expected = _run_scenario_replay(tmp_path, monkeypatch, "ithome-majority")
+
+    assert result["candidate_count"] == expected["candidate_count"]
+    assert expected["candidate_source_distribution"]["ithome"] > expected["candidate_count"] / 2
+    assert result["source_distribution"].get("ithome", 0) < result["selected_count"] / 2
+
+
+def test_replay_fixture_ai_history_only_fills_ai_minimum(tmp_path, monkeypatch):
+    """AI 当日不足时，历史项只作为同类 historical_backfill 补位。"""
+    result, expected = _run_scenario_replay(tmp_path, monkeypatch, "ai-backfill")
+
+    selected_by_url = {item["url"]: item for item in result["selected"]}
+    assert result["today_count"] == expected["today_count"]
+    assert result["backfill_count"] == expected["backfill_count"]
+    assert set(expected["historical_backfill_urls"]).issubset(selected_by_url)
+    assert all(
+        selected_by_url[url]["category"] == "ai" for url in expected["historical_backfill_urls"]
+    )
+    assert not set(expected["historical_non_backfill_urls"]) & set(selected_by_url)
+
+
+def test_replay_fixture_deep_source_respects_72_hour_boundary(tmp_path, monkeypatch):
+    """deep 源在 72 小时内有效，超过 72 小时必须因过期而拒绝。"""
+    result, expected = _run_scenario_replay(tmp_path, monkeypatch, "deep-72h-boundary")
+
+    selected_urls = {item["url"] for item in result["selected"]}
+    assert expected["within_72h_url"] in selected_urls
+    assert expected["exactly_72h_url"] in selected_urls
+    assert expected["expired_over_72h_url"] not in selected_urls
+    assert result["rejection_reasons"].get("expired") == expected["expired_count"]

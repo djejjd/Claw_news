@@ -159,7 +159,7 @@ git diff -- AGENTS.md CLAUDE.md
 - 预计创建：`app/content/__init__.py`、`app/content/source_policy.py`、`app/content/time_policy.py`、`tests/test_source_policy.py`、`tests/test_time_policy.py`
 - 预计修改：`feeds.example.yaml`、`collectors/ai_rss.py`、`collectors/rss_sources.py`、`collectors/base.py`、`app/pipeline/candidate.py`、`tests/test_ai_rss.py`、`tests/test_rss_collector.py`、`tests/test_data_contracts.py`
 - 不得修改：`aggregator/merger.py`、`app/pipeline/news_pipeline.py`、`app/ingest/source_policy.py`、GitHub 链路、运行时本地 `feeds.yaml`
-- 完成状态：pending
+- 完成状态：complete（审核提交：`1f52d4b`）
 
 ### 1. 背景
 
@@ -311,7 +311,7 @@ def test_effective_time_falls_back_to_fetched_at():
 - 允许并行：Task 4
 - 预计修改：`app/storage/ingestion_store.py`、`app/scheduler/jobs.py`、`tests/test_ingestion_store.py`、`tests/test_ingest_job.py`
 - 不得修改：相关性规则、最终选材、评分常量、GitHub 链路
-- 完成状态：pending
+- 完成状态：complete（审核提交：`d851a18`）
 
 ### 1. 背景
 
@@ -443,7 +443,7 @@ def test_source_retention_filters_independently():
 - 预计创建：`app/classifiers/relevance_filter.py`、`tests/test_relevance_filter.py`
 - 预计修改：`app/classifiers/__init__.py`、`feeds.example.yaml`
 - 不得修改：storage、Merger、pipeline 编排、GitHub 链路
-- 完成状态：pending
+- 完成状态：complete（审核提交：`0261460`）
 
 ### 1. 背景
 
@@ -577,7 +577,7 @@ def test_lenient_deep_source_accepts_summary_evidence():
 - 预计创建：`app/pipeline/selection.py`、`tests/test_content_selection.py`
 - 预计修改：`aggregator/merger.py`、`tests/test_merger.py`
 - 不得修改：storage、collector、相关性规则、GitHub 链路
-- 完成状态：pending
+- 完成状态：complete（审核提交：`c232470`）
 
 ### 1. 背景
 
@@ -718,7 +718,7 @@ def test_source_counts_accumulate_across_phases():
 - 允许并行：无
 - 预计修改：`app/pipeline/news_pipeline.py`、`app/tools/summary_result.py`、`app/storage/source_metrics_store.py`、`tests/test_news_pipeline.py`、`tests/test_main.py`、`tests/test_source_metrics_store.py`
 - 不得修改：collector、规则常量、GitHub ranking、renderer 文案
-- 完成状态：pending
+- 完成状态：complete（审核提交：`94b88f0..9f96a10`）
 
 ### 1. 背景
 
@@ -836,7 +836,7 @@ async def test_historical_read_failure_degrades_to_today(monkeypatch):
 - 预计创建：`app/tools/content_replay.py`、`scripts/replay-content-selection.py`、`tests/test_content_replay.py`
 - 预计修改：`feeds.example.yaml`、`docs/operations/daily-checklist.md`、`docs/operations/troubleshooting.md`、`docs/README.md`
 - 不得修改：生产推送状态、GitHub 链路、评分常量
-- 完成状态：pending
+- 完成状态：complete（审核提交：`207a107..09c075b`）
 
 ### 1. 背景
 

@@ -1,0 +1,7 @@
+{
+  "at": "2026-07-11T09:00:00+08:00",
+  "today_count": 6,
+  "backfill_count": 1,
+  "historical_backfill_urls": ["https://old-ai.test/article"],
+  "historical_non_backfill_urls": ["https://old-tool.test/article"]
+}

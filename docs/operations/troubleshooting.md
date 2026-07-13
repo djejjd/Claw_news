@@ -121,3 +121,33 @@ docker logs claw-news --tail 20
 - LLM API（DeepSeek）超时或 401 → 检查 `.env` 中 `LLM_API_KEY`
 - 某 RSS feed 挂起 → curl 逐个 feed 测试
 - 候选池太大（>300）导致全量评分慢 → 正常，等几秒
+
+---
+
+## 症状：需要复核选材分布、跨日补位或过滤原因
+
+**归属：离线回放，不是实际推送。**
+
+在项目根目录运行：
+
+```bash
+./venv/bin/python scripts/replay-content-selection.py \
+  --data-dir data --at 2026-07-11T09:00:00+08:00 --format json
+```
+
+结果解释：
+
+| 字段 | 含义 | 异常时处理 |
+|---|---|---|
+| `source_distribution` | 最终入选的来源分布 | 先对照候选数量，确认高频源数量未直接变成最终多数 |
+| `category_distribution` | 最终入选的 AI / tool / game 分布 | 检查对应分类的候选、相关性拒绝和有效期 |
+| `today_count` / `backfill_count` | 当日入选与历史分类补位数 | 历史项只能补分类最低目标，不能作为今日自由竞争 |
+| `rejection_reasons` | 过期或相关性拒绝原因计数 | `expired` 表示超过来源有效期；其他原因按相关性规则排查 |
+
+常见错误：
+
+- `数据目录不存在`：确认 `--data-dir` 指向包含 `ingestion/` 的目录。
+- `非法时间参数`：使用包含时区的 ISO 8601 时间，例如 `2026-07-11T09:00:00+08:00`。
+- 分布与预期不符：确认 `data_dir` 同级的 `feeds.yaml` 含来源的 `tier`、`retention_hours`、`quality_weight` 与 `filter_profile`。
+
+回放严格只读：不要通过它修复或清理生产状态，不要增加 webhook 参数，也不要提交生产 `data/`、候选原文、运行时配置或任何凭据。日常入口见 [daily-checklist.md](daily-checklist.md)。

@@ -75,3 +75,16 @@ wc -l /home/ubuntu/code/Claw_news/data/ingestion/$(date +%Y-%m-%d)/candidates.js
 ```bash
 bash /home/ubuntu/code/Claw_news/scripts/quick-verify.sh
 ```
+
+## 6. 离线内容选材回放（只读）
+
+当来源或分类分布需要复核时，在项目根目录运行固定时间点的离线回放：
+
+```bash
+./venv/bin/python scripts/replay-content-selection.py \
+  --data-dir data --at 2026-07-11T09:00:00+08:00 --format json
+```
+
+该命令只读取 `data/ingestion/` 与同级 `feeds.yaml`，不会触发 LLM、企业微信推送，也不会写入已发布状态、digest、metrics 或 publish status。输出中的 `source_distribution`、`category_distribution`、`today_count`、`backfill_count` 和 `rejection_reasons` 用于复核来源分布、分类保底、跨日补位和过滤结果。
+
+若需保存回放结果用于讨论，只保存脱敏后的汇总输出；不得把生产候选原文、运行时 `data/`、`feeds.yaml`、webhook 或密钥提交到仓库。常见失败与结果异常的处理见 [troubleshooting.md](troubleshooting.md)。

@@ -1,0 +1,22 @@
+feeds:
+  ai:
+    - source: qbitai
+      url: https://qbitai.test/feed
+      tier: vertical
+      retention_hours: 48
+      quality_weight: 3.5
+      filter_profile: standard
+  tool:
+    - source: sspai
+      url: https://sspai.test/feed
+      tier: vertical
+      retention_hours: 48
+      quality_weight: 3.5
+      filter_profile: standard
+  game:
+    - source: yystv
+      url: https://yystv.test/feed
+      tier: vertical
+      retention_hours: 48
+      quality_weight: 3.5
+      filter_profile: standard
