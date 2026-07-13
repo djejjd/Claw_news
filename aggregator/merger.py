@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, List, Union
 
 from collectors.base import Category, HotItem, normalize_category, time_modifier
@@ -24,33 +25,21 @@ SOURCE_WEIGHTS = {
 }
 DEFAULT_SOURCE_WEIGHT = 2.0
 
-# 同一源已入选 n 条时对新候选的分数惩罚
-_SOURCE_PENALTY = {0: 0.0, 1: -1.0, 2: -2.0, 3: -3.5, 4: -5.0}
-
-
-def _source_diversity_penalty(already_selected: int) -> float:
-    """已入选 n 条时，该源后续候选的额外扣分。"""
-    if already_selected <= 0:
-        return 0.0
-    if already_selected >= 4:
-        return -5.0
-    return _SOURCE_PENALTY.get(already_selected, -5.0)
-
 
 def compute_final_score(item) -> float:
-    """统一评分：source_weight + time_gravity
+    """委托 Task 5 公式：source_weight + freshness_score。
 
-    所有源默认权重相同（3.0），时间按 24h 平顶后衰减。
-    不再使用关键词加分和话题权重。
+    保留此函数以兼容旧调用方。旧 HotItem 使用 SOURCE_WEIGHTS。
     """
-    from collectors.base import time_gravity
+    from app.content.time_policy import candidate_effective_at, freshness_score
 
-    sw = getattr(item, "source_weight", None)
-    if sw is None:
-        sw = SOURCE_WEIGHTS.get(getattr(item, "source", ""), DEFAULT_SOURCE_WEIGHT)
-    pub_date = getattr(item, "pub_date", None) or getattr(item, "published_at", "")
-    tg = time_gravity(pub_date)
-    return round(sw + tg, 1)
+    sw = SOURCE_WEIGHTS.get(getattr(item, "source", ""), DEFAULT_SOURCE_WEIGHT)
+    effective_at, _ = candidate_effective_at(item)
+    if effective_at is not None:
+        age_hours = max((datetime.now() - effective_at).total_seconds() / 3600, 0)
+    else:
+        age_hours = 0
+    return round(sw + freshness_score(age_hours), 1)
 
 
 # =============================================================================
@@ -109,48 +98,28 @@ class Merger:
         if not use_new_scoring:
             return self._merge_legacy(items, period)
 
-        # ---- 新评分路径 ----
-        # Pre-compute final_score so dedup can use it
+        # ---- 新评分路径（委托 Task 5 selection 模块）----
+        from datetime import datetime
+
+        from app.content.source_policy import SourcePolicy
+        from app.pipeline.selection import select_digest
+
+        # 构建临时 SourcePolicy（从 SOURCE_WEIGHTS 推导保守策略）
+        policies = {
+            src: SourcePolicy(src, "vertical", 48, float(w), "standard")
+            for src, w in SOURCE_WEIGHTS.items()
+        }
         for item in items:
-            item.final_score = compute_final_score(item)
-        deduped = self._dedup_by_url(items)
-        deduped.sort(key=lambda x: x.final_score, reverse=True)
+            src = getattr(item, "source", "")
+            if src not in policies:
+                policies[src] = SourcePolicy(
+                    src, "vertical", 48, DEFAULT_SOURCE_WEIGHT, "standard",
+                )
 
-        # 分类保底：每类取最高分 1 条，剩余名额全量竞争
-        selected = []
-        seen_urls: set[str] = set()
-        source_counts: dict[str, int] = {}
-        for category in ("ai", "tool", "game"):
-            for item in deduped:
-                if normalize_category(item.category) == category and item.url not in seen_urls:
-                    selected.append(item)
-                    seen_urls.add(item.url)
-                    source_counts[item.source] = source_counts.get(item.source, 0) + 1
-                    break
-
-        # 剩余名额：逐条选取，已多次入选的源逐步加压（多样性加分/惩罚）
-        remaining = [i for i in deduped if i.url not in seen_urls]
-        while len(selected) < self.top_n and remaining:
-            best = None
-            best_score = -999.0
-            best_idx = -1
-            for idx, item in enumerate(remaining):
-                n = source_counts.get(item.source, 0)
-                penalty = _source_diversity_penalty(n)
-                effective = item.final_score + penalty
-                if effective > best_score:
-                    best_score = effective
-                    best = item
-                    best_idx = idx
-            if best is None:
-                break
-            selected.append(best)
-            seen_urls.add(best.url)
-            source_counts[best.source] = source_counts.get(best.source, 0) + 1
-            remaining.pop(best_idx)
-
-        selected.sort(key=lambda x: x.final_score, reverse=True)
-        return selected
+        result = select_digest(
+            items, policies, datetime.now(), "Asia/Shanghai", self.top_n,
+        )
+        return result.selected
 
     # ------------------------------------------------------------------
     # Legacy merge (保留原有行为)

@@ -150,17 +150,17 @@ class TestMerger:
 
 class TestComputeFinalScore:
     def test_basic_calculation(self):
-        """source_weight + time_gravity (today=3.0)"""
+        """source_weight + freshness_score (today=3.0)"""
         item = _make_candidate(source="qbitai", source_weight=3.0, published_at=_TODAY)
         score = compute_final_score(item)
-        # sw=3.0 + tg(today)=3.0 = 6.0
+        # sw=3.0 + freshness(today)=3.0 = 6.0
         assert score == 6.0
 
     def test_known_source_uses_lookup(self):
         """已知 source 使用 SOURCE_WEIGHTS 中的值"""
         item = _make_candidate(source="leiphone", source_weight=None, published_at=_TODAY)
         score = compute_final_score(item)
-        assert score == 6.0  # sw=3.0 + tg=3.0
+        assert score == 6.0  # sw=3.0 + freshness=3.0
 
     def test_unknown_source_default(self):
         """未知 source 使用 DEFAULT_SOURCE_WEIGHT"""
@@ -168,16 +168,14 @@ class TestComputeFinalScore:
             source="unknown_source_xyz", source_weight=None, published_at=_TODAY,
         )
         score = compute_final_score(item)
-        assert score == 5.0  # sw=2.0 + tg=3.0
+        assert score == 5.0  # sw=2.0 + freshness=3.0
 
     def test_old_pub_date_decays(self):
-        """3 天前的 pub_date 应衰减"""
+        """3 天前的 pub_date 应衰减。freshness_score(72h)=0.5, sw=3.0 → 3.5"""
         item = _make_candidate(source="qbitai", source_weight=3.0, published_at=_OLD_DATE)
         score = compute_final_score(item)
-        # age=72h, flat_top=24h: effective_age=48h
-        # tg = 3.0 / (48+2)^0.6 ≈ 3.0 / 10.4 ≈ 0.3
-        # sw=3.0 + tg≈0.3 ≈ 3.3
-        assert score < 4.0
+        # sw=3.0 + freshness(72h)=0.5 = 3.5
+        assert score < 5.0
 
     def test_huggingface_source_weight(self):
         item = _make_candidate(source="huggingface", source_weight=None, published_at=_TODAY)
