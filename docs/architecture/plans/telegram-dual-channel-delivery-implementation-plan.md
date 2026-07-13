@@ -4,7 +4,7 @@
 
 **目标：** 在不改变未配置场景的企业微信行为前提下，增加 Telegram 推送、独立通道投递状态和失败通道补发能力。
 
-**架构：** `AppConfig` 只负责可选 Telegram 凭据的成对校验；`app/delivery` 负责无密钥的通道状态、稳定 `delivery_id` 与结果归并；`pusher/telegram.py` 负责 Telegram HTML 文本和 Bot API 协议；发布链路按 delivery 状态跳过已成功通道，仅投递未成功通道。选材和去重持久化只在所有已启用通道完成后执行。
+**架构：** `AppConfig` 只负责可选 Telegram 凭据的成对校验；`app/delivery` 负责无密钥的通道状态、稳定 `delivery_id` 和原子待完成投递记录；`pusher/telegram.py` 负责 Telegram HTML 文本和 Bot API 协议；发布链路优先恢复待完成记录，按 delivery 状态跳过已成功通道，仅投递未成功通道。选材和去重持久化只在所有已启用通道完成后执行。
 
 **技术栈：** Python 3.11+、httpx、pytest、Ruff、Telegram Bot API `sendMessage`。
 
@@ -230,7 +230,7 @@ Task 1 的状态模型与 Task 2 的 renderer/pusher；设计第 6 至 8 节。
 
 ### 4. 输入与输出契约
 
-- 输入：已生成的企业微信 markdown、Telegram HTML 段、`AppConfig`、先前 `publish_status.json`。
+- 输入：已生成的企业微信 markdown、Telegram HTML 段、`AppConfig`、先前 `publish_status.json` 和可选的 `data/pending_deliveries/{date}-{period}.json`。
 - 输出：`publish_status.json` 增加 `delivery` 字段；`channels.wecom`/`channels.telegram` 各含 enabled、status、attempted_at、error。
 - 输出：`PublishResult.status` 为 `ok`（所有启用通道成功）、`degraded`（至少一个成功且至少一个失败）、`failed`（没有启用通道成功）或既有 `skipped`。
 - 兼容：Telegram 未配置时，现有企微成功路径仍为 `ok`、`pushed=true`。
@@ -238,39 +238,41 @@ Task 1 的状态模型与 Task 2 的 renderer/pusher；设计第 6 至 8 节。
 ### 5. 修改范围
 
 - 修改：`app/pipeline/news_pipeline.py`、`app/tools/summary_result.py`、`app/main.py`（仅在需要展示状态时）、`tests/test_news_pipeline.py`、`tests/test_app_api.py`、`tests/test_main.py`。
-- 新建：`app/delivery/store.py`、`tests/test_delivery_store.py`，负责原子读取和写入 `publish_status.json` 中的 `delivery` 字段。
+- 新建：`app/delivery/store.py`、`tests/test_delivery_store.py`，负责原子读取、写入和删除 `data/pending_deliveries/{date}-{period}.json`；记录只含渲染文本、通道状态和最终业务持久化所需的公开数据。
 - 修改：`docs/operations/verify-after-deploy.md`、`README.md`。
 
 ### 6. 禁止事项
 
 - 不修改候选池、评分、相关性、GitHub 排名、RSS 拉取和企业微信消息格式。
-- 不把 Telegram 配置或消息正文持久化。
+- 不把 Telegram 配置、密钥或消息正文写入 `publish_status.json`；消息正文只能写入本地待完成投递记录。
 - 不在自动化测试、`make dry-run` 或部署时发送真实 Telegram。
 - 不把“某通道成功”误写为“所有启用通道完成”。
 
 ### 7. 执行要求
 
-1. `delivery_id` 使用企业微信 markdown 的稳定内容生成；Telegram 重渲染不影响已完成判定；
-2. 读取旧格式 `publish_status.json` 时按无先前通道状态处理，不能崩溃；
-3. 每个通道尝试完成后立刻原子写入状态，进程中断后也能识别已成功通道；
-4. 仅在全部启用通道成功后执行 GitHub 曝光、`merge_pushed_urls`、`merge_published_keys` 和 `write_digest`；
-5. Telegram 未配置时不导入/构造 TelegramPusher，不增加 API 调用；
-6. `errors` 使用 `wecom:`、`telegram:` 前缀，内容脱敏。
+1. `delivery_id` 使用首次企业微信 markdown 的稳定内容生成；Telegram 重渲染不影响已完成判定；
+2. 同日同期有待完成记录时，必须直接恢复其消息和业务数据，不得重新调用 LLM、选材或企微；
+3. 待完成记录必须在任何通道发送前原子写入；写入失败时不发送；
+4. 每个通道尝试完成后立刻原子更新待完成记录，进程中断后也能识别已成功通道；
+5. 仅在全部启用通道成功后执行 GitHub 曝光、`merge_pushed_urls`、`merge_published_keys` 和 `write_digest`，然后删除待完成记录；
+6. Telegram 未配置时不导入/构造 TelegramPusher，不增加 API 调用；
+7. `errors` 使用 `wecom:`、`telegram:` 前缀，内容脱敏。
 
 ### 8. 实施步骤
 
 - [ ] 1. 在 `tests/test_news_pipeline.py` 写入未配置 Telegram 的回归测试，确认企微单通道仍成功并且不构造 TelegramPusher。
 - [ ] 2. 写入企微成功/Telegram 失败：整体 `degraded`、企微状态 `succeeded`、Telegram `failed`、未写去重/曝光/digest 的测试。
-- [ ] 3. 写入先前状态中企微已成功、Telegram 失败时：只调用 Telegram，Telegram 成功后变 `ok` 并完成业务持久化的测试。
+- [ ] 3. 写入企微已成功、Telegram 失败后的第二次执行：从待完成记录恢复原样 Telegram 文本，只调用 Telegram、不调用 LLM 或企微；Telegram 成功后变 `ok` 并完成业务持久化的测试。
 - [ ] 4. 写入两通道成功和两通道均失败的测试；检查状态 JSON 不含配置值。
 - [ ] 5. 运行相关精确测试，预期因双通道行为尚不存在失败。
-- [ ] 6. 在 `news_pipeline.py` 抽取小型通道投递 helper：加载/初始化 delivery state、逐通道尝试并原子写状态、归并整体结果；保留已有单通道返回字段兼容。
-- [ ] 7. 将原企微 try/except 替换为 helper 调用；当配置完整时渲染并投递 Telegram；成功通道按 delivery state 跳过。
-- [ ] 8. 将业务状态持久化移动至“所有启用通道成功”分支；失败或 degraded 分支仍写通道状态和 `PublishResult`。
-- [ ] 9. 更新 `/health` 读取逻辑和运维文档，说明 `channels`、`degraded` 与补发语义；更新 README 的 Telegram 配置/验证说明。
-- [ ] 10. 运行 `./venv/bin/pytest tests/test_news_pipeline.py tests/test_app_api.py tests/test_main.py tests/test_delivery_state.py tests/test_telegram_html_renderer.py tests/test_telegram_pusher.py -v`，预期通过。
-- [ ] 11. 运行 `make test`、`make lint`、`ruff format --check .`、`git diff --check`；检查 `git diff --name-only` 无范围外文件。
-- [ ] 12. 主审核 AI 完成规格与质量两轮审核后，才 commit：`feat: deliver news digest to telegram`。
+- [ ] 6. 在 `app/delivery/store.py` 写入待完成记录的原子 load/save/delete；损坏文件必须产生专用异常并保留原文件。
+- [ ] 7. 在 `news_pipeline.py` 抽取小型通道投递 helper：优先恢复待完成记录；否则在 LLM/渲染完成后先保存新记录；逐通道尝试后立即更新记录并归并整体结果；保留已有单通道返回字段兼容。
+- [ ] 8. 将原企微 try/except 替换为 helper 调用；当配置完整时渲染并投递 Telegram；成功通道按 delivery state 跳过。
+- [ ] 9. 将业务状态持久化移动至“所有启用通道成功”分支；成功后删除待完成记录；失败或 degraded 分支仍写通道状态和 `PublishResult`。
+- [ ] 10. 更新 `/health` 读取逻辑和运维文档，说明 `channels`、`degraded` 与补发语义；更新 README 的 Telegram 配置/验证说明。
+- [ ] 11. 运行 `./venv/bin/pytest tests/test_news_pipeline.py tests/test_app_api.py tests/test_main.py tests/test_delivery_state.py tests/test_telegram_html_renderer.py tests/test_telegram_pusher.py tests/test_delivery_store.py -v`，预期通过。
+- [ ] 12. 运行 `make test`、`make lint`、`ruff format --check .`、`git diff --check`；检查 `git diff --name-only` 无范围外文件。
+- [ ] 13. 主审核 AI 完成规格与质量两轮审核后，才 commit：`feat: deliver news digest to telegram`。
 
 ### 9. 验收标准
 
