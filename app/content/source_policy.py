@@ -29,6 +29,24 @@ class SourcePolicy:
 
 DEFAULT_SOURCE_POLICY = SourcePolicy(source="")
 
+_BUILTIN_SOURCE_POLICIES: dict[str, SourcePolicy] = {
+    "ithome": SourcePolicy("ithome", "fast_news", 24, 2.0, "strict"),
+    "taptap": SourcePolicy("taptap", "fast_news", 24, 2.5, "strict"),
+    "eurogamer": SourcePolicy("eurogamer", "fast_news", 24, 3.0, "strict"),
+    "qbitai": SourcePolicy("qbitai", "vertical", 48, 3.5, "standard"),
+    "leiphone": SourcePolicy("leiphone", "vertical", 48, 3.5, "standard"),
+    "jiqizhixin": SourcePolicy("jiqizhixin", "vertical", 48, 3.5, "standard"),
+    "sspai": SourcePolicy("sspai", "vertical", 48, 3.5, "standard"),
+    "appinn": SourcePolicy("appinn", "vertical", 48, 3.5, "standard"),
+    "yystv": SourcePolicy("yystv", "vertical", 48, 3.5, "standard"),
+    "indienova": SourcePolicy("indienova", "vertical", 48, 3.5, "standard"),
+    "gcores": SourcePolicy("gcores", "deep", 72, 4.0, "lenient"),
+    "chuapp": SourcePolicy("chuapp", "deep", 72, 4.0, "lenient"),
+    "meituan_tech": SourcePolicy("meituan_tech", "deep", 72, 4.0, "lenient"),
+    "cloudflare_cn": SourcePolicy("cloudflare_cn", "deep", 72, 4.0, "lenient"),
+    "huggingface": SourcePolicy("huggingface", "deep", 72, 4.0, "lenient"),
+}
+
 
 def build_source_policy_registry(feeds: list[dict]) -> dict[str, SourcePolicy]:
     """从 feed 列表构建 {source: SourcePolicy} registry。
@@ -52,10 +70,13 @@ def build_source_policy_registry(feeds: list[dict]) -> dict[str, SourcePolicy]:
         # 校验
         if tier not in _VALID_TIERS:
             raise ValueError(
-                f"Source '{source}': invalid tier '{tier}', "
-                f"must be one of {sorted(_VALID_TIERS)}"
+                f"Source '{source}': invalid tier '{tier}', must be one of {sorted(_VALID_TIERS)}"
             )
-        if not isinstance(retention_hours, (int, float)) or retention_hours <= 0:
+        if (
+            isinstance(retention_hours, bool)
+            or not isinstance(retention_hours, int)
+            or retention_hours <= 0
+        ):
             raise ValueError(
                 f"Source '{source}': retention_hours must be a positive integer, "
                 f"got {retention_hours}"
@@ -73,17 +94,17 @@ def build_source_policy_registry(feeds: list[dict]) -> dict[str, SourcePolicy]:
         registry[source] = SourcePolicy(
             source=source,
             tier=tier,  # type: ignore[arg-type]
-            retention_hours=int(retention_hours),
+            retention_hours=retention_hours,
             quality_weight=float(quality_weight),
             filter_profile=filter_profile,  # type: ignore[arg-type]
         )
     return registry
 
 
-def resolve_source_policy(
-    source: str, registry: dict[str, SourcePolicy]
-) -> SourcePolicy:
+def resolve_source_policy(source: str, registry: dict[str, SourcePolicy]) -> SourcePolicy:
     """从 registry 查找 source 的策略；未找到时返回保守默认值。"""
     if source in registry:
         return registry[source]
+    if source in _BUILTIN_SOURCE_POLICIES:
+        return _BUILTIN_SOURCE_POLICIES[source]
     return SourcePolicy(source=source)  # uses DEFAULT_SOURCE_POLICY field defaults

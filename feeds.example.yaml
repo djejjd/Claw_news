@@ -91,5 +91,20 @@ feeds:
       quality_weight: 3.0
       filter_profile: strict
 
+# 非 RSS collector 的来源策略。它们不会被 RSS loader 当作 feed 拉取。
+source_policies:
+  taptap:
+    source: taptap
+    tier: fast_news
+    retention_hours: 24
+    quality_weight: 2.5
+    filter_profile: strict
+  huggingface:
+    source: huggingface
+    tier: deep
+    retention_hours: 72
+    quality_weight: 4.0
+    filter_profile: lenient
+
 # relevance_rules 为可选的顶层配置，供相关性过滤组件使用（Task 4 接入）
 relevance_rules: {}

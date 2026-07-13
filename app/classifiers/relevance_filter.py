@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Mapping
 
 from app.content.source_policy import SourcePolicy
@@ -166,7 +166,7 @@ class RelevanceFilter:
     """纯规则相关性过滤器。"""
 
     def __init__(self, rules: dict[str, dict[str, list[str]]] | None = None):
-        self._rules = rules or _DEFAULT_RULES
+        self._rules = rules or _copy_default_rules()
 
     # ---- Public ----
 
@@ -279,9 +279,10 @@ class RelevanceFilter:
 
         from app.classifiers.topic_classifier import TopicClassifier
 
+        classified = replace(item)
         tc = TopicClassifier()
-        tc.classify(item)
-        tc_conf = item.topic_confidence or 0.0
+        tc.classify(classified)
+        tc_conf = classified.topic_confidence or 0.0
         return tc_conf if tc_conf > 0 else 0.1
 
 
@@ -291,17 +292,38 @@ class RelevanceFilter:
 def build_relevance_filter(config: Mapping[str, Any] | None = None) -> RelevanceFilter:
     """从已加载配置构建 RelevanceFilter。
 
-    config 应包含可选的 relevance_rules 映射；缺少或非法时使用默认规则。
+    config 应包含可选的 relevance_rules 映射；缺少时使用默认规则，
+    显式非法配置抛出 ValueError。
     不读取 YAML、不访问网络。
     """
-    if config is None:
+    if config is None or "relevance_rules" not in config:
         return RelevanceFilter()
-    try:
-        raw_rules = config.get("relevance_rules")
-        if isinstance(raw_rules, dict) and raw_rules:
-            return RelevanceFilter(rules=raw_rules)
-    except (TypeError, KeyError):
-        import logging
 
-        logging.getLogger(__name__).warning("relevance_rules 配置解析失败，使用默认规则")
-    return RelevanceFilter()
+    raw_rules = config["relevance_rules"]
+    if not isinstance(raw_rules, Mapping):
+        raise ValueError("relevance_rules 必须是分类规则映射")
+
+    rules = _copy_default_rules()
+    for category, override in raw_rules.items():
+        if category not in rules:
+            raise ValueError(f"relevance_rules 包含未知分类: {category}")
+        if not isinstance(override, Mapping):
+            raise ValueError(f"relevance_rules.{category} 必须是映射")
+        for field in ("positive", "negative"):
+            if field not in override:
+                continue
+            words = override[field]
+            if not isinstance(words, list) or not all(
+                isinstance(word, str) and word for word in words
+            ):
+                raise ValueError(f"relevance_rules.{category}.{field} 必须是非空字符串列表")
+            rules[category][field] = list(words)
+
+    return RelevanceFilter(rules=rules)
+
+
+def _copy_default_rules() -> dict[str, dict[str, list[str]]]:
+    return {
+        category: {field: list(words) for field, words in category_rules.items()}
+        for category, category_rules in _DEFAULT_RULES.items()
+    }

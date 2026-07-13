@@ -194,6 +194,7 @@ def test_build_filter_with_empty_config():
 def test_build_filter_with_custom_rules():
     """自定义规则覆盖默认规则。"""
     from app.classifiers.relevance_filter import build_relevance_filter
+    from app.content.source_policy import SourcePolicy
 
     config = {
         "relevance_rules": {
@@ -204,18 +205,44 @@ def test_build_filter_with_custom_rules():
         },
     }
     filt = build_relevance_filter(config)
-    assert filt is not None
+    result = filt.evaluate(
+        _make_item(title="软件工具", summary="", source="sspai", category="tool"),
+        SourcePolicy("sspai", "vertical", 48, 3.5, "standard"),
+    )
+    assert result.accepted is True
+    assert result.reason == "positive_rule"
 
 
 # ---- 非法配置 ----
 
 
-def test_invalid_rule_config_uses_default():
-    """非法规则配置不崩溃，回退到默认。"""
+def test_invalid_rule_config_raises():
+    """显式非法规则配置必须失败，不能静默回退。"""
     from app.classifiers.relevance_filter import build_relevance_filter
 
-    filt = build_relevance_filter({"relevance_rules": "bad_type"})
-    assert filt is not None
+    with pytest.raises(ValueError, match="relevance_rules"):
+        build_relevance_filter({"relevance_rules": "bad_type"})
+
+
+def test_ai_classifier_fallback_does_not_mutate_candidate():
+    """相关性判断只读取 CandidateItem，不得写入 topic 字段。"""
+    from app.classifiers.relevance_filter import RelevanceFilter
+    from app.content.source_policy import SourcePolicy
+
+    item = _make_item(
+        title="分布式系统延迟优化",
+        summary="latency reduction for inference serving",
+        source="qbitai",
+        category="ai",
+    )
+
+    RelevanceFilter().evaluate(
+        item,
+        SourcePolicy("qbitai", "vertical", 48, 3.5, "standard"),
+    )
+
+    assert item.topic is None
+    assert item.topic_confidence is None
 
 
 # ---- 所有 5 个 reason 值 ----

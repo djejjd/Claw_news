@@ -77,7 +77,11 @@ async def run_ingest():
                 skipped_sources.extend(f"{spec.name}:feed={f}" for f in partial_failures)
                 status = "degraded"
             successful_sources.append(spec.name)
-            raw_items = [i for i in items if normalize_category(i.category) in {"ai", "tool", "game"}]
+            raw_items = [
+                item
+                for item in items
+                if normalize_category(item.category) in {"ai", "tool", "game"}
+            ]
         except Exception as e:
             if is_optional_source(spec):
                 logger.warning("Ingest source skipped: %s (%s)", spec.name, e)

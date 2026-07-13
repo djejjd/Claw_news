@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.pipeline.candidate import CandidateItem
-from collectors.github import GitHubCollectorError
 from collectors.base import HotItem
+from collectors.github import GitHubCollectorError
 
 
 def _make_candidate(**kwargs) -> CandidateItem:
@@ -222,8 +222,6 @@ async def test_run_ingest_preloads_recent_keys_dedups_before_quality_and_updates
         {
             "source": "taptap",
             "fetch_count": 3,
-
-
             "min_fetch_count": 3,
             "max_fetch_count": 3,
             "cooldown_remaining": 0,
@@ -234,7 +232,10 @@ async def test_run_ingest_preloads_recent_keys_dedups_before_quality_and_updates
     with (
         patch("collectors.rss_sources.RssCollector", return_value=rss_collector) as rss_cls,
         patch("collectors.huggingface.HfDailyPapersCollector", return_value=hf_collector) as hf_cls,
-        patch("collectors.taptap.TapTapCollector", return_value=MagicMock(collect=AsyncMock(return_value=[]))) as taptap_cls,
+        patch(
+            "collectors.taptap.TapTapCollector",
+            return_value=MagicMock(collect=AsyncMock(return_value=[])),
+        ) as taptap_cls,
         patch("collectors.github.GitHubCollector.collect", new=AsyncMock(return_value=[])),
         patch("app.scheduler.jobs.IngestionStore", return_value=ingestion_store, create=True),
         patch("app.scheduler.jobs.SourceMetricsStore", return_value=metrics_store, create=True),
@@ -362,7 +363,10 @@ async def test_run_ingest_dedups_same_round_before_quality_filter(
     with (
         patch("collectors.rss_sources.RssCollector", return_value=rss_collector),
         patch("collectors.huggingface.HfDailyPapersCollector", return_value=hf_collector),
-        patch("collectors.taptap.TapTapCollector", return_value=MagicMock(collect=AsyncMock(return_value=[]))),
+        patch(
+            "collectors.taptap.TapTapCollector",
+            return_value=MagicMock(collect=AsyncMock(return_value=[])),
+        ),
         patch("collectors.github.GitHubCollector.collect", new=AsyncMock(return_value=[])),
         patch("app.scheduler.jobs.IngestionStore", return_value=ingestion_store, create=True),
         patch("app.scheduler.jobs.SourceMetricsStore", return_value=metrics_store, create=True),
@@ -387,9 +391,27 @@ async def test_run_ingest_accepts_tool_and_game_candidates():
     from app.scheduler.jobs import run_ingest
 
     rss_items = [
-        _make_hotitem(title="AI Item", url="https://a.com/1", summary="Long enough AI summary text for acceptance.", source="qbitai", category="ai"),
-        _make_hotitem(title="Tool Item", url="https://t.com/1", summary="Long enough tool summary text for acceptance.", source="sspai", category="tool"),
-        _make_hotitem(title="Game Item", url="https://g.com/1", summary="Long enough game summary text for acceptance.", source="yystv", category="game"),
+        _make_hotitem(
+            title="AI Item",
+            url="https://a.com/1",
+            summary="Long enough AI summary text for acceptance.",
+            source="qbitai",
+            category="ai",
+        ),
+        _make_hotitem(
+            title="Tool Item",
+            url="https://t.com/1",
+            summary="Long enough tool summary text for acceptance.",
+            source="sspai",
+            category="tool",
+        ),
+        _make_hotitem(
+            title="Game Item",
+            url="https://g.com/1",
+            summary="Long enough game summary text for acceptance.",
+            source="yystv",
+            category="game",
+        ),
     ]
 
     rss_collector = MagicMock()
@@ -405,16 +427,58 @@ async def test_run_ingest_accepts_tool_and_game_candidates():
 
     metrics_store = MagicMock()
     metrics_store.aggregate_recent.side_effect = [
-        {"source": "rss", "runs": 24, "effective_new_rate": 0.5, "selection_rate": 0.3, "raw_fetched_count": 3, "accepted_count": 3, "selected_count": 0},
-        {"source": "huggingface", "runs": 24, "effective_new_rate": 0.0, "selection_rate": 0.0, "raw_fetched_count": 0, "accepted_count": 0, "selected_count": 0},
-        {"source": "taptap", "runs": 24, "effective_new_rate": 0.0, "selection_rate": 0.0, "raw_fetched_count": 0, "accepted_count": 0, "selected_count": 0},
+        {
+            "source": "rss",
+            "runs": 24,
+            "effective_new_rate": 0.5,
+            "selection_rate": 0.3,
+            "raw_fetched_count": 3,
+            "accepted_count": 3,
+            "selected_count": 0,
+        },
+        {
+            "source": "huggingface",
+            "runs": 24,
+            "effective_new_rate": 0.0,
+            "selection_rate": 0.0,
+            "raw_fetched_count": 0,
+            "accepted_count": 0,
+            "selected_count": 0,
+        },
+        {
+            "source": "taptap",
+            "runs": 24,
+            "effective_new_rate": 0.0,
+            "selection_rate": 0.0,
+            "raw_fetched_count": 0,
+            "accepted_count": 0,
+            "selected_count": 0,
+        },
     ]
 
     state_store = MagicMock()
     state_store.load_state.side_effect = [
-        {"source": "rss", "fetch_count": 5, "min_fetch_count": 5, "max_fetch_count": 5, "cooldown_remaining": 0},
-        {"source": "huggingface", "fetch_count": 2, "min_fetch_count": 2, "max_fetch_count": 2, "cooldown_remaining": 0},
-        {"source": "taptap", "fetch_count": 3, "min_fetch_count": 3, "max_fetch_count": 3, "cooldown_remaining": 0},
+        {
+            "source": "rss",
+            "fetch_count": 5,
+            "min_fetch_count": 5,
+            "max_fetch_count": 5,
+            "cooldown_remaining": 0,
+        },
+        {
+            "source": "huggingface",
+            "fetch_count": 2,
+            "min_fetch_count": 2,
+            "max_fetch_count": 2,
+            "cooldown_remaining": 0,
+        },
+        {
+            "source": "taptap",
+            "fetch_count": 3,
+            "min_fetch_count": 3,
+            "max_fetch_count": 3,
+            "cooldown_remaining": 0,
+        },
     ]
 
     with (
@@ -425,7 +489,11 @@ async def test_run_ingest_accepts_tool_and_game_candidates():
         patch("app.scheduler.jobs.IngestionStore", return_value=ingestion_store, create=True),
         patch("app.scheduler.jobs.SourceMetricsStore", return_value=metrics_store, create=True),
         patch("app.scheduler.jobs.SourceStateStore", return_value=state_store, create=True),
-        patch("app.scheduler.jobs.should_accept_candidate", side_effect=lambda item: True, create=True),
+        patch(
+            "app.scheduler.jobs.should_accept_candidate",
+            side_effect=lambda item: True,
+            create=True,
+        ),
     ):
         result = await run_ingest()
 
@@ -667,6 +735,7 @@ def test_update_fetch_count_from_metrics_clamps_out_of_bounds_when_runs_too_low(
 async def test_run_ingest_cleanup_prunes_at_7_days():
     """run_ingest_with_cleanup 以 keep_days=7 调用 prune_expired（Task 3）。"""
     from unittest.mock import AsyncMock, MagicMock, patch
+
     from app.scheduler.jobs import run_ingest_with_cleanup
 
     with (

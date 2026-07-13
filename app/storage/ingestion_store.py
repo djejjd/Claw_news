@@ -225,20 +225,18 @@ class IngestionStore:
                             continue
                         try:
                             data = json.loads(line)
-                            fields = {k: v for k, v in data.items()
-                                      if k in _CANDIDATE_FIELD_NAMES}
+                            fields = {k: v for k, v in data.items() if k in _CANDIDATE_FIELD_NAMES}
                             item = CandidateItem(**fields)
                             # 按 fetched_at 限制采集窗口
                             ft = item.fetched_at
-                            if ft:
-                                try:
-                                    ft_dt = datetime.fromisoformat(ft)
-                                except ValueError:
-                                    ft_dt = None
-                                if ft_dt is not None and not (
-                                    start_dt <= ft_dt <= end_dt
-                                ):
-                                    continue
+                            if not ft:
+                                continue
+                            try:
+                                ft_dt = datetime.fromisoformat(ft)
+                            except ValueError:
+                                continue
+                            if not (start_dt <= ft_dt <= end_dt):
+                                continue
                             raw_items.append(item)
                         except (TypeError, json.JSONDecodeError):
                             continue
@@ -254,16 +252,12 @@ class IngestionStore:
                 folded[ck] = item
                 continue
             # 1. published_at 更新者优先
-            cmp = self._compare_str_field(
-                item.published_at or "", existing.published_at or ""
-            )
+            cmp = self._compare_str_field(item.published_at or "", existing.published_at or "")
             if cmp > 0:
                 folded[ck] = item
             elif cmp == 0:
                 # 2. fetched_at 作为 tiebreaker
-                cmp2 = self._compare_str_field(
-                    item.fetched_at or "", existing.fetched_at or ""
-                )
+                cmp2 = self._compare_str_field(item.fetched_at or "", existing.fetched_at or "")
                 if cmp2 > 0:
                     folded[ck] = item
                 elif cmp2 == 0:
@@ -401,6 +395,7 @@ class IngestionStore:
 
 # ---- Task 3: 按源有效期过滤 ----
 
+
 def filter_unexpired_candidates(
     items: list[CandidateItem],
     now: datetime,
@@ -417,6 +412,9 @@ def filter_unexpired_candidates(
         (保留列表, 拒绝审计)。审计行至少包含
         canonical_key/source/reason/age_hours/retention_hours。
     """
+    from zoneinfo import ZoneInfo
+
+    from app.content.source_policy import SourcePolicy, resolve_source_policy
     from app.content.time_policy import candidate_effective_at
 
     kept: list[CandidateItem] = []
@@ -426,43 +424,54 @@ def filter_unexpired_candidates(
     for item in items:
         policy = policies.get(item.source)
         if policy is None:
+            policy = resolve_source_policy(item.source, policies)
+        if item.source not in policies and policy == SourcePolicy(source=item.source):
             if item.source not in warned_sources:
                 import logging
+
                 logging.getLogger(__name__).warning(
                     "来源 '%s' 不在策略 registry 中，使用默认 48h", item.source
                 )
                 warned_sources.add(item.source)
-        retention = policy.retention_hours if policy else 48
+        retention = policy.retention_hours
 
         effective_at, _ = candidate_effective_at(item)
         if effective_at is None:
-            rejected.append({
-                "canonical_key": item.canonical_key,
-                "source": item.source,
-                "reason": "unknown_effective_time",
-                "age_hours": -1,
-                "retention_hours": retention,
-            })
+            rejected.append(
+                {
+                    "canonical_key": item.canonical_key,
+                    "source": item.source,
+                    "reason": "unknown_effective_time",
+                    "age_hours": -1,
+                    "retention_hours": retention,
+                }
+            )
             continue
 
-        # 确保 naive/aware 一致后再相减
-        if effective_at.tzinfo is not None and now.tzinfo is None:
-            effective_at = effective_at.replace(tzinfo=None)
-        elif effective_at.tzinfo is None and now.tzinfo is not None:
-            effective_at = effective_at.replace(tzinfo=now.tzinfo)
+        # 服务端的 naive now 按 Asia/Shanghai 解释；所有 aware 时间先换算到同一时区。
+        comparison_tz = now.tzinfo or ZoneInfo("Asia/Shanghai")
+        normalized_now = now if now.tzinfo is not None else now.replace(tzinfo=comparison_tz)
+        normalized_effective_at = (
+            effective_at.replace(tzinfo=comparison_tz)
+            if effective_at.tzinfo is None
+            else effective_at.astimezone(comparison_tz)
+        )
 
         age_hours = (
-            round((now - effective_at).total_seconds() / 3600, 1)
-            if now > effective_at else 0
+            round((normalized_now - normalized_effective_at).total_seconds() / 3600, 1)
+            if normalized_now > normalized_effective_at
+            else 0
         )
         if age_hours > retention:
-            rejected.append({
-                "canonical_key": item.canonical_key,
-                "source": item.source,
-                "reason": "expired",
-                "age_hours": age_hours,
-                "retention_hours": retention,
-            })
+            rejected.append(
+                {
+                    "canonical_key": item.canonical_key,
+                    "source": item.source,
+                    "reason": "expired",
+                    "age_hours": age_hours,
+                    "retention_hours": retention,
+                }
+            )
             continue
 
         kept.append(item)

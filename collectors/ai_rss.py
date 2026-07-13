@@ -6,18 +6,66 @@ from pathlib import Path
 FEEDS_YAML_PATH = Path(__file__).resolve().parent.parent / "feeds.yaml"
 
 DEFAULT_AI_RSS_FEEDS = [
-    {"url": "https://www.qbitai.com/feed", "category": "ai", "source": "qbitai"},
-    {"url": "https://www.leiphone.com/feed", "category": "ai", "source": "leiphone"},
+    {
+        "url": "https://www.qbitai.com/feed",
+        "category": "ai",
+        "source": "qbitai",
+        "tier": "vertical",
+        "retention_hours": 48,
+        "quality_weight": 3.5,
+        "filter_profile": "standard",
+    },
+    {
+        "url": "https://www.leiphone.com/feed",
+        "category": "ai",
+        "source": "leiphone",
+        "tier": "vertical",
+        "retention_hours": 48,
+        "quality_weight": 3.5,
+        "filter_profile": "standard",
+    },
 ]
 
 DEFAULT_TOOL_RSS_FEEDS = [
-    {"url": "https://sspai.com/feed", "category": "tool", "source": "sspai"},
-    {"url": "https://www.ithome.com/rss/", "category": "tool", "source": "ithome"},
+    {
+        "url": "https://sspai.com/feed",
+        "category": "tool",
+        "source": "sspai",
+        "tier": "vertical",
+        "retention_hours": 48,
+        "quality_weight": 3.5,
+        "filter_profile": "standard",
+    },
+    {
+        "url": "https://www.ithome.com/rss/",
+        "category": "tool",
+        "source": "ithome",
+        "tier": "fast_news",
+        "retention_hours": 24,
+        "quality_weight": 2.0,
+        "filter_profile": "strict",
+    },
 ]
 
 DEFAULT_GAME_RSS_FEEDS = [
-    {"url": "https://www.yystv.cn/rss/feed", "category": "game", "source": "yystv"},
-    {"url": "https://www.gcores.com/rss", "category": "game", "source": "gcores"},
+    {
+        "url": "https://www.yystv.cn/rss/feed",
+        "category": "game",
+        "source": "yystv",
+        "tier": "vertical",
+        "retention_hours": 48,
+        "quality_weight": 3.5,
+        "filter_profile": "standard",
+    },
+    {
+        "url": "https://www.gcores.com/rss",
+        "category": "game",
+        "source": "gcores",
+        "tier": "deep",
+        "retention_hours": 72,
+        "quality_weight": 4.0,
+        "filter_profile": "lenient",
+    },
 ]
 
 

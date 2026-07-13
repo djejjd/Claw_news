@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.category_policy import display_category_for_runtime, normalize_category
 from app.pipeline import (
     DigestPayload,
     PublishResult,
@@ -10,7 +11,6 @@ from app.pipeline import (
 )
 from app.pipeline.candidate import CandidateItem
 from app.pipeline.context import RunContext
-from app.category_policy import display_category_for_runtime, normalize_category
 from collectors.base import HotItem, hotitem_to_candidate
 
 
@@ -64,6 +64,7 @@ class TestHotItemToCandidate:
         assert candidate.source == "qbitai"
         assert candidate.category == "ai"
         assert candidate.published_at == "2024-05-18"
+        assert candidate.published_time_source == "legacy_date"
         assert candidate.fetched_at != ""
         assert candidate.canonical_key == "qbitai.com/article/12345"
         assert candidate.ingest_run_id == "run-001"
@@ -99,6 +100,24 @@ class TestHotItemToCandidate:
         )
         candidate = hotitem_to_candidate(hot)
         assert candidate.ingest_run_id == ""
+        assert candidate.published_time_source == "fetched_at"
+
+    def test_conversion_marks_complete_rss_publish_time(self):
+        hot = HotItem(
+            title="T",
+            url="https://example.com/article",
+            summary="",
+            source="t",
+            category="ai",
+            source_score=1.0,
+            timestamp=1716000000.0,
+            keyword_hit=False,
+            pub_date="2024-05-18T08:30:00+08:00",
+        )
+
+        candidate = hotitem_to_candidate(hot)
+
+        assert candidate.published_time_source == "rss"
 
     def test_device_alias_normalizes_to_tool(self):
         hot = HotItem(

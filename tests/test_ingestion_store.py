@@ -475,9 +475,7 @@ class TestPruneExpired:
 _FIXED_WINDOW_END = "2026-07-11T09:00:00+08:00"
 
 
-def _make_candidate_in_dir(
-    day_dir: Path, url: str, fetched_at: str, **kwargs
-) -> CandidateItem:
+def _make_candidate_in_dir(day_dir: Path, url: str, fetched_at: str, **kwargs) -> CandidateItem:
     """创建候选并写入指定日期的 JSONL。"""
     item = _make_item(
         url=url,
@@ -496,19 +494,15 @@ def test_recent_loader_reads_72_hours_across_calendar_directories(tmp_path):
 
     # 2026-07-08 08:00 → 距 window_end 73h → 应被排除
     d1 = ing / "2026-07-08"
-    _make_candidate_in_dir(d1, url="https://outside.test",
-                           fetched_at="2026-07-08T08:00:00+08:00")
+    _make_candidate_in_dir(d1, url="https://outside.test", fetched_at="2026-07-08T08:00:00+08:00")
     # 2026-07-08 10:00 → 距 window_end 71h → 应在窗口内
-    _make_candidate_in_dir(d1, url="https://inside.test",
-                           fetched_at="2026-07-08T10:00:00+08:00")
+    _make_candidate_in_dir(d1, url="https://inside.test", fetched_at="2026-07-08T10:00:00+08:00")
 
     # 2026-07-09 → 绝对在窗口内
     d2 = ing / "2026-07-09"
-    _make_candidate_in_dir(d2, url="https://mid.test",
-                           fetched_at="2026-07-09T12:00:00+08:00")
+    _make_candidate_in_dir(d2, url="https://mid.test", fetched_at="2026-07-09T12:00:00+08:00")
 
-    result = store.load_recent_candidates(
-        window_end=_FIXED_WINDOW_END, lookback_hours=72)
+    result = store.load_recent_candidates(window_end=_FIXED_WINDOW_END, lookback_hours=72)
     urls = {item.url for item in result}
     assert "https://outside.test" not in urls
     assert "https://inside.test" in urls
@@ -519,19 +513,33 @@ def test_recent_loader_filters_pushed_urls_and_keys(tmp_path):
     """已发布的 URL 和 canonical_key 被排除。"""
     store = IngestionStore(root_dir=tmp_path)
     ing = tmp_path / "data" / "ingestion" / "2026-07-11"
-    _make_candidate_in_dir(ing, url="https://pushed.test",
-                           fetched_at="2026-07-11T08:00:00+08:00")
-    _make_candidate_in_dir(ing, url="https://fresh.test",
-                           fetched_at="2026-07-11T08:00:00+08:00")
+    _make_candidate_in_dir(ing, url="https://pushed.test", fetched_at="2026-07-11T08:00:00+08:00")
+    _make_candidate_in_dir(ing, url="https://fresh.test", fetched_at="2026-07-11T08:00:00+08:00")
 
     result = store.load_recent_candidates(
-        window_end=_FIXED_WINDOW_END, lookback_hours=72,
+        window_end=_FIXED_WINDOW_END,
+        lookback_hours=72,
         pushed_urls={"https://pushed.test"},
         pushed_keys={CandidateItem.make_canonical_key("https://pushed.test")},
     )
     urls = {item.url for item in result}
     assert "https://pushed.test" not in urls
     assert "https://fresh.test" in urls
+
+
+def test_recent_loader_rejects_item_without_fetched_time(tmp_path):
+    """无法证明处于 72 小时采集窗口的旧记录不得进入候选池。"""
+    store = IngestionStore(root_dir=tmp_path)
+    day_dir = tmp_path / "data" / "ingestion" / "2026-07-08"
+    _make_candidate_in_dir(
+        day_dir,
+        url="https://missing-fetch-time.test",
+        fetched_at="",
+    )
+
+    result = store.load_recent_candidates(window_end=_FIXED_WINDOW_END, lookback_hours=72)
+
+    assert result == []
 
 
 # ---- Task 3: filter_unexpired_candidates ----
@@ -544,12 +552,15 @@ def test_source_retention_filters_independently():
 
     now = datetime.fromisoformat("2026-07-11T09:00:00+08:00")
     items = [
-        _make_item(source="vertical_47h", url="https://v.test",
-                   published_at="2026-07-09T10:00:00+08:00"),
-        _make_item(source="deep_71h", url="https://d.test",
-                   published_at="2026-07-08T10:00:00+08:00"),
-        _make_item(source="fast_25h", url="https://f.test",
-                   published_at="2026-07-10T08:00:00+08:00"),
+        _make_item(
+            source="vertical_47h", url="https://v.test", published_at="2026-07-09T10:00:00+08:00"
+        ),
+        _make_item(
+            source="deep_71h", url="https://d.test", published_at="2026-07-08T10:00:00+08:00"
+        ),
+        _make_item(
+            source="fast_25h", url="https://f.test", published_at="2026-07-10T08:00:00+08:00"
+        ),
     ]
     policies = {
         "vertical_47h": SourcePolicy("vertical_47h", "vertical", 48, 3.0, "standard"),
@@ -570,8 +581,7 @@ def test_filter_rejection_audit_has_required_fields():
 
     now = datetime.fromisoformat("2026-07-11T09:00:00+08:00")
     items = [
-        _make_item(source="old", url="https://old.test",
-                   published_at="2026-07-08T09:00:00+08:00"),
+        _make_item(source="old", url="https://old.test", published_at="2026-07-08T09:00:00+08:00"),
     ]
     policies = {"old": SourcePolicy("old", "fast_news", 24, 2.0, "strict")}
     _, rejected = filter_unexpired_candidates(items, now, policies)
@@ -591,8 +601,9 @@ def test_filter_keeps_items_within_retention():
 
     now = datetime.fromisoformat("2026-07-11T09:00:00+08:00")
     items = [
-        _make_item(source="fresh", url="https://fresh.test",
-                   published_at="2026-07-11T08:00:00+08:00"),
+        _make_item(
+            source="fresh", url="https://fresh.test", published_at="2026-07-11T08:00:00+08:00"
+        ),
     ]
     policies = {"fresh": SourcePolicy("fresh", "fast_news", 24, 2.0, "strict")}
     kept, rejected = filter_unexpired_candidates(items, now, policies)
@@ -607,8 +618,7 @@ def test_filter_rejects_items_without_effective_time():
 
     now = datetime.fromisoformat("2026-07-11T09:00:00+08:00")
     items = [
-        _make_item(source="no_time", url="https://no.test",
-                   published_at="", fetched_at=""),
+        _make_item(source="no_time", url="https://no.test", published_at="", fetched_at=""),
     ]
     policies = {"no_time": SourcePolicy("no_time", "vertical", 48, 3.0, "standard")}
     _, rejected = filter_unexpired_candidates(items, now, policies)
@@ -623,9 +633,66 @@ def test_date_only_published_at_does_not_crash():
 
     now = datetime.fromisoformat("2026-07-11T09:00:00+08:00")
     items = [
-        _make_item(source="test", url="https://test",
-                   published_at="2026-07-10"),
+        _make_item(source="test", url="https://test", published_at="2026-07-10"),
     ]
     policies = {"test": SourcePolicy("test", "vertical", 48, 3.0, "standard")}
     kept, _ = filter_unexpired_candidates(items, now, policies)
     assert len(kept) == 1  # 24h 内，应保留
+
+
+def test_filter_uses_builtin_policy_for_non_rss_source():
+    """缺少运行时 registry 项时，TapTap 仍按其 fast_news 策略过期。"""
+    from app.storage.ingestion_store import filter_unexpired_candidates
+
+    item = _make_item(
+        source="taptap",
+        url="https://taptap.test",
+        published_at="2026-07-10T08:00:00+08:00",
+    )
+    now = datetime.fromisoformat("2026-07-11T09:00:00+08:00")
+
+    kept, rejected = filter_unexpired_candidates([item], now, {})
+
+    assert kept == []
+    assert rejected[0]["reason"] == "expired"
+    assert rejected[0]["retention_hours"] == 24
+
+
+def test_filter_warns_when_unknown_source_uses_generic_default(caplog):
+    """真正未知的来源使用保守默认值时必须留下告警。"""
+    from app.storage.ingestion_store import filter_unexpired_candidates
+
+    item = _make_item(
+        source="new_source",
+        url="https://new-source.test",
+        published_at="2026-07-11T08:00:00+08:00",
+    )
+    now = datetime.fromisoformat("2026-07-11T09:00:00+08:00")
+
+    kept, rejected = filter_unexpired_candidates([item], now, {})
+
+    assert kept == [item]
+    assert rejected == []
+    assert "使用默认 48h" in caplog.text
+
+
+def test_filter_interprets_naive_now_as_shanghai_time():
+    """UTC 发布时间与服务端 naive now 相减时必须先统一到上海时区。"""
+    from app.content.source_policy import SourcePolicy
+    from app.storage.ingestion_store import filter_unexpired_candidates
+
+    item = _make_item(
+        source="fast",
+        url="https://timezone.test",
+        published_at="2026-07-11T00:00:00+00:00",
+    )
+    now = datetime(2026, 7, 11, 9, 0, 0)
+
+    kept, rejected = filter_unexpired_candidates(
+        [item],
+        now,
+        {"fast": SourcePolicy("fast", "fast_news", 2, 2.0, "strict")},
+    )
+
+    assert kept == [item]
+    assert rejected == []

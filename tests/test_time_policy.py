@@ -14,17 +14,20 @@ def test_module_importable():
     )
 
 
-@pytest.mark.parametrize(("age", "score"), [
-    (0, 3.0),
-    (12, 3.0),
-    (24, 3.0),
-    (24.01, 1.5),
-    (36, 1.5),
-    (48, 1.5),
-    (48.01, 0.5),
-    (60, 0.5),
-    (72, 0.5),
-])
+@pytest.mark.parametrize(
+    ("age", "score"),
+    [
+        (0, 3.0),
+        (12, 3.0),
+        (24, 3.0),
+        (24.01, 1.5),
+        (36, 1.5),
+        (48, 1.5),
+        (48.01, 0.5),
+        (60, 0.5),
+        (72, 0.5),
+    ],
+)
 def test_freshness_boundaries(age, score):
     """freshness_score 的固定分段边界。"""
     from app.content.time_policy import freshness_score
@@ -38,8 +41,13 @@ def test_effective_time_falls_back_to_fetched_at():
     from app.pipeline.candidate import CandidateItem
 
     item = CandidateItem(
-        title="T", url="https://x", summary="S", source="x", category="ai",
-        published_at="", fetched_at="2026-07-10T08:00:00+08:00",
+        title="T",
+        url="https://x",
+        summary="S",
+        source="x",
+        category="ai",
+        published_at="",
+        fetched_at="2026-07-10T08:00:00+08:00",
     )
     value, reason = candidate_effective_at(item)
     assert value is not None
@@ -53,7 +61,11 @@ def test_effective_time_uses_published_at():
     from app.pipeline.candidate import CandidateItem
 
     item = CandidateItem(
-        title="T", url="https://x", summary="S", source="x", category="ai",
+        title="T",
+        url="https://x",
+        summary="S",
+        source="x",
+        category="ai",
         published_at="2026-07-10T09:00:00+08:00",
         fetched_at="2026-07-10T08:00:00+08:00",
     )
@@ -68,7 +80,11 @@ def test_effective_time_returns_none_for_empty():
     from app.pipeline.candidate import CandidateItem
 
     item = CandidateItem(
-        title="T", url="https://x", summary="S", source="x", category="ai",
+        title="T",
+        url="https://x",
+        summary="S",
+        source="x",
+        category="ai",
     )
     value, reason = candidate_effective_at(item)
     assert value is None
@@ -105,7 +121,11 @@ def test_naive_datetime_parsed_correctly():
     from app.pipeline.candidate import CandidateItem
 
     item = CandidateItem(
-        title="T", url="https://x", summary="S", source="x", category="ai",
+        title="T",
+        url="https://x",
+        summary="S",
+        source="x",
+        category="ai",
         published_at="2026-07-10",
         fetched_at="2026-07-10T08:00:00+08:00",
     )
@@ -140,7 +160,11 @@ def test_effective_at_with_z_suffix():
     from app.pipeline.candidate import CandidateItem
 
     item = CandidateItem(
-        title="T", url="https://x", summary="S", source="x", category="ai",
+        title="T",
+        url="https://x",
+        summary="S",
+        source="x",
+        category="ai",
         published_at="2026-07-10T09:00:00Z",
     )
     value, reason = candidate_effective_at(item)

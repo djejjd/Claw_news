@@ -5,6 +5,7 @@ from collectors.ai_rss import (
     _yaml_or_default,
     load_ai_rss_feeds,
     load_all_rss_feeds,
+    load_feed_configuration,
     load_game_rss_feeds,
     load_tool_rss_feeds,
 )
@@ -16,19 +17,48 @@ def test_yaml_or_default_respects_yaml_file(tmp_path, monkeypatch):
 
     yaml_path = tmp_path / "feeds.yaml"
     yaml_path.write_text(
-        yaml.dump({
-            "feeds": {
-                "ai": [{"url": "https://custom.example/feed", "source": "custom_ai"}],
-                "tool": [{"url": "https://t.example/feed", "source": "custom_tool"}],
-                "game": [{"url": "https://g.example/feed", "source": "custom_game"}],
+        yaml.dump(
+            {
+                "feeds": {
+                    "ai": [{"url": "https://custom.example/feed", "source": "custom_ai"}],
+                    "tool": [{"url": "https://t.example/feed", "source": "custom_tool"}],
+                    "game": [{"url": "https://g.example/feed", "source": "custom_game"}],
+                }
             }
-        }),
+        ),
         encoding="utf-8",
     )
     monkeypatch.setattr("collectors.ai_rss.FEEDS_YAML_PATH", yaml_path)
 
     feeds = _yaml_or_default("ai")
-    assert feeds == [{"url": "https://custom.example/feed", "category": "ai", "source": "custom_ai"}]
+    assert feeds == [
+        {
+            "url": "https://custom.example/feed",
+            "category": "ai",
+            "source": "custom_ai",
+        }
+    ]
+
+
+def test_load_feed_configuration_preserves_top_level_relevance_rules(tmp_path):
+    """完整配置读取必须保留 Task 4 所需的顶层规则。"""
+    import yaml
+
+    yaml_path = tmp_path / "feeds.yaml"
+    yaml_path.write_text(
+        yaml.dump(
+            {
+                "feeds": {"ai": [], "tool": [], "game": []},
+                "relevance_rules": {"ai": {"positive": ["自定义"], "negative": []}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_feed_configuration(yaml_path)
+
+    assert config is not None
+    assert config["relevance_rules"]["ai"]["positive"] == ["自定义"]
 
 
 def test_yaml_or_default_falls_back_when_file_missing(monkeypatch, tmp_path):

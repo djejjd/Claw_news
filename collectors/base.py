@@ -70,6 +70,7 @@ def time_modifier(pub_date: str, period: str = "morning") -> float:
     except ValueError:
         return 0
 
+
 def time_decay_bonus(ts: float, now: float | None = None) -> float:
     """24h: +2, 24-48h: +1, 48-72h: 0, then -1 per 12h"""
     if now is None:
@@ -114,6 +115,16 @@ def hotitem_to_candidate(item: HotItem, ingest_run_id: str = "") -> "CandidateIt
         category=normalize_category(item.category),
         published_at=item.pub_date,
         fetched_at=datetime.fromtimestamp(item.timestamp).isoformat(),
+        published_time_source=_published_time_source(item.pub_date),
         canonical_key=CandidateItem.make_canonical_key(item.url) if item.url else "",
         ingest_run_id=ingest_run_id,
     )
+
+
+def _published_time_source(published_at: str) -> str:
+    """标记 CandidateItem 的有效发布时间来源。"""
+    if not published_at:
+        return "fetched_at"
+    if len(published_at) == 10 and published_at[4] == "-" and published_at[7] == "-":
+        return "legacy_date"
+    return "rss"
