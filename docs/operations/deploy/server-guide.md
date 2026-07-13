@@ -258,6 +258,9 @@ LLM_API_KEY=sk-your-real-api-key
 LLM_BASE_URL=https://api.deepseek.com
 LLM_MODEL=deepseek-chat
 WECOM_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY_HERE
+# Telegram 双通道为可选项；两项必须同时填写或同时留空
+TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID=YOUR_TELEGRAM_CHAT_ID
 TZ=Asia/Shanghai
 NEWS_RSS_URLS=https://www.qbitai.com/feed,https://sspai.com/feed
 AI_RSS_MODE=append

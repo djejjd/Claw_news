@@ -113,6 +113,8 @@ cp .env.example .env
 | `LLM_BASE_URL` | Yes | Base URL for LLM API |
 | `LLM_MODEL` | Yes | Model name to use |
 | `WECOM_WEBHOOK_URL` | Yes | WeCom bot webhook URL |
+| `TELEGRAM_BOT_TOKEN` | Paired | Optional Telegram bot token; must be set together with `TELEGRAM_CHAT_ID` |
+| `TELEGRAM_CHAT_ID` | Paired | Optional Telegram destination chat ID; must be set together with `TELEGRAM_BOT_TOKEN` |
 | `TZ` | No | Timezone (default: `Asia/Shanghai`) |
 | `NEWS_RSS_URLS` | Legacy | Historical URL-only RSS config; formal AI ingest uses `AI_RSS_*` below |
 | `HF_PROXY` | No | HuggingFace collector proxy URL, mainly for restricted network environments |

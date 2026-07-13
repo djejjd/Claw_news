@@ -160,3 +160,46 @@ class TestHappyPath:
         )
         assert config.tz == "Asia/Tokyo"
         assert config.news_rss_urls == ["https://example.com/feed.xml"]
+
+
+class TestTelegramConfiguration:
+    def test_telegram_is_disabled_when_both_fields_are_empty(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.setenv("WECOM_WEBHOOK_URL", "https://example.test/wecom")
+        monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+        monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+
+        config = load_config()
+
+        assert config.telegram_bot_token is None
+        assert config.telegram_chat_id is None
+
+    def test_telegram_requires_token_and_chat_id_together(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.setenv("WECOM_WEBHOOK_URL", "https://example.test/wecom")
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:secret-token")
+        monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+
+        with pytest.raises(ValueError, match="TELEGRAM_CHAT_ID"):
+            load_config()
+
+    def test_telegram_values_are_loaded_and_masked_in_repr(self, monkeypatch):
+        token = "123:secret-token"
+        chat_id = "987654321"
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.setenv("WECOM_WEBHOOK_URL", "https://example.test/wecom")
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", token)
+        monkeypatch.setenv("TELEGRAM_CHAT_ID", chat_id)
+
+        config = load_config()
+
+        assert config.telegram_bot_token == token
+        assert config.telegram_chat_id == chat_id
+        assert token not in repr(config)
+        assert chat_id not in repr(config)
