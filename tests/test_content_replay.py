@@ -4,6 +4,7 @@ import hashlib
 import json
 import shutil
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 
@@ -292,6 +293,91 @@ def test_replay_fixture_ithome_candidate_majority_is_not_final_majority(tmp_path
     assert result["candidate_count"] == expected["candidate_count"]
     assert expected["candidate_source_distribution"]["ithome"] > expected["candidate_count"] / 2
     assert result["source_distribution"].get("ithome", 0) < result["selected_count"] / 2
+
+
+def test_replay_fixture_manual_relevance_annotations_are_rejected_read_only(tmp_path, monkeypatch):
+    """人工标记的明显无关合成候选应被拒绝，且回放不改写标注或 fixture。"""
+    fixture_dir, expected = _copy_scenario_fixture(tmp_path, "ithome-majority")
+    annotations_path = tmp_path / "relevance-annotations.json"
+    shutil.copy2(_FIXTURE_ROOT / "relevance-annotations.json", annotations_path)
+    annotations = json.loads(annotations_path.read_text(encoding="utf-8"))
+
+    annotation_entries = [
+        json.dumps(annotation, ensure_ascii=False, sort_keys=True) for annotation in annotations
+    ]
+    required_fields = {
+        "scenario",
+        "url",
+        "manual_label",
+        "reason",
+        "expected_rejection_reason",
+    }
+    assert all(required_fields <= annotation.keys() for annotation in annotations)
+    assert len(annotation_entries) == len(set(annotation_entries))
+    assert len({annotation["url"] for annotation in annotations}) == len(annotations)
+    assert len({annotation["manual_label"] for annotation in annotations}) == len(annotations)
+    assert all(
+        (urlparse(annotation["url"]).hostname or "").endswith(".test") for annotation in annotations
+    )
+    assert {annotation["manual_label"] for annotation in annotations} == {"obviously_irrelevant"}
+    assert all(
+        any("\u4e00" <= char <= "\u9fff" for char in annotation["reason"])
+        for annotation in annotations
+    )
+
+    import yaml
+
+    from app.classifiers.relevance_filter import build_relevance_filter
+    from app.content.source_policy import build_source_policy_registry
+
+    feeds_config = yaml.safe_load((fixture_dir / "feeds.yaml").read_text(encoding="utf-8"))
+    feeds_raw = [
+        {**feed, "category": category}
+        for category in ("ai", "tool", "game")
+        for feed in feeds_config["feeds"].get(category, [])
+    ]
+    policies = build_source_policy_registry(feeds_raw)
+    candidates_path = fixture_dir / "data" / "ingestion" / "2026-07-11" / "candidates.jsonl"
+    candidates_by_url = {
+        candidate_data["url"]: CandidateItem(**candidate_data)
+        for candidate_data in (
+            json.loads(line)
+            for line in candidates_path.read_text(encoding="utf-8").splitlines()
+            if line
+        )
+    }
+    relevance_filter = build_relevance_filter(feeds_config)
+
+    scenario_annotations = [
+        annotation for annotation in annotations if annotation["scenario"] == "ithome-majority"
+    ]
+    for annotation in scenario_annotations:
+        candidate = candidates_by_url[annotation["url"]]
+        evaluation = relevance_filter.evaluate(candidate, policies[candidate.source])
+        assert evaluation.accepted is False
+        assert evaluation.reason == annotation["expected_rejection_reason"]
+
+    before = _snapshot_hashes(tmp_path)
+    monkeypatch.chdir(fixture_dir)
+    from app.tools.content_replay import run_replay
+
+    result = run_replay(data_dir="data", at=expected["at"])
+    assert _snapshot_hashes(tmp_path) == before
+
+    selected_urls = {item["url"] for item in result["selected"]}
+    rejected_count = sum(
+        annotation["url"] not in selected_urls for annotation in scenario_annotations
+    )
+    not_rejected_count = len(scenario_annotations) - rejected_count
+
+    assert all(annotation["url"] not in selected_urls for annotation in scenario_annotations)
+    assert all(
+        result["rejection_reasons"].get(annotation["expected_rejection_reason"], 0) > 0
+        for annotation in scenario_annotations
+    )
+    assert len(scenario_annotations) == expected["manual_annotation_count"]
+    assert rejected_count == expected["manual_annotation_rejected_count"]
+    assert not_rejected_count == expected["manual_annotation_not_rejected_count"]
 
 
 def test_replay_fixture_ai_history_only_fills_ai_minimum(tmp_path, monkeypatch):

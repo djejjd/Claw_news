@@ -1,0 +1,9 @@
+[
+  {
+    "scenario": "ithome-majority",
+    "url": "https://ithome-weather.test/article",
+    "manual_label": "obviously_irrelevant",
+    "reason": "内容仅为虚构天气气温信息，与 AI、工具和游戏无关。",
+    "expected_rejection_reason": "negative_rule"
+  }
+]
