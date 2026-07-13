@@ -1,10 +1,13 @@
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1.7
+FROM python:3.12-slim@sha256:401f6e1a67dad31a1bd78e9ad22d0ee0a3b52154e6bd30e90be696bb6a3d7461
 
 WORKDIR /app
 ENV PIP_DEFAULT_TIMEOUT=120
 
 # Install system dependencies for curl-cffi
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -17,10 +20,11 @@ COPY pyproject.toml .
 RUN mkdir -p collectors aggregator infra pusher app \
     && touch collectors/__init__.py aggregator/__init__.py \
            infra/__init__.py pusher/__init__.py app/__init__.py
-RUN PIP_INDEX_URL="${PIP_INDEX_URL}" PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL}" \
-    pip install --no-cache-dir "setuptools>=68" wheel \
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    PIP_INDEX_URL="${PIP_INDEX_URL}" PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL}" \
+    pip install "setuptools>=68" wheel \
     && PIP_INDEX_URL="${PIP_INDEX_URL}" PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL}" \
-    pip install --no-cache-dir --no-build-isolation . \
+    pip install --no-build-isolation . \
     && rm -rf collectors aggregator infra pusher app
 
 # 再拷贝源码 — 日常迭代只有这一层重建
