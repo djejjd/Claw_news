@@ -285,10 +285,10 @@ async def _attempt_wecom(markdown: str, webhook_url: str) -> tuple[bool, str | N
 
 
 async def _attempt_telegram(
-    messages: list[str], bot_token: str, chat_id: str
+    messages: list[str], bot_token: str, chat_id: str, proxy: str | None = None
 ) -> tuple[bool, str | None]:
     try:
-        await TelegramPusher(bot_token, chat_id).push_messages(messages)
+        await TelegramPusher(bot_token, chat_id, proxy=proxy).push_messages(messages)
     except TelegramError as exc:
         return False, str(exc)
     except Exception as exc:
@@ -416,7 +416,8 @@ async def _resume_pending_delivery(
             errors.append(error)
     if delivery_state.can_attempt("telegram"):
         ok, error = await _attempt_telegram(
-            messages["telegram_messages"], config.telegram_bot_token, config.telegram_chat_id
+            messages["telegram_messages"], config.telegram_bot_token, config.telegram_chat_id,
+            proxy=config.telegram_proxy,
         )
         _update_pending_channel(
             pending_payload,

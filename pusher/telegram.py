@@ -19,13 +19,20 @@ class TelegramPushResult:
 
 
 class TelegramPusher:
-    def __init__(self, bot_token: str, chat_id: str, client: httpx.AsyncClient | None = None):
+    def __init__(
+        self,
+        bot_token: str,
+        chat_id: str,
+        proxy: str | None = None,
+        client: httpx.AsyncClient | None = None,
+    ):
         self._bot_token = bot_token
         self._chat_id = chat_id
+        self._proxy = proxy
         self._client = client
 
     async def push_messages(self, messages: list[str]) -> TelegramPushResult:
-        client = self._client or httpx.AsyncClient()
+        client = self._client or httpx.AsyncClient(proxy=self._proxy)
         sent = 0
         try:
             for message in messages:

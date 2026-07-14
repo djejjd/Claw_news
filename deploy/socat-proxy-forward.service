@@ -1,0 +1,21 @@
+[Unit]
+Description=Socat proxy forward for Docker containers (docker0:1082 → lo:1082)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/socat TCP-LISTEN:1082,bind=172.17.0.1,fork,reuseaddr TCP:127.0.0.1:1082
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=socat-proxy-forward
+
+# 安全加固
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

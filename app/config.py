@@ -17,6 +17,7 @@ class AppConfig:
     news_rss_urls: list[str]
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
+    telegram_proxy: str | None = None
 
     def __repr__(self) -> str:
         masked = self.llm_api_key[:7] + "***" if len(self.llm_api_key) > 7 else "***"
@@ -25,7 +26,8 @@ class AppConfig:
             f"llm_model={self.llm_model!r}, wecom_webhook_url={self.wecom_webhook_url!r}, "
             f"tz={self.tz!r}, news_rss_urls={self.news_rss_urls!r}, "
             f"telegram_bot_token={'***' if self.telegram_bot_token else None!r}, "
-            f"telegram_chat_id={'***' if self.telegram_chat_id else None!r})"
+            f"telegram_chat_id={'***' if self.telegram_chat_id else None!r}, "
+            f"telegram_proxy={self.telegram_proxy!r})"
         )
 
 
@@ -55,6 +57,7 @@ def load_config() -> AppConfig:
     tz = os.getenv("TZ", "").strip()
     telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip() or None
     telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip() or None
+    telegram_proxy = os.getenv("TELEGRAM_PROXY", "").strip() or None
     if telegram_bot_token and not telegram_chat_id:
         raise ValueError("missing required paired environment variable: TELEGRAM_CHAT_ID")
     if telegram_chat_id and not telegram_bot_token:
@@ -69,4 +72,5 @@ def load_config() -> AppConfig:
         news_rss_urls=news_rss_urls,
         telegram_bot_token=telegram_bot_token,
         telegram_chat_id=telegram_chat_id,
+        telegram_proxy=telegram_proxy,
     )
