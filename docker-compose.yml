@@ -11,6 +11,16 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    # 覆盖 docker daemon 注入的全局 socks5 代理（http_proxy=socks5://127.0.0.1:1081），
+    # 容器无 socksio 无法解析，改走 host 上可访问的 HTTP 代理（xray 出口）。
+    # 清空 no_proxy 避免影响显式配置；LLM/飞书均走此 HTTP 代理。
+    environment:
+      - http_proxy=http://host.docker.internal:1082
+      - https_proxy=http://host.docker.internal:1082
+      - HTTP_PROXY=http://host.docker.internal:1082
+      - HTTPS_PROXY=http://host.docker.internal:1082
+      - all_proxy=
+      - ALL_PROXY=
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
