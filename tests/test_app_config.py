@@ -38,13 +38,14 @@ class TestLoadConfigMissingRequired:
         with pytest.raises(ValueError, match="LLM_MODEL"):
             load_config()
 
-    def test_missing_wecom_webhook_url(self, monkeypatch):
+    def test_wecom_webhook_optional(self, monkeypatch):
+        """WECOM_WEBHOOK_URL 缺省时 wecom_webhook_url 为空字符串，不抛错。"""
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
         monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
         monkeypatch.delenv("WECOM_WEBHOOK_URL", raising=False)
-        with pytest.raises(ValueError, match="WECOM_WEBHOOK_URL"):
-            load_config()
+        config = load_config()
+        assert config.wecom_webhook_url == ""
 
     def test_empty_llm_api_key(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "")
@@ -161,6 +162,23 @@ class TestHappyPath:
         assert config.tz == "Asia/Tokyo"
         assert config.news_rss_urls == ["https://example.com/feed.xml"]
 
+    def test_wecom_webhook_url_is_masked_in_repr(self, monkeypatch):
+        """wecom webhook 含 key= 查询参数，repr 中必须掩码不泄露凭证。"""
+        secret = "secret-key-123"
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.setenv(
+            "WECOM_WEBHOOK_URL", f"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={secret}"
+        )
+        config = load_config()
+        assert config.wecom_webhook_url == (
+            "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=secret-key-123"
+        )
+        assert f"key={secret}" not in repr(config)
+        assert secret not in repr(config)
+        assert "wecom_webhook_url='***'" in repr(config)
+
 
 class TestTelegramConfiguration:
     def test_telegram_is_disabled_when_both_fields_are_empty(self, monkeypatch):
@@ -203,3 +221,35 @@ class TestTelegramConfiguration:
         assert config.telegram_chat_id == chat_id
         assert token not in repr(config)
         assert chat_id not in repr(config)
+
+
+class TestFeishuConfig:
+    def test_feishu_defaults_none(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        config = load_config()
+        assert config.feishu_app_id is None
+        assert config.feishu_app_secret is None
+        assert config.feishu_chat_id is None
+
+    def test_feishu_partial_missing_raises(self, monkeypatch):
+        """只配 app_id 不配 app_secret 时报错（与 telegram 配对校验一致）。"""
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.setenv("FEISHU_APP_ID", "cli_test")
+        with pytest.raises(ValueError, match="FEISHU_APP_SECRET"):
+            load_config()
+
+    def test_feishu_full_config(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.setenv("FEISHU_APP_ID", "cli_test")
+        monkeypatch.setenv("FEISHU_APP_SECRET", "secret_test")
+        monkeypatch.setenv("FEISHU_CHAT_ID", "oc_test")
+        config = load_config()
+        assert config.feishu_app_id == "cli_test"
+        assert config.feishu_app_secret == "secret_test"
+        assert config.feishu_chat_id == "oc_test"

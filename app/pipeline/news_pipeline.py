@@ -13,6 +13,7 @@ from app.classifiers.topic_classifier import TopicClassifier
 from app.delivery.state import ChannelResult, DeliveryState, make_delivery_id
 from app.delivery.store import PendingDeliveryCorruptError, PendingDeliveryStore
 from app.pipeline.context import RunContext
+from app.renderers.feishu_card import render_feishu_card
 from app.renderers.telegram_html import render_telegram_digest
 from app.renderers.wecom_markdown import make_preview, render_digest
 from app.storage.github_exposure_store import GitHubExposureStore
@@ -23,6 +24,7 @@ from app.storage.source_metrics_store import SourceMetricsStore
 from app.tools.llm import summarize_news
 from app.tools.summary_result import DigestPayload, PublishResult, SummaryItem, SummaryResult
 from infra.storage.state_store import StateStore
+from pusher.feishu import FeishuError, FeishuPusher
 from pusher.telegram import TelegramError, TelegramPusher
 from pusher.wecom import WeComPusher
 
@@ -95,8 +97,19 @@ def _config_string(config, name: str) -> str | None:
 
 def _has_telegram_delivery(config) -> bool:
     return bool(
-        _config_string(config, "telegram_bot_token")
-        and _config_string(config, "telegram_chat_id")
+        _config_string(config, "telegram_bot_token") and _config_string(config, "telegram_chat_id")
+    )
+
+
+def _has_wecom_delivery(config) -> bool:
+    return bool(_config_string(config, "wecom_webhook_url"))
+
+
+def _has_feishu_delivery(config) -> bool:
+    return bool(
+        _config_string(config, "feishu_app_id")
+        and _config_string(config, "feishu_app_secret")
+        and _config_string(config, "feishu_chat_id")
     )
 
 
@@ -204,6 +217,8 @@ def _build_pending_payload(
     ctx: RunContext,
     markdown: str,
     telegram_messages: list[str],
+    feishu_card: dict,
+    config,
     selected_count: int,
     daily_judgement: str,
     source_failures: list[str],
@@ -219,18 +234,23 @@ def _build_pending_payload(
 ) -> dict:
     date = ctx.time_window_start[:10]
     delivery_id = make_delivery_id(date, ctx.period, markdown)
+    messages: dict[str, object] = {}
+    channels: dict[str, dict] = {}
+    if _has_wecom_delivery(config):
+        messages["wecom_markdown"] = markdown
+        channels["wecom"] = _make_channel_payload(True, "pending")
+    if _has_telegram_delivery(config):
+        messages["telegram_messages"] = telegram_messages
+        channels["telegram"] = _make_channel_payload(True, "pending")
+    if _has_feishu_delivery(config):
+        messages["feishu_card"] = feishu_card
+        channels["feishu"] = _make_channel_payload(True, "pending")
     return {
         "delivery_id": delivery_id,
         "date": date,
         "period": ctx.period,
-        "messages": {
-            "wecom_markdown": markdown,
-            "telegram_messages": telegram_messages,
-        },
-        "channels": {
-            "wecom": _make_channel_payload(True, "pending"),
-            "telegram": _make_channel_payload(True, "pending"),
-        },
+        "messages": messages,
+        "channels": channels,
         "selected_count": selected_count,
         "finalization": {
             "date": date,
@@ -281,6 +301,18 @@ async def _attempt_wecom(markdown: str, webhook_url: str) -> tuple[bool, str | N
         return False, f"push: {exc}"
     if not result.success:
         return False, "push_failed"
+    return True, None
+
+
+async def _attempt_feishu(
+    card: dict, app_id: str, app_secret: str, chat_id: str
+) -> tuple[bool, str | None]:
+    try:
+        await FeishuPusher(app_id, app_secret, chat_id).push_card(card)
+    except FeishuError as exc:
+        return False, str(exc)
+    except Exception as exc:
+        return False, f"feishu_push: {type(exc).__name__}"
     return True, None
 
 
@@ -384,17 +416,15 @@ async def _resume_pending_delivery(
             errors=[f"pending_delivery_corrupt: {exc}"],
         )
 
-    if not _has_telegram_delivery(config):
-        errors = ["telegram_config_missing"]
-        _write_publish_status(
-            _make_publish_status("failed", 0, False, errors)
-        )
+    if not (_has_feishu_delivery(config) or _has_telegram_delivery(config)):
+        errors = ["delivery_config_missing"]
+        _write_publish_status(_make_publish_status("failed", 0, False, errors))
         return PublishResult(
             status="failed",
             selected_count=len(pending_payload["finalization"]["published_urls"]),
             pushed=False,
             message_type="markdown",
-            summary_preview=make_preview(pending_payload["messages"]["wecom_markdown"]),
+            summary_preview=make_preview(pending_payload["messages"].get("wecom_markdown", "")),
             errors=errors,
         )
 
@@ -402,29 +432,33 @@ async def _resume_pending_delivery(
     finalization = pending_payload["finalization"]
     errors: list[str] = []
     selected_count = len(finalization["published_urls"])
-    summary_preview = make_preview(messages["wecom_markdown"])
+    summary_preview = make_preview(messages.get("wecom_markdown", ""))
 
-    if delivery_state.can_attempt("wecom"):
-        ok, error = await _attempt_wecom(messages["wecom_markdown"], config.wecom_webhook_url)
-        _update_pending_channel(
-            pending_payload,
-            "wecom",
-            "succeeded" if ok else "failed",
-            error,
+    if delivery_state.can_attempt("wecom") and _has_wecom_delivery(config):
+        ok, error = await _attempt_wecom(
+            messages.get("wecom_markdown", ""), config.wecom_webhook_url
         )
+        _update_pending_channel(pending_payload, "wecom", "succeeded" if ok else "failed", error)
         if not ok and error:
             errors.append(error)
-    if delivery_state.can_attempt("telegram"):
+    if delivery_state.can_attempt("telegram") and _has_telegram_delivery(config):
         ok, error = await _attempt_telegram(
-            messages["telegram_messages"], config.telegram_bot_token, config.telegram_chat_id,
+            messages.get("telegram_messages", []),
+            config.telegram_bot_token,
+            config.telegram_chat_id,
             proxy=config.telegram_proxy,
         )
-        _update_pending_channel(
-            pending_payload,
-            "telegram",
-            "succeeded" if ok else "failed",
-            error,
+        _update_pending_channel(pending_payload, "telegram", "succeeded" if ok else "failed", error)
+        if not ok and error:
+            errors.append(error)
+    if delivery_state.can_attempt("feishu") and _has_feishu_delivery(config):
+        ok, error = await _attempt_feishu(
+            messages.get("feishu_card", {}),
+            config.feishu_app_id,
+            config.feishu_app_secret,
+            config.feishu_chat_id,
         )
+        _update_pending_channel(pending_payload, "feishu", "succeeded" if ok else "failed", error)
         if not ok and error:
             errors.append(error)
 
@@ -481,6 +515,7 @@ async def _deliver_with_pending(
     config,
     markdown: str,
     telegram_messages: list[str],
+    feishu_card: dict,
     selected_count: int,
     daily_judgement: str,
     source_failures: list[str],
@@ -502,6 +537,8 @@ async def _deliver_with_pending(
         ctx=ctx,
         markdown=markdown,
         telegram_messages=telegram_messages,
+        feishu_card=feishu_card,
+        config=config,
         selected_count=selected_count,
         daily_judgement=daily_judgement,
         source_failures=source_failures,
@@ -531,19 +568,19 @@ async def _deliver_with_pending(
         )
 
     errors: list[str] = []
-    wecom_ok, wecom_error = await _attempt_wecom(markdown, config.wecom_webhook_url)
-    _update_pending_channel(
-        pending_payload,
-        "wecom",
-        "succeeded" if wecom_ok else "failed",
-        wecom_error,
-    )
-    if not wecom_ok and wecom_error:
-        errors.append(wecom_error)
-    try:
-        pending_store.save(ctx.time_window_start[:10], ctx.period, pending_payload)
-    except Exception as exc:
-        errors.append(f"pending_write_failed: {exc}")
+    wecom_ok = False
+    wecom_error = None
+    if _has_wecom_delivery(config):
+        wecom_ok, wecom_error = await _attempt_wecom(markdown, config.wecom_webhook_url)
+        _update_pending_channel(
+            pending_payload, "wecom", "succeeded" if wecom_ok else "failed", wecom_error
+        )
+        if not wecom_ok and wecom_error:
+            errors.append(wecom_error)
+        try:
+            pending_store.save(ctx.time_window_start[:10], ctx.period, pending_payload)
+        except Exception as exc:
+            errors.append(f"pending_write_failed: {exc}")
 
     telegram_ok = False
     telegram_error = None
@@ -564,15 +601,33 @@ async def _deliver_with_pending(
         except Exception as exc:
             errors.append(f"pending_write_failed: {exc}")
 
+    feishu_ok = False
+    feishu_error = None
+    if _has_feishu_delivery(config):
+        feishu_ok, feishu_error = await _attempt_feishu(
+            feishu_card, config.feishu_app_id, config.feishu_app_secret, config.feishu_chat_id
+        )
+        _update_pending_channel(
+            pending_payload, "feishu", "succeeded" if feishu_ok else "failed", feishu_error
+        )
+        if not feishu_ok and feishu_error:
+            errors.append(feishu_error)
+        try:
+            pending_store.save(ctx.time_window_start[:10], ctx.period, pending_payload)
+        except Exception as exc:
+            errors.append(f"pending_write_failed: {exc}")
+
     status, any_succeeded, all_succeeded = _pending_completion_status(pending_payload)
     if not any_succeeded:
         _write_publish_status(
-            _make_publish_status(status, selected_count, bool(wecom_ok or telegram_ok), errors)
+            _make_publish_status(
+                status, selected_count, bool(wecom_ok or telegram_ok or feishu_ok), errors
+            )
         )
         return PublishResult(
             status=status,
             selected_count=selected_count,
-            pushed=bool(wecom_ok or telegram_ok),
+            pushed=bool(wecom_ok or telegram_ok or feishu_ok),
             message_type="markdown",
             summary_preview=make_preview(markdown),
             errors=errors,
@@ -630,7 +685,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     metrics_store = SourceMetricsStore()
     pending_store = _pending_store()
 
-    if _has_telegram_delivery(config):
+    if _has_feishu_delivery(config) or _has_telegram_delivery(config):
         try:
             pending_payload = pending_store.load(ctx.time_window_start[:10], ctx.period)
         except PendingDeliveryCorruptError as exc:
@@ -850,6 +905,12 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         github_recommendations=github_recommendations,
         pushed_urls=pushed_urls,
     )
+    feishu_card = render_feishu_card(
+        summary,
+        github_items=github_top3,
+        github_recommendations=github_recommendations,
+        pushed_urls=pushed_urls,
+    )
 
     source_failures = _collect_source_failures(ingest_status_snapshot)
     selected_count = len(selected)
@@ -878,12 +939,13 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     if use_new_pipeline and not candidates_used_historical:
         errors.append("historical_candidates_read_failed")
 
-    if _has_telegram_delivery(config):
+    if _has_feishu_delivery(config) or _has_telegram_delivery(config):
         return await _deliver_with_pending(
             ctx=ctx,
             config=config,
             markdown=markdown,
             telegram_messages=telegram_messages,
+            feishu_card=feishu_card,
             selected_count=selected_count,
             daily_judgement=summary.daily_judgement,
             source_failures=source_failures,
