@@ -105,6 +105,17 @@ def test_item_numbering_is_sequential_per_category():
     assert "**3.**" not in text
 
 
+def test_div_text_size_is_heading():
+    """正文 lark_md 使用放大字号 heading（16px），满足阅读需求。"""
+    card = render_feishu_card(make_result([make_item()]))
+    divs = [e for e in card["elements"] if e["tag"] == "div"]
+    assert divs, "卡片至少有一个 div 元素"
+    for d in divs:
+        assert d["text"].get("text_size") == "heading", (
+            f"div text_size 应为 heading，实际: {d['text'].get('text_size')}"
+        )
+
+
 def json_str(element):
     import json
 

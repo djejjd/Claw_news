@@ -16,6 +16,8 @@ from app.renderers.wecom_markdown import (
 from app.tools.summary_result import SummaryResult
 
 _CARD_TITLE = "AI / 游戏 / 工具 热点"
+# 正文字号：normal=14px，heading=16px。用户希望字体更大些，正文用 heading。
+_BODY_TEXT_SIZE = "heading"
 
 
 def render_feishu_card(
@@ -56,7 +58,16 @@ def render_feishu_card(
                 f"趋势：{item.trend} — {source_display}"
             )
             item_number += 1
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lines)}})
+        elements.append(
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": "\n".join(lines),
+                    "text_size": _BODY_TEXT_SIZE,
+                },
+            }
+        )
         elements.append({"tag": "hr"})
 
     if github_items:
@@ -69,7 +80,16 @@ def render_feishu_card(
             lines.append(f"**{i}.** [{item.full_name}]({item.url})")
             lines.append(f"> {description}")
             lines.append(f"> ⭐ {item.stars}{language}{reason_line}")
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lines)}})
+        elements.append(
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": "\n".join(lines),
+                    "text_size": _BODY_TEXT_SIZE,
+                },
+            }
+        )
         elements.append({"tag": "hr"})
 
     # 去掉最后一个多余分隔线
