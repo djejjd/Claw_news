@@ -40,6 +40,35 @@ def test_yaml_or_default_respects_yaml_file(tmp_path, monkeypatch):
     ]
 
 
+def test_yaml_or_default_preserves_source_selection_cap(tmp_path, monkeypatch):
+    import yaml
+
+    yaml_path = tmp_path / "feeds.yaml"
+    yaml_path.write_text(
+        yaml.safe_dump(
+            {
+                "feeds": {
+                    "ai": [],
+                    "tool": [
+                        {
+                            "url": "https://example.com/feed.xml",
+                            "source": "ithome",
+                            "max_selected_per_digest": 3,
+                        }
+                    ],
+                    "game": [],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("collectors.ai_rss.FEEDS_YAML_PATH", yaml_path)
+
+    feeds = _yaml_or_default("tool")
+
+    assert feeds[0]["max_selected_per_digest"] == 3
+
+
 def test_load_feed_configuration_preserves_top_level_relevance_rules(tmp_path):
     """完整配置读取必须保留 Task 4 所需的顶层规则。"""
     import yaml

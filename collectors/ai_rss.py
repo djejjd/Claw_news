@@ -128,7 +128,13 @@ def _load_yaml_feeds() -> dict[str, list[dict]] | None:
                         "source": e.get("source", category),
                     }
                     # 保留来源策略字段
-                    for key in ("tier", "retention_hours", "quality_weight", "filter_profile"):
+                    for key in (
+                        "tier",
+                        "retention_hours",
+                        "quality_weight",
+                        "filter_profile",
+                        "max_selected_per_digest",
+                    ):
                         if key in e:
                             feed[key] = e[key]
                     result[category].append(feed)

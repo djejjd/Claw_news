@@ -62,7 +62,7 @@ Claw_news/
 - [ ] **Step 1: 创建 requirements.txt**
 
 ```bash
-cat > /Users/lanser/Code/Claw_news/requirements.txt << 'EOF'
+cat > {{PROJECT_DIR}}/requirements.txt << 'EOF'
 httpx>=0.27.0
 beautifulsoup4>=4.12.0
 feedparser>=6.0.0
@@ -75,7 +75,7 @@ EOF
 - [ ] **Step 2: 安装依赖**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && pip install -r requirements.txt
+cd {{PROJECT_DIR}} && pip install -r requirements.txt
 ```
 Expected: 全部安装成功，无报错。
 
@@ -155,10 +155,10 @@ def normalize_rank_score(rank: int, total: int = 10) -> float:
 - [ ] **Step 5: 创建空的 __init__.py 文件**
 
 ```bash
-touch /Users/lanser/Code/Claw_news/collectors/__init__.py \
-      /Users/lanser/Code/Claw_news/aggregator/__init__.py \
-      /Users/lanser/Code/Claw_news/pusher/__init__.py \
-      /Users/lanser/Code/Claw_news/tests/__init__.py
+touch {{PROJECT_DIR}}/collectors/__init__.py \
+      {{PROJECT_DIR}}/aggregator/__init__.py \
+      {{PROJECT_DIR}}/pusher/__init__.py \
+      {{PROJECT_DIR}}/tests/__init__.py
 ```
 
 - [ ] **Step 6: 创建 tests/conftest.py**
@@ -188,14 +188,14 @@ def sample_items():
 - [ ] **Step 7: 运行测试确认骨架可用**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && python -c "from collectors.base import HotItem, time_decay_bonus, normalize_rank_score; print('OK')"
+cd {{PROJECT_DIR}} && python -c "from collectors.base import HotItem, time_decay_bonus, normalize_rank_score; print('OK')"
 ```
 Expected: `OK`
 
 - [ ] **Step 8: Commit**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && git init && git add -A && git commit -m "feat: project skeleton with HotItem data model and config"
+cd {{PROJECT_DIR}} && git init && git add -A && git commit -m "feat: project skeleton with HotItem data model and config"
 ```
 
 ---
@@ -252,7 +252,7 @@ def test_parse_entry_missing_fields():
 - [ ] **Step 2: 运行测试确认失败**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && python -m pytest tests/test_rss_collector.py -v
+cd {{PROJECT_DIR}} && python -m pytest tests/test_rss_collector.py -v
 ```
 Expected: FAIL — `ModuleNotFoundError: No module named 'collectors.rss_sources'`
 
@@ -318,14 +318,14 @@ def _parse_timestamp(entry: dict) -> float:
 - [ ] **Step 4: 运行测试确认通过**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && python -m pytest tests/test_rss_collector.py -v
+cd {{PROJECT_DIR}} && python -m pytest tests/test_rss_collector.py -v
 ```
 Expected: ALL PASS (3 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && git add -A && git commit -m "feat: add RSS multi-source collector"
+cd {{PROJECT_DIR}} && git add -A && git commit -m "feat: add RSS multi-source collector"
 ```
 
 ---
@@ -406,7 +406,7 @@ async def test_collect_returns_list(httpx_mock):
 - [ ] **Step 2: 运行测试确认失败**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && python -m pytest tests/test_huggingface.py -v
+cd {{PROJECT_DIR}} && python -m pytest tests/test_huggingface.py -v
 ```
 Expected: FAIL — `ModuleNotFoundError`
 
@@ -471,14 +471,14 @@ class HfDailyPapersCollector:
 - [ ] **Step 4: 运行测试确认通过**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && python -m pytest tests/test_huggingface.py -v
+cd {{PROJECT_DIR}} && python -m pytest tests/test_huggingface.py -v
 ```
 Expected: ALL PASS (5 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && git add -A && git commit -m "feat: add HuggingFace Daily Papers API collector"
+cd {{PROJECT_DIR}} && git add -A && git commit -m "feat: add HuggingFace Daily Papers API collector"
 ```
 
 ---
@@ -550,7 +550,7 @@ async def test_collect_mocked(httpx_mock):
 - [ ] **Step 2: 运行测试确认失败**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && python -m pytest tests/test_taptap.py -v
+cd {{PROJECT_DIR}} && python -m pytest tests/test_taptap.py -v
 ```
 Expected: FAIL
 
@@ -611,14 +611,14 @@ class TapTapCollector:
 - [ ] **Step 4: 运行测试确认通过**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && python -m pytest tests/test_taptap.py -v
+cd {{PROJECT_DIR}} && python -m pytest tests/test_taptap.py -v
 ```
 Expected: ALL PASS (3 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && git add -A && git commit -m "feat: add TapTap hot list crawler"
+cd {{PROJECT_DIR}} && git add -A && git commit -m "feat: add TapTap hot list crawler"
 ```
 
 ---
@@ -686,7 +686,7 @@ async def test_collect_mocked(httpx_mock):
 - [ ] **Step 2: 运行测试确认失败**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && python -m pytest tests/test_ithome.py -v
+cd {{PROJECT_DIR}} && python -m pytest tests/test_ithome.py -v
 ```
 Expected: FAIL
 
@@ -747,14 +747,14 @@ class ItHomeCollector:
 - [ ] **Step 4: 运行测试确认通过**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && python -m pytest tests/test_ithome.py -v
+cd {{PROJECT_DIR}} && python -m pytest tests/test_ithome.py -v
 ```
 Expected: ALL PASS (3 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && git add -A && git commit -m "feat: add ITHome hot list crawler"
+cd {{PROJECT_DIR}} && git add -A && git commit -m "feat: add ITHome hot list crawler"
 ```
 
 ---
@@ -833,7 +833,7 @@ class TestMerger:
 - [ ] **Step 2: 运行测试确认失败**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && python -m pytest tests/test_merger.py -v
+cd {{PROJECT_DIR}} && python -m pytest tests/test_merger.py -v
 ```
 Expected: FAIL — `ModuleNotFoundError`
 
@@ -880,14 +880,14 @@ class Merger:
 - [ ] **Step 4: 运行测试确认通过**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && python -m pytest tests/test_merger.py -v
+cd {{PROJECT_DIR}} && python -m pytest tests/test_merger.py -v
 ```
 Expected: ALL PASS (6 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && git add -A && git commit -m "feat: add aggregator with merge, dedup, and ranking"
+cd {{PROJECT_DIR}} && git add -A && git commit -m "feat: add aggregator with merge, dedup, and ranking"
 ```
 
 ---
@@ -965,7 +965,7 @@ class TestWeComPusher:
 - [ ] **Step 2: 运行测试确认失败**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && python -m pytest tests/test_wecom.py -v
+cd {{PROJECT_DIR}} && python -m pytest tests/test_wecom.py -v
 ```
 Expected: FAIL
 
@@ -1047,14 +1047,14 @@ class WeComPusher:
 - [ ] **Step 4: 运行测试确认通过**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && python -m pytest tests/test_wecom.py -v
+cd {{PROJECT_DIR}} && python -m pytest tests/test_wecom.py -v
 ```
 Expected: ALL PASS (5 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && git add -A && git commit -m "feat: add WeChat Work Bot pusher with Markdown formatting"
+cd {{PROJECT_DIR}} && git add -A && git commit -m "feat: add WeChat Work Bot pusher with Markdown formatting"
 ```
 
 ---
@@ -1173,14 +1173,14 @@ if __name__ == "__main__":
 - [ ] **Step 2: 验证导入和 dry-run**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && python main.py --dry-run
+cd {{PROJECT_DIR}} && python main.py --dry-run
 ```
 Expected: 看到采集日志和终端输出（格式化的 Markdown）。若某源不可达会有 warning 但不中断。
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && git add -A && git commit -m "feat: add main entry point with async collection and dry-run"
+cd {{PROJECT_DIR}} && git add -A && git commit -m "feat: add main entry point with async collection and dry-run"
 ```
 
 ---
@@ -1203,7 +1203,7 @@ cat > ~/Library/LaunchAgents/com.lanser.clawnews.plist << 'PLIST'
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
-        <string>/Users/lanser/Code/Claw_news/main.py</string>
+        <string>{{PROJECT_DIR}}/main.py</string>
     </array>
     <key>StartCalendarInterval</key>
     <dict>
@@ -1213,11 +1213,11 @@ cat > ~/Library/LaunchAgents/com.lanser.clawnews.plist << 'PLIST'
         <integer>0</integer>
     </dict>
     <key>StandardOutPath</key>
-    <string>/Users/lanser/Code/Claw_news/data/cron.log</string>
+    <string>{{PROJECT_DIR}}/data/cron.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/lanser/Code/Claw_news/data/cron_error.log</string>
+    <string>{{PROJECT_DIR}}/data/cron_error.log</string>
     <key>WorkingDirectory</key>
-    <string>/Users/lanser/Code/Claw_news</string>
+    <string>{{PROJECT_DIR}}</string>
 </dict>
 </plist>
 PLIST
@@ -1226,7 +1226,7 @@ PLIST
 - [ ] **Step 2: 加载 plist 到 launchd**
 
 ```bash
-mkdir -p /Users/lanser/Code/Claw_news/data
+mkdir -p {{PROJECT_DIR}}/data
 launchctl load ~/Library/LaunchAgents/com.lanser.clawnews.plist
 ```
 Expected: 无输出（成功）。验证：`launchctl list | grep clawnews` 应显示该任务。
@@ -1253,7 +1253,7 @@ Expected: 显示 `com.lanser.clawnews` 及其 PID/状态。
 - [ ] **Step 1: 运行 dry-run 验证全链路**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && python main.py --dry-run 2>&1
+cd {{PROJECT_DIR}} && python main.py --dry-run 2>&1
 ```
 Expected: 
 - 看到每个采集器的日志（成功或 warning）
@@ -1263,7 +1263,7 @@ Expected:
 - [ ] **Step 2: 运行全部单元测试**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && python -m pytest tests/ -v
+cd {{PROJECT_DIR}} && python -m pytest tests/ -v
 ```
 Expected: ALL PASS（约 17 个测试）
 
@@ -1271,7 +1271,7 @@ Expected: ALL PASS（约 17 个测试）
 
 用户需在 `config.yaml` 中填入企业微信 Bot Webhook URL，然后运行：
 ```bash
-cd /Users/lanser/Code/Claw_news && python main.py
+cd {{PROJECT_DIR}} && python main.py
 ```
 Expected: 手机企业微信收到三条消息（AI / 游戏 / 数码各一条）。
 

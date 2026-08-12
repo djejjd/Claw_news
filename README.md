@@ -1,6 +1,8 @@
 # Claw_news
 
-每日早晚两次自动推送 AI / 游戏 / 数码三大方向热点到企业微信群。
+每日自动收集 AI、工具、游戏和数码热点，经筛选和摘要后推送到已配置的消息渠道。
+
+文档入口见 [`docs/README.md`](docs/README.md)。当前架构、选材策略、部署和排障说明均以 `docs/` 下的中文正式文档为准。
 
 ## 数据源
 
@@ -13,22 +15,9 @@
 | 📱 数码 | IT之家 | RSS | 国内 |
 | 📱 数码 | 少数派 | RSS | 国内 |
 
-## 评分机制
+## 选材规则
 
-每源取 10 条，每分类 2 源共 20 条竞争 5 个位置：
-
-```
-RSS 源评分 = position_score(#1=10.0 → #10=5.5) + keyword_bonus(+1.0) + time_modifier(period)
-HF/TapTap = 自带 upvotes/排名分数
-
-竞争规则:
-  Step 1 — 关键词保底: 每源至少 1 条(优先选命中关键词的)
-  Step 2 — 全量竞争: 剩余 3 条按分数自由竞争
-```
-
-时间修正：
-- **早报**: 当天+昨天的新闻不降权，更早 -2.0
-- **晚报**: 当天不降权，昨天 -1.0，更早 -2.0
+每次摘要目标为 10 条，先满足 AI、工具、游戏的最低数量，再按新鲜度、来源质量和来源多样性竞争。今日候选不足时，会从保留期内的历史候选补位。详细规则见 [内容选材](docs/架构/内容选材.md)。
 
 ## 快速开始
 
@@ -65,8 +54,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ```bash
 # 从模板复制后，按你的本机路径修改
-cp docs/operations/launchd/com.lanser.clawnews.morning.plist.example ~/Library/LaunchAgents/com.lanser.clawnews.morning.plist
-cp docs/operations/launchd/com.lanser.clawnews.evening.plist.example ~/Library/LaunchAgents/com.lanser.clawnews.evening.plist
+cp docs/运维/launchd/com.lanser.clawnews.morning.plist.example ~/Library/LaunchAgents/com.lanser.clawnews.morning.plist
+cp docs/运维/launchd/com.lanser.clawnews.evening.plist.example ~/Library/LaunchAgents/com.lanser.clawnews.evening.plist
 # 将 {{PROJECT_DIR}} 替换为你的项目绝对路径
 
 launchctl load ~/Library/LaunchAgents/com.lanser.clawnews.morning.plist
@@ -119,7 +108,10 @@ cp .env.example .env
 | `LLM_API_KEY` | Yes | API key for OpenAI-compatible LLM |
 | `LLM_BASE_URL` | Yes | Base URL for LLM API |
 | `LLM_MODEL` | Yes | Model name to use |
-| `WECOM_WEBHOOK_URL` | Yes | WeCom bot webhook URL |
+| `WECOM_WEBHOOK_URL` | Optional channel | WeCom bot webhook URL |
+| `FEISHU_APP_ID` | Paired | Optional Feishu app ID; must be set with `FEISHU_APP_SECRET` and `FEISHU_CHAT_ID` |
+| `FEISHU_APP_SECRET` | Paired | Optional Feishu app secret |
+| `FEISHU_CHAT_ID` | Paired | Optional Feishu destination |
 | `TELEGRAM_BOT_TOKEN` | Paired | Optional Telegram bot token; must be set together with `TELEGRAM_CHAT_ID` |
 | `TELEGRAM_CHAT_ID` | Paired | Optional Telegram destination chat ID; must be set together with `TELEGRAM_BOT_TOKEN` |
 | `TZ` | No | Timezone (default: `Asia/Shanghai`) |
@@ -181,7 +173,7 @@ It runs `lint`, then `test`, then `bash deploy-prod.sh`, and stops immediately i
 
 完整部署指南：
 
-- [docs/operations/deploy/server-guide.md](docs/operations/deploy/server-guide.md)
+- [docs/运维/服务器部署.md](docs/运维/服务器部署.md)
 
 ### 部署模式
 
@@ -261,6 +253,6 @@ Claw_news/
 ├── tests/                   # pytest 测试
 ├── .github/workflows/
 │   └── ci.yml               # CI：install → lint → test
-├── docs/                    # 设计文档 + launchd plist
+├── docs/                    # 中文项目文档；历史过程材料在 docs/归档/
 └── data/                    # 运行时数据（gitignored）
 ```

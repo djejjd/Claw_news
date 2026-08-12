@@ -54,7 +54,7 @@ def time_modifier(pub_date: str, period: str = "morning") -> float:
 - [ ] **Step 2: Verify import**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && ./venv/bin/python -c "
+cd {{PROJECT_DIR}} && ./venv/bin/python -c "
 from collectors.base import HotItem, time_modifier
 h = HotItem('t','','','s','ai',5.0, keyword_hit=True, pub_date='2026-05-15')
 print(f'ok kw={h.keyword_hit} pd={h.pub_date} tm_morning={time_modifier(h.pub_date,\"morning\")} tm_evening={time_modifier(h.pub_date,\"evening\")}')
@@ -90,13 +90,13 @@ keywords:
   device: ["芯片", "手机", "笔记本", "显卡", "CPU", "处理器", "iPhone", "系统", "发布", "评测", "新品", "上市", "小米", "华为", "苹果"]
 
 pusher:
-  wecom_webhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=a1cd9e9d-3c2c-4948-aa2e-f61be9869b29"
+  wecom_webhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY_HERE"
 ```
 
 - [ ] **Step 4: Run tests + commit**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && ./venv/bin/python -m pytest tests/ -q
+cd {{PROJECT_DIR}} && ./venv/bin/python -m pytest tests/ -q
 git add -A && git commit -m "feat: add keyword_hit, pub_date, time_modifier, update config for V2"
 ```
 
@@ -160,7 +160,7 @@ def test_parse_entry_missing():
 - [ ] **Step 2: Run to verify failure**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && ./venv/bin/python -m pytest tests/test_rss_collector.py -v
+cd {{PROJECT_DIR}} && ./venv/bin/python -m pytest tests/test_rss_collector.py -v
 ```
 Expected: FAIL — functions not defined
 
@@ -249,14 +249,14 @@ def _parse_timestamp(entry: dict) -> float:
 - [ ] **Step 4: Run tests**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && ./venv/bin/python -m pytest tests/test_rss_collector.py -v
+cd {{PROJECT_DIR}} && ./venv/bin/python -m pytest tests/test_rss_collector.py -v
 ```
 Expected: 6 tests PASS
 
 - [ ] **Step 5: Run full suite + commit**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && ./venv/bin/python -m pytest tests/ -q
+cd {{PROJECT_DIR}} && ./venv/bin/python -m pytest tests/ -q
 git add -A && git commit -m "feat: add HTML strip, keyword match, pub_date, quantum bit to RSS collector"
 ```
 
@@ -302,7 +302,7 @@ TapTap: `assert item.pub_date != ""`
 - [ ] **Step 4: Run tests + commit**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && ./venv/bin/python -m pytest tests/ -q
+cd {{PROJECT_DIR}} && ./venv/bin/python -m pytest tests/ -q
 git add -A && git commit -m "feat: fetch_count=10 + pub_date for HF and TapTap"
 ```
 
@@ -397,7 +397,7 @@ class TestMerger:
 - [ ] **Step 3: Run to verify failure**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && ./venv/bin/python -m pytest tests/test_merger.py -v
+cd {{PROJECT_DIR}} && ./venv/bin/python -m pytest tests/test_merger.py -v
 ```
 Expected: FAIL
 
@@ -473,7 +473,7 @@ class Merger:
 - [ ] **Step 5: Run tests**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && ./venv/bin/python -m pytest tests/ -q
+cd {{PROJECT_DIR}} && ./venv/bin/python -m pytest tests/ -q
 ```
 Expected: all tests PASS
 
@@ -538,7 +538,7 @@ Update `WeComPusher.push()` to accept and pass `period` and `pushed_urls`.
 - [ ] **Step 3: Run tests + commit**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && ./venv/bin/python -m pytest tests/ -q
+cd {{PROJECT_DIR}} && ./venv/bin/python -m pytest tests/ -q
 git add -A && git commit -m "feat: add [EN]/[续]/[新] markers, period label, source labels, HTML cleanup"
 ```
 
@@ -670,21 +670,21 @@ if __name__ == "__main__":
 - [ ] **Step 2: Test dry-run**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && ./venv/bin/python main.py --period morning --dry-run
+cd {{PROJECT_DIR}} && ./venv/bin/python main.py --period morning --dry-run
 ```
 Expected: Collects, merges, prints formatted output with "早报"
 
 - [ ] **Step 3: Test real push**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && ./venv/bin/python main.py --period morning
+cd {{PROJECT_DIR}} && ./venv/bin/python main.py --period morning
 ```
 Expected: 3x 200 OK push
 
 - [ ] **Step 4: Run tests + commit**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && ./venv/bin/python -m pytest tests/ -q
+cd {{PROJECT_DIR}} && ./venv/bin/python -m pytest tests/ -q
 git add -A && git commit -m "feat: single pipeline with --period morning|evening, pushed URL tracking"
 ```
 
@@ -703,15 +703,15 @@ cat > ~/Library/LaunchAgents/com.lanser.clawnews.morning.plist << 'PLIST'
     <key>Label</key><string>com.lanser.clawnews.morning</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/lanser/Code/Claw_news/venv/bin/python</string>
-        <string>/Users/lanser/Code/Claw_news/main.py</string>
+        <string>{{PROJECT_DIR}}/venv/bin/python</string>
+        <string>{{PROJECT_DIR}}/main.py</string>
         <string>--period</string><string>morning</string>
     </array>
     <key>StartCalendarInterval</key>
     <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
-    <key>StandardOutPath</key><string>/Users/lanser/Code/Claw_news/data/morning.log</string>
-    <key>StandardErrorPath</key><string>/Users/lanser/Code/Claw_news/data/morning_error.log</string>
-    <key>WorkingDirectory</key><string>/Users/lanser/Code/Claw_news</string>
+    <key>StandardOutPath</key><string>{{PROJECT_DIR}}/data/morning.log</string>
+    <key>StandardErrorPath</key><string>{{PROJECT_DIR}}/data/morning_error.log</string>
+    <key>WorkingDirectory</key><string>{{PROJECT_DIR}}</string>
 </dict>
 </plist>
 PLIST
@@ -728,15 +728,15 @@ cat > ~/Library/LaunchAgents/com.lanser.clawnews.evening.plist << 'PLIST'
     <key>Label</key><string>com.lanser.clawnews.evening</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/lanser/Code/Claw_news/venv/bin/python</string>
-        <string>/Users/lanser/Code/Claw_news/main.py</string>
+        <string>{{PROJECT_DIR}}/venv/bin/python</string>
+        <string>{{PROJECT_DIR}}/main.py</string>
         <string>--period</string><string>evening</string>
     </array>
     <key>StartCalendarInterval</key>
     <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
-    <key>StandardOutPath</key><string>/Users/lanser/Code/Claw_news/data/evening.log</string>
-    <key>StandardErrorPath</key><string>/Users/lanser/Code/Claw_news/data/evening_error.log</string>
-    <key>WorkingDirectory</key><string>/Users/lanser/Code/Claw_news</string>
+    <key>StandardOutPath</key><string>{{PROJECT_DIR}}/data/evening.log</string>
+    <key>StandardErrorPath</key><string>{{PROJECT_DIR}}/data/evening_error.log</string>
+    <key>WorkingDirectory</key><string>{{PROJECT_DIR}}</string>
 </dict>
 </plist>
 PLIST
@@ -755,7 +755,7 @@ Expected: `com.lanser.clawnews.morning` and `com.lanser.clawnews.evening`
 - [ ] **Step 4: Backup plists + commit**
 
 ```bash
-cp ~/Library/LaunchAgents/com.lanser.clawnews.{morning,evening}.plist /Users/lanser/Code/Claw_news/docs/
+cp ~/Library/LaunchAgents/com.lanser.clawnews.{morning,evening}.plist {{PROJECT_DIR}}/docs/
 git add -A && git commit -m "feat: launchd morning+evening auto triggers"
 ```
 
@@ -766,7 +766,7 @@ git add -A && git commit -m "feat: launchd morning+evening auto triggers"
 - [ ] **Step 1: Full test suite**
 
 ```bash
-cd /Users/lanser/Code/Claw_news && ./venv/bin/python -m pytest tests/ -v
+cd {{PROJECT_DIR}} && ./venv/bin/python -m pytest tests/ -v
 ```
 Expected: ALL PASS
 

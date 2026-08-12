@@ -148,15 +148,15 @@ curl -X POST http://127.0.0.1:8000/run/news
 ## 4. 本次新增且必须先阅读的文档
 
 1. 契约 spec
-   - [spec/task003/contract.md](/Users/lanser/Code/Claw_news/spec/task003/contract.md)
+   - [spec/task003/contract.md]({{PROJECT_DIR}}/spec/task003/contract.md)
 2. 设计文档
-   - [docs/tasks/task003/design.md](/Users/lanser/Code/Claw_news/docs/tasks/task003/design.md)
+   - [docs/tasks/task003/design.md]({{PROJECT_DIR}}/docs/tasks/task003/design.md)
 3. 设计审查结论
-   - [docs/tasks/task003/design-review.md](/Users/lanser/Code/Claw_news/docs/tasks/task003/design-review.md)
+   - [docs/tasks/task003/design-review.md]({{PROJECT_DIR}}/docs/tasks/task003/design-review.md)
 4. 一页清单
-   - [docs/tasks/task003/one-page.md](/Users/lanser/Code/Claw_news/docs/tasks/task003/one-page.md)
+   - [docs/tasks/task003/one-page.md]({{PROJECT_DIR}}/docs/tasks/task003/one-page.md)
 5. 实施计划
-   - [docs/tasks/task003/plan.md](/Users/lanser/Code/Claw_news/docs/tasks/task003/plan.md)
+   - [docs/tasks/task003/plan.md]({{PROJECT_DIR}}/docs/tasks/task003/plan.md)
 
 开发顺序要求：
 

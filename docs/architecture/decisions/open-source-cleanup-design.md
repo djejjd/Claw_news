@@ -59,7 +59,7 @@ These are local Claude Code config and prompt templates — not project code.
 - `LICENSE` — MIT
 - `docs/operations/launchd/com.lanser.clawnews.morning.plist.example`
 - `docs/operations/launchd/com.lanser.clawnews.evening.plist.example`
-- Plist templates use `{{PROJECT_DIR}}` placeholder instead of `/Users/lanser/Code/Claw_news`
+- Plist templates use `{{PROJECT_DIR}}` placeholder instead of `{{PROJECT_DIR}}`
 - Update `README.md` — add License section
 
 ## Pre-flight Check

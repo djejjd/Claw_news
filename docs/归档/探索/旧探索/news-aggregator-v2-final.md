@@ -153,7 +153,7 @@ keywords:
     - 芯片|手机|笔记本|显卡|CPU|处理器|iPhone|系统|发布|评测|新品|上市|小米|华为|苹果
 
 pusher:
-  wecom_webhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=a1cd9e9d-3c2c-4948-aa2e-f61be9869b29"
+  wecom_webhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY_HERE"
 ```
 
 ## 9. 验收标准

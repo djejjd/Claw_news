@@ -10,7 +10,7 @@
 2. 任务包指定的已批准设计章节；
 3. 本文件；
 4. 对应工具的专属补充文件；
-5. `README.md`、`docs/CONVENTIONS.md` 以及任务相关的稳定文档和现有代码。
+5. `README.md`、`docs/README.md`、`docs/规范/文档规范.md` 以及任务相关的稳定文档和现有代码。
 
 ## 指令优先级
 
@@ -38,11 +38,12 @@
 ## 架构与稳定文档入口
 
 - 快速上手：`README.md`
-- 文档规范：`docs/CONVENTIONS.md`
-- 公开提交边界：`docs/PUBLICATION_POLICY.md`
-- 部署指南：`docs/operations/deploy/server-guide.md`
-- 长期架构：`docs/architecture/`
-- 历史探索：`docs/archive/`，不作为当前实现依据
+- 文档入口：`docs/README.md`
+- 文档规范：`docs/规范/文档规范.md`
+- 公开提交边界：`docs/规范/公开边界.md`
+- 部署指南：`docs/运维/服务器部署.md`
+- 长期架构：`docs/架构/`
+- 历史探索：`docs/归档/`，不作为当前实现依据
 
 当前主流程由 `main.py` 编排，数据沿 Collectors → Aggregator → Pusher 流动：
 

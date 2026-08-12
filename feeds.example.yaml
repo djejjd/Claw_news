@@ -47,6 +47,7 @@ feeds:
       retention_hours: 24
       quality_weight: 2.0
       filter_profile: strict
+      max_selected_per_digest: 3
     - url: https://www.appinn.com/feed
       source: appinn
       tier: vertical
@@ -99,6 +100,7 @@ source_policies:
     retention_hours: 24
     quality_weight: 2.5
     filter_profile: strict
+    max_selected_per_digest: 3
   huggingface:
     source: huggingface
     tier: deep
