@@ -737,6 +737,9 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             for f in feed_config.get("feeds", {}).get(cat, []):
                 if isinstance(f, dict):
                     feeds_raw.append({**f, "category": cat})
+        for source, policy in feed_config.get("source_policies", {}).items():
+            if isinstance(policy, dict):
+                feeds_raw.append({**policy, "source": policy.get("source", source)})
         policies = build_source_policy_registry(feeds_raw)
 
         # 2. 72 小时读取

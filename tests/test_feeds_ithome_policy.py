@@ -46,3 +46,14 @@ def test_ithome_tier_fast_news():
     policy = _build_ithome_policy()
     assert policy is not None
     assert policy.tier == "fast_news"
+
+
+def test_noisy_sources_have_digest_caps():
+    policy = _build_ithome_policy()
+    assert policy is not None
+    assert policy.max_selected_per_digest == 3
+
+    config = load_feed_configuration(EXAMPLE)
+    assert config is not None
+    taptap = config["source_policies"]["taptap"]
+    assert taptap["max_selected_per_digest"] == 3

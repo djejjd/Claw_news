@@ -1,6 +1,8 @@
 # Claw_news
 
-每日早晚两次自动推送 AI / 游戏 / 数码三大方向热点到企业微信群。
+每日自动收集 AI、工具、游戏和数码热点，经筛选和摘要后推送到已配置的消息渠道。
+
+文档入口见 [`docs/README.md`](docs/README.md)。当前架构、选材策略、部署和排障说明均以 `docs/` 下的中文正式文档为准。
 
 ## 数据源
 
@@ -13,22 +15,9 @@
 | 📱 数码 | IT之家 | RSS | 国内 |
 | 📱 数码 | 少数派 | RSS | 国内 |
 
-## 评分机制
+## 选材规则
 
-每源取 10 条，每分类 2 源共 20 条竞争 5 个位置：
-
-```
-RSS 源评分 = position_score(#1=10.0 → #10=5.5) + keyword_bonus(+1.0) + time_modifier(period)
-HF/TapTap = 自带 upvotes/排名分数
-
-竞争规则:
-  Step 1 — 关键词保底: 每源至少 1 条(优先选命中关键词的)
-  Step 2 — 全量竞争: 剩余 3 条按分数自由竞争
-```
-
-时间修正：
-- **早报**: 当天+昨天的新闻不降权，更早 -2.0
-- **晚报**: 当天不降权，昨天 -1.0，更早 -2.0
+每次摘要目标为 10 条，先满足 AI、工具、游戏的最低数量，再按新鲜度、来源质量和来源多样性竞争。今日候选不足时，会从保留期内的历史候选补位。详细规则见 [内容选材](docs/架构/内容选材.md)。
 
 ## 快速开始
 
@@ -40,7 +29,7 @@ make install
 
 # 2. 准备服务配置
 cp .env.example .env
-# 编辑 .env，填写 LLM_* 与 WECOM_WEBHOOK_URL
+# 编辑 .env，填写三个 LLM_* 变量；需要实际推送时再配置至少一个渠道
 
 # 3. 验证
 make test
@@ -61,18 +50,20 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 `main.py` 仍保留 `--period` 和 `--dry-run` 参数，主要用于旧脚本兼容。真实发布建议使用服务模式；CLI 与服务模式都读取项目根目录 `.env`，进程环境变量可覆盖其中配置。
 
-## 定时自动运行 (macOS launchd)
+## 定时自动运行（macOS launchd）
+
+launchd 只适合本地或旧 CLI 兼容入口。生产服务使用 APScheduler 时不要同时加载 launchd，避免重复推送。
 
 ```bash
 # 从模板复制后，按你的本机路径修改
-cp docs/operations/launchd/com.lanser.clawnews.morning.plist.example ~/Library/LaunchAgents/com.lanser.clawnews.morning.plist
-cp docs/operations/launchd/com.lanser.clawnews.evening.plist.example ~/Library/LaunchAgents/com.lanser.clawnews.evening.plist
+cp docs/运维/launchd/com.lanser.clawnews.morning.plist.example ~/Library/LaunchAgents/com.lanser.clawnews.morning.plist
+cp docs/运维/launchd/com.lanser.clawnews.evening.plist.example ~/Library/LaunchAgents/com.lanser.clawnews.evening.plist
 # 将 {{PROJECT_DIR}} 替换为你的项目绝对路径
 
 launchctl load ~/Library/LaunchAgents/com.lanser.clawnews.morning.plist
 launchctl load ~/Library/LaunchAgents/com.lanser.clawnews.evening.plist
 
-# 每天 9:00 早报 / 21:00 晚报，自动推送
+# 兼容 CLI：每天 9:00 早报 / 21:00 晚报
 ```
 
 launchd 不会读取交互式 shell 的变量；程序会自动读取项目根目录 `.env`。安装后确认 `.env` 存在且权限为 `600`，再执行配置检查：
@@ -104,7 +95,7 @@ make check-config
 
 ## 服务模式
 
-Claw_news 的正式发布路径是一个长运行的 FastAPI + APScheduler 服务：高频采集候选池，定时执行结构化 LLM 摘要，并向企业微信群推送一条 markdown 摘要。
+Claw_news 的正式发布路径是一个长运行的 FastAPI + APScheduler 服务：高频采集候选池，定时执行结构化 LLM 摘要，并向已配置的消息渠道推送摘要。
 
 ### 环境变量
 
@@ -119,7 +110,10 @@ cp .env.example .env
 | `LLM_API_KEY` | Yes | API key for OpenAI-compatible LLM |
 | `LLM_BASE_URL` | Yes | Base URL for LLM API |
 | `LLM_MODEL` | Yes | Model name to use |
-| `WECOM_WEBHOOK_URL` | Yes | WeCom bot webhook URL |
+| `WECOM_WEBHOOK_URL` | Optional channel | WeCom bot webhook URL |
+| `FEISHU_APP_ID` | Paired | Optional Feishu app ID; must be set with `FEISHU_APP_SECRET` and `FEISHU_CHAT_ID` |
+| `FEISHU_APP_SECRET` | Paired | Optional Feishu app secret |
+| `FEISHU_CHAT_ID` | Paired | Optional Feishu destination |
 | `TELEGRAM_BOT_TOKEN` | Paired | Optional Telegram bot token; must be set together with `TELEGRAM_CHAT_ID` |
 | `TELEGRAM_CHAT_ID` | Paired | Optional Telegram destination chat ID; must be set together with `TELEGRAM_BOT_TOKEN` |
 | `TZ` | No | Timezone (default: `Asia/Shanghai`) |
@@ -171,17 +165,17 @@ It runs `lint`, then `test`, then `bash deploy-prod.sh`, and stops immediately i
 
 ### 推荐交付策略
 
-如果云服务器访问 GitHub 不稳定，不建议把服务器上的 `git pull` 作为主要部署路径。
+如果云服务器访问 GitHub 不稳定，不建议把服务器上的 `git pull` 作为主要部署路径。当前 `deploy-prod.sh` 由本地执行，通过 `rsync` 同步代码后在服务器构建并重启。
 
 推荐顺序：
 
-1. **首选：** 从本地或 CI 用 `scp` / `rsync` 同步代码到服务器
+1. **首选：** 在本地执行仓库提供的 `deploy-prod.sh`，用 `rsync` 同步代码到服务器
 2. **进阶：** 由 GitHub Actions 构建并交付产物
 3. **备选：** 在服务器上直接 `git pull`
 
 完整部署指南：
 
-- [docs/operations/deploy/server-guide.md](docs/operations/deploy/server-guide.md)
+- [docs/运维/部署.md](docs/运维/部署.md)
 
 ### 部署模式
 
@@ -261,6 +255,6 @@ Claw_news/
 ├── tests/                   # pytest 测试
 ├── .github/workflows/
 │   └── ci.yml               # CI：install → lint → test
-├── docs/                    # 设计文档 + launchd plist
+├── docs/                    # 中文项目文档；历史过程材料在 docs/归档/
 └── data/                    # 运行时数据（gitignored）
 ```
