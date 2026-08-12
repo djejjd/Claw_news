@@ -1,5 +1,6 @@
 """Tests for app/tools/llm.py — summarize_news() LLM summarizer."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -117,9 +118,11 @@ class TestSummarizeNews:
 
         assert isinstance(result, dict)
         assert "headline_items" in result
-        assert len(result["headline_items"]) > 0
+        assert len(result["headline_items"]) == len(items)
         assert result["headline_items"][0]["title"] == "AI打破了0项纪录"
         assert result["headline_items"][0]["url"] == "https://example.com/news/0"
+        assert result["headline_items"][1]["url"] == "https://example.com/news/1"
+        assert result["headline_items"][2]["url"] == "https://example.com/news/2"
         assert result["daily_judgement"] == "AI行业持续火热"
 
     @pytest.mark.asyncio
@@ -162,6 +165,46 @@ class TestSummarizeNews:
         for item in items:
             assert item["link"] in user_msg
         assert kwargs["timeout"] == httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=60.0)
+
+    @pytest.mark.asyncio
+    async def test_partial_model_output_is_filled_without_changing_input_urls(self):
+        from app.tools.llm import summarize_news
+
+        items = _make_news_items(2)
+        output = {
+            "headline_items": [
+                {
+                    "title": "错误标题",
+                    "url": items[0]["link"],
+                    "core_summary": "模型摘要",
+                    "importance": "高",
+                    "trend": "模型趋势",
+                },
+                {
+                    "title": "越权条目",
+                    "url": "https://example.com/other",
+                    "core_summary": "不应出现",
+                    "importance": "高",
+                    "trend": "不应出现",
+                },
+            ],
+            "daily_judgement": "判断",
+        }
+        mock_client = _build_mock_client(_make_valid_response(json.dumps(output)))
+
+        with patch("app.tools.llm.httpx.AsyncClient", return_value=mock_client):
+            result = await summarize_news(
+                items,
+                base_url="https://api.example.com",
+                api_key="test-key",
+                model="test-model",
+            )
+
+        assert [entry["url"] for entry in result["headline_items"]] == [
+            item["link"] for item in items
+        ]
+        assert result["headline_items"][0]["core_summary"] == "模型摘要"
+        assert result["headline_items"][1]["core_summary"] == items[1]["summary"]
 
     # -- Empty items ---------------------------------------------------------
 
