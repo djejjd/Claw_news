@@ -175,7 +175,7 @@ It runs `lint`, then `test`, then `bash deploy-prod.sh`, and stops immediately i
 
 完整部署指南：
 
-- [docs/运维/服务器部署.md](docs/运维/服务器部署.md)
+- [docs/运维/部署.md](docs/运维/部署.md)
 
 ### 部署模式
 

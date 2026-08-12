@@ -1,68 +1,18 @@
-# RSS 订阅源后备清单
+# RSS 后备清单
 
----
-状态: research
-最后更新: 2026-08-12
-关联:
-  - 来源清单.md
----
+以下来源仅作候选，不是运行配置。加入正式来源前，需要重新验证可达性、内容质量和分类归属。
 
-以下来源只是候选，不是运行配置。加入正式来源前需要重新验证可达性、内容质量和分类归属。
-
-blocked_by_gfw:
-  - name: Google DeepMind
-    url: https://deepmind.google/blog/rss.xml
-    category: ai
-    note: 英文 AI 前沿研究，国内被墙
-  - name: Hacker News
-    url: https://news.ycombinator.com/bigrss
-    category: tech
-    note: 科技社区，国内被墙，可走 RSSHub
-  - name: Hugging Face Blog
-    url: https://huggingface.co/blog/feed.xml
-    category: ai
-    note: 国内被墙（已有 HfDailyPapersCollector 走 API）
-  - name: V2EX
-    url: https://www.v2ex.com/index.xml
-    category: tech
-    note: 中文技术社区，国内被墙，可走 RSSHub
-  - name: 阮一峰的网络日志
-    url: https://www.ruanyifeng.com/blog/atom.xml
-    category: tech
-    note: 中文科技博客，国内被墙，可走 RSSHub
-
-blocked_by_cdn:
-  - name: TechSpot
-    url: https://www.techspot.com/rss/
-    category: tech
-    note: Cloudflare 403 拦截
-  - name: EE Times
-    url: https://www.eetimes.com/feed/
-    category: hardware
-    note: CDN 403 拦截
-
-ssl_or_format_issues:
-  - name: Google AI Blog
-    url: https://blog.google/technology/ai/rss/
-    category: ai
-    note: SSL 异常（unexpected EOF）
-  - name: AnandTech
-    url: https://www.anandtech.com/rss/
-    category: hardware
-    note: 返回 HTML 非 RSS，需自定义解析器
-
-too_niche_for_now:
-  - name: Chips and Cheese
-    url: https://chipsandcheese.com/feed/
-    category: hardware
-    note: 芯片架构深度分析，受众窄
-  - name: arXiv AI / ML
-    url: https://rss.arxiv.org/rss/cs.AI
-    category: ai
-    note: 学术论文量大（每日几十篇），冲淡新闻感
-
-third_party_proxy:
-  - name: 机器之心(官方)
-    url: https://www.jiqizhixin.com/rss
-    category: ai
-    note: 官方 RSS 返回 HTML SPA，不可用。当前用 RSSBox 代理
+| 来源 | 地址 | 分类 | 当前状态 | 备注 |
+|---|---|---|---|---|
+| Google DeepMind | https://deepmind.google/blog/rss.xml | AI | 暂不采用 | 国内访问受限 |
+| Hacker News | https://news.ycombinator.com/bigrss | 科技 | 暂不采用 | 国内访问受限，可评估 RSSHub |
+| Hugging Face Blog | https://huggingface.co/blog/feed.xml | AI | 暂不采用 | 国内访问受限，已有 API 采集 |
+| V2EX | https://www.v2ex.com/index.xml | 科技 | 暂不采用 | 国内访问受限，可评估 RSSHub |
+| 阮一峰的网络日志 | https://www.ruanyifeng.com/blog/atom.xml | 科技 | 暂不采用 | 国内访问受限，可评估 RSSHub |
+| TechSpot | https://www.techspot.com/rss/ | 科技 | 暂不采用 | Cloudflare 403 |
+| EE Times | https://www.eetimes.com/feed/ | 硬件 | 暂不采用 | CDN 403 |
+| Google AI Blog | https://blog.google/technology/ai/rss/ | AI | 暂不采用 | SSL 异常 |
+| AnandTech | https://www.anandtech.com/rss/ | 硬件 | 暂不采用 | 返回 HTML，需自定义解析 |
+| Chips and Cheese | https://chipsandcheese.com/feed/ | 硬件 | 暂不采用 | 主题较窄 |
+| arXiv AI / ML | https://rss.arxiv.org/rss/cs.AI | AI | 暂不采用 | 论文量大，新闻感弱 |
+| 机器之心（官方） | https://www.jiqizhixin.com/rss | AI | 暂不采用 | 官方 RSS 返回 HTML，当前使用代理 |
