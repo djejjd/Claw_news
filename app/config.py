@@ -5,6 +5,43 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+_DOTENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+
+
+def _load_dotenv(path: Path | None = None) -> dict[str, str]:
+    """Read a small dotenv file without mutating the process environment."""
+    path = path or _DOTENV_PATH
+    if not path.is_file():
+        return {}
+
+    values: dict[str, str] = {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        name, separator, value = line.partition("=")
+        if not separator or not name.isidentifier():
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        values[name] = value
+    return values
+
+
+def _env(name: str, dotenv: dict[str, str]) -> str:
+    """Explicit process environment wins over the project dotenv file."""
+    if name in os.environ:
+        return os.environ[name].strip()
+    return dotenv.get(name, "").strip()
 
 
 @dataclass(frozen=True)
@@ -44,34 +81,35 @@ def load_config() -> AppConfig:
     Raises:
         ValueError: If a required variable is missing or empty.
     """
+    dotenv = _load_dotenv()
     required = {
-        "LLM_API_KEY": os.getenv("LLM_API_KEY", "").strip(),
-        "LLM_BASE_URL": os.getenv("LLM_BASE_URL", "").strip(),
-        "LLM_MODEL": os.getenv("LLM_MODEL", "").strip(),
+        "LLM_API_KEY": _env("LLM_API_KEY", dotenv),
+        "LLM_BASE_URL": _env("LLM_BASE_URL", dotenv),
+        "LLM_MODEL": _env("LLM_MODEL", dotenv),
     }
     for name, value in required.items():
         if not value:
             raise ValueError(f"missing required environment variable: {name}")
 
-    news_rss_urls_raw = os.getenv("NEWS_RSS_URLS", "").strip()
+    news_rss_urls_raw = _env("NEWS_RSS_URLS", dotenv)
     news_rss_urls = (
         [url.strip() for url in news_rss_urls_raw.split(",") if url.strip()]
         if news_rss_urls_raw
         else []
     )
 
-    tz = os.getenv("TZ", "").strip()
-    telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip() or None
-    telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip() or None
-    telegram_proxy = os.getenv("TELEGRAM_PROXY", "").strip() or None
+    tz = _env("TZ", dotenv)
+    telegram_bot_token = _env("TELEGRAM_BOT_TOKEN", dotenv) or None
+    telegram_chat_id = _env("TELEGRAM_CHAT_ID", dotenv) or None
+    telegram_proxy = _env("TELEGRAM_PROXY", dotenv) or None
     if telegram_bot_token and not telegram_chat_id:
         raise ValueError("missing required paired environment variable: TELEGRAM_CHAT_ID")
     if telegram_chat_id and not telegram_bot_token:
         raise ValueError("missing required paired environment variable: TELEGRAM_BOT_TOKEN")
 
-    feishu_app_id = os.getenv("FEISHU_APP_ID", "").strip() or None
-    feishu_app_secret = os.getenv("FEISHU_APP_SECRET", "").strip() or None
-    feishu_chat_id = os.getenv("FEISHU_CHAT_ID", "").strip() or None
+    feishu_app_id = _env("FEISHU_APP_ID", dotenv) or None
+    feishu_app_secret = _env("FEISHU_APP_SECRET", dotenv) or None
+    feishu_chat_id = _env("FEISHU_CHAT_ID", dotenv) or None
     if feishu_app_id and not feishu_app_secret:
         raise ValueError("missing required paired environment variable: FEISHU_APP_SECRET")
     if feishu_app_secret and not feishu_app_id:
@@ -83,7 +121,7 @@ def load_config() -> AppConfig:
         llm_api_key=required["LLM_API_KEY"],
         llm_base_url=required["LLM_BASE_URL"],
         llm_model=required["LLM_MODEL"],
-        wecom_webhook_url=os.getenv("WECOM_WEBHOOK_URL", "").strip(),
+        wecom_webhook_url=_env("WECOM_WEBHOOK_URL", dotenv),
         tz=tz if tz else "Asia/Shanghai",
         news_rss_urls=news_rss_urls,
         telegram_bot_token=telegram_bot_token,

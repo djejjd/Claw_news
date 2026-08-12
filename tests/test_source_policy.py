@@ -24,6 +24,21 @@ def test_default_policy_values():
     assert p.retention_hours == 48
     assert p.quality_weight == 3.0
     assert p.filter_profile == "standard"
+    assert p.max_selected_per_digest is None
+
+
+def test_explicit_max_selected_per_digest_is_loaded():
+    from app.content.source_policy import build_source_policy_registry
+
+    registry = build_source_policy_registry([{"source": "ithome", "max_selected_per_digest": 3}])
+    assert registry["ithome"].max_selected_per_digest == 3
+
+
+def test_invalid_max_selected_per_digest_is_rejected():
+    from app.content.source_policy import build_source_policy_registry
+
+    with pytest.raises(ValueError, match="max_selected_per_digest"):
+        build_source_policy_registry([{"source": "bad", "max_selected_per_digest": 0}])
 
 
 def test_missing_policy_uses_conservative_default():

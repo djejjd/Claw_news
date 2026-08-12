@@ -235,9 +235,9 @@ def test_historical_items_only_fill_category_deficit():
 
     phases = {e.canonical_key: e.phase for e in result.evidence}
     assert phases.get("old-ai-1") == "historical_backfill"
-    # 工具类今日已够 2 条，历史高分工具不应入选
+    # 总数不足 top_n 时，历史高分工具允许补位
     selected_keys = {x.canonical_key for x in result.selected}
-    assert "old-high-tool" not in selected_keys
+    assert "old-high-tool" in selected_keys
 
 
 def test_source_counts_accumulate_across_phases():
@@ -332,6 +332,57 @@ def test_top_n_limit():
     assert len(result.selected) <= 10
 
 
+def test_source_cap_limits_high_volume_source():
+    from app.pipeline.selection import select_digest
+
+    now = _NOW
+    items = [
+        _make_item(
+            title=f"Item-{i}",
+            url=f"https://ithome-{i}.test",
+            source="ithome",
+            category="tool",
+            published_at=now.strftime("%Y-%m-%dT08:00:00+08:00"),
+        )
+        for i in range(6)
+    ]
+    result = select_digest(
+        items, {"ithome": SourcePolicy("ithome", max_selected_per_digest=3)}, now
+    )
+    assert sum(item.source == "ithome" for item in result.selected) == 3
+
+
+def test_historical_competition_fills_remaining_slots():
+    from app.pipeline.selection import select_digest
+
+    now = _NOW
+    items = [
+        _make_item(
+            title=f"Today-{i}",
+            url=f"https://today-{i}.test",
+            source="qbitai",
+            category="ai",
+            published_at=now.strftime("%Y-%m-%d"),
+        )
+        for i in range(3)
+    ] + [
+        _make_item(
+            title=f"History-{i}",
+            url=f"https://history-{i}.test",
+            source=f"src-{i}",
+            category="ai",
+            published_at="2026-05-16",
+        )
+        for i in range(7)
+    ]
+    policies = {
+        "qbitai": SourcePolicy("qbitai"),
+        **{f"src-{i}": SourcePolicy(f"src-{i}") for i in range(7)},
+    }
+    result = select_digest(items, policies, now, top_n=10)
+    assert len(result.selected) == 10
+
+
 def test_deterministic_output():
     """相同输入两次调用产生相同输出（确定性）。"""
     from app.pipeline.selection import select_digest
@@ -381,4 +432,9 @@ def test_selection_result_has_evidence():
         assert e.canonical_key
         assert isinstance(e.diversity_penalty, float)
         assert isinstance(e.selection_score, float)
-        assert e.phase in {"today_guarantee", "historical_backfill", "today_competition"}
+        assert e.phase in {
+            "today_guarantee",
+            "historical_backfill",
+            "today_competition",
+            "historical_competition",
+        }

@@ -45,6 +45,8 @@ _SYSTEM_PROMPT = """\
 - 每条新闻的 url 必须保留原文链接
 - importance 只能是 高、中、低 三个值
 - headline_items 按重要性从高到低排列
+- 输入多少条新闻，headline_items 必须返回多少条；不得筛选、合并或遗漏
+- headline_items 必须逐条保留输入 URL，顺序与输入一致
 - core_summary 必须控制在 25 个字以内
 - trend 控制在 10 个字以内
 - github_projects 中的 description_cn 必须翻译为简洁的中文"""
@@ -95,6 +97,30 @@ def parse_summary_result(raw_text: str) -> dict:
             "daily_judgement": raw_text[:500].strip(),
             "_parse_error": str(e),
         }
+
+
+def _complete_headline_items(result: dict, items: list[dict]) -> dict:
+    """Align model output with every input item, filling omitted entries locally."""
+    returned_by_url = {
+        entry.get("url"): entry
+        for entry in result.get("headline_items", [])
+        if isinstance(entry, dict) and entry.get("url")
+    }
+    completed: list[dict] = []
+    for item in items:
+        url = item.get("link", "")
+        generated = returned_by_url.get(url, {})
+        completed.append(
+            {
+                "title": item.get("title", ""),
+                "url": url,
+                "core_summary": generated.get("core_summary") or item.get("summary", ""),
+                "importance": generated.get("importance") or "中",
+                "trend": generated.get("trend") or "行业动态",
+            }
+        )
+    result["headline_items"] = completed
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -212,4 +238,6 @@ async def summarize_news(
         raise RuntimeError("LLM API returned empty content")
 
     result = parse_summary_result(content)
+    if "_parse_error" not in result:
+        result = _complete_headline_items(result, items)
     return result
