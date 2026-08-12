@@ -44,7 +44,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 > - `make dry-run` 只验证 CLI 兼容壳可启动，不触发 LLM 摘要或企业微信推送，也不要求 LLM / webhook 配置。
 > - `make clean` 不删除 `data/`（运行状态），`make clean-data` 清空。
 > - **不要直接使用系统 Python 跑 `pytest`**。标准入口是 `make install` 后再 `make test`。
-> - `deploy.example.sh` 是部署参考模板，只做安装+dry-run 验证，不是生产推送入口。
+> - `deploy.example.sh` 是公开部署参考模板；真实服务器地址和发布脚本只保留在本地运维环境。
 
 ### CLI 兼容入口
 
@@ -153,23 +153,13 @@ curl -X POST http://127.0.0.1:8000/run/news
 docker compose logs -f
 ```
 
-`deploy-prod.sh` will default to the Tsinghua mirror on the Tencent Cloud server build path, and you can override it by exporting `PIP_INDEX_URL` / `PIP_EXTRA_INDEX_URL` before running the script.
-
-For the current Tencent Cloud production path, the recommended one-command release entrypoint is:
-
-```bash
-make release-prod
-```
-
-It runs `lint`, then `test`, then `bash deploy-prod.sh`, and stops immediately if any step fails.
-
 ### 推荐交付策略
 
-如果云服务器访问 GitHub 不稳定，不建议把服务器上的 `git pull` 作为主要部署路径。当前 `deploy-prod.sh` 由本地执行，通过 `rsync` 同步代码后在服务器构建并重启。
+如果云服务器访问 GitHub 不稳定，不建议把服务器上的 `git pull` 作为主要部署路径。公开仓库只提供通用部署参考，不保存服务器地址、账号和私有发布脚本。
 
 推荐顺序：
 
-1. **首选：** 在本地执行仓库提供的 `deploy-prod.sh`，用 `rsync` 同步代码到服务器
+1. **首选：** 在本地维护私有发布脚本，用 `rsync` 同步代码到服务器
 2. **进阶：** 由 GitHub Actions 构建并交付产物
 3. **备选：** 在服务器上直接 `git pull`
 
