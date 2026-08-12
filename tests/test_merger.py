@@ -1,5 +1,5 @@
 from datetime import date as _date
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from aggregator.merger import (
     DEFAULT_SOURCE_WEIGHT,
@@ -17,6 +17,7 @@ from collectors.base import HotItem, time_gravity
 # =============================================================================
 
 _TODAY = _date.today().isoformat()
+_NOW = datetime.now().replace(microsecond=0).isoformat()
 _YESTERDAY = (_date.today() - timedelta(days=1)).isoformat()
 _OLD_DATE = (_date.today() - timedelta(days=3)).isoformat()
 
@@ -151,14 +152,14 @@ class TestMerger:
 class TestComputeFinalScore:
     def test_basic_calculation(self):
         """source_weight + freshness_score (today=3.0)"""
-        item = _make_candidate(source="qbitai", source_weight=3.0, published_at=_TODAY)
+        item = _make_candidate(source="qbitai", source_weight=3.0, published_at=_NOW)
         score = compute_final_score(item)
         # sw=3.0 + freshness(today)=3.0 = 6.0
         assert score == 6.0
 
     def test_known_source_uses_lookup(self):
         """已知 source 使用 SOURCE_WEIGHTS 中的值"""
-        item = _make_candidate(source="leiphone", source_weight=None, published_at=_TODAY)
+        item = _make_candidate(source="leiphone", source_weight=None, published_at=_NOW)
         score = compute_final_score(item)
         assert score == 6.0  # sw=3.0 + freshness=3.0
 
@@ -167,7 +168,7 @@ class TestComputeFinalScore:
         item = _make_candidate(
             source="unknown_source_xyz",
             source_weight=None,
-            published_at=_TODAY,
+            published_at=_NOW,
         )
         score = compute_final_score(item)
         assert score == 5.0  # sw=2.0 + freshness=3.0
@@ -180,7 +181,7 @@ class TestComputeFinalScore:
         assert score < 5.0
 
     def test_huggingface_source_weight(self):
-        item = _make_candidate(source="huggingface", source_weight=None, published_at=_TODAY)
+        item = _make_candidate(source="huggingface", source_weight=None, published_at=_NOW)
         score = compute_final_score(item)
         assert score == 7.0  # sw=4.0 + tg=3.0
 
