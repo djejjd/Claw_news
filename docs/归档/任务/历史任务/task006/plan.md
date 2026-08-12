@@ -49,8 +49,8 @@
 **文件：**
 
 - `spec/task006/contract.md`
-- `docs/tasks/task006/design.md`
-- `docs/tasks/task006/plan.md`
+- `docs/归档/任务/历史任务/task006/design.md`
+- `docs/归档/任务/历史任务/task006/plan.md`
 
 - [ ] **步骤 1：冻结统一运行上下文**
 

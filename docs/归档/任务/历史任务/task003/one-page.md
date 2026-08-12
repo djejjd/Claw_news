@@ -150,13 +150,13 @@ curl -X POST http://127.0.0.1:8000/run/news
 1. 契约 spec
    - [spec/task003/contract.md]({{PROJECT_DIR}}/spec/task003/contract.md)
 2. 设计文档
-   - [docs/tasks/task003/design.md]({{PROJECT_DIR}}/docs/tasks/task003/design.md)
+   - [docs/归档/任务/历史任务/task003/design.md]({{PROJECT_DIR}}/docs/归档/任务/历史任务/task003/design.md)
 3. 设计审查结论
-   - [docs/tasks/task003/design-review.md]({{PROJECT_DIR}}/docs/tasks/task003/design-review.md)
+   - [docs/归档/任务/历史任务/task003/design-review.md]({{PROJECT_DIR}}/docs/归档/任务/历史任务/task003/design-review.md)
 4. 一页清单
-   - [docs/tasks/task003/one-page.md]({{PROJECT_DIR}}/docs/tasks/task003/one-page.md)
+   - [docs/归档/任务/历史任务/task003/one-page.md]({{PROJECT_DIR}}/docs/归档/任务/历史任务/task003/one-page.md)
 5. 实施计划
-   - [docs/tasks/task003/plan.md]({{PROJECT_DIR}}/docs/tasks/task003/plan.md)
+   - [docs/归档/任务/历史任务/task003/plan.md]({{PROJECT_DIR}}/docs/归档/任务/历史任务/task003/plan.md)
 
 开发顺序要求：
 

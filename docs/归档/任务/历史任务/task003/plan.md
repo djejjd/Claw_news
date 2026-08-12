@@ -100,16 +100,16 @@
 
 **文件：**
 - 只读：`spec/task003/contract.md`
-- 只读：`docs/tasks/task003/design.md`
-- 只读：`docs/tasks/task003/design-review.md`
+- 只读：`docs/归档/任务/历史任务/task003/design.md`
+- 只读：`docs/归档/任务/历史任务/task003/design-review.md`
 - 修改：`README.md`
 
 - [ ] **步骤 1：开发前先复核不可变范围**
 
 阅读：
 - `spec/task003/contract.md`
-- `docs/tasks/task003/design.md`
-- `docs/tasks/task003/design-review.md`
+- `docs/归档/任务/历史任务/task003/design.md`
+- `docs/归档/任务/历史任务/task003/design-review.md`
 
 预期：
 - 明确本轮是“同仓双入口”
@@ -134,7 +134,7 @@
 - [ ] **步骤 3：提交边界冻结结果**
 
 ```bash
-git add spec/task003/contract.md docs/tasks/task003/design.md docs/tasks/task003/design-review.md README.md
+git add spec/task003/contract.md docs/归档/任务/历史任务/task003/design.md docs/归档/任务/历史任务/task003/design-review.md README.md
 git commit -m "docs: freeze service architecture boundaries"
 ```
 
@@ -766,9 +766,9 @@ git commit -m "test: verify ai assistant service integration"
 最终 reviewer 必须按以下顺序审查：
 
 1. `spec/task003/contract.md`
-2. `docs/tasks/task003/design.md`
-3. `docs/tasks/task003/design-review.md`
-4. `docs/tasks/task003/one-page.md`
+2. `docs/归档/任务/历史任务/task003/design.md`
+3. `docs/归档/任务/历史任务/task003/design-review.md`
+4. `docs/归档/任务/历史任务/task003/one-page.md`
 5. 所有新增测试
 6. Docker、README、`deploy.example.sh`
 

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Design doc:** `docs/tasks/task001/design.md`
+**Design doc:** `docs/归档/任务/历史任务/task001/design.md`
 
 **Goal:** Implement M1 security/correctness fixes and M2 engineering foundations without changing core scoring or message behavior.
 

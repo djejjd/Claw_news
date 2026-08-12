@@ -5,8 +5,8 @@
 本次审查基于以下文档与当前仓库事实：
 
 1. `spec/task003/contract.md`
-2. `docs/tasks/task003/design.md`
-3. `docs/tasks/task003/plan.md`
+2. `docs/归档/任务/历史任务/task003/design.md`
+3. `docs/归档/任务/历史任务/task003/plan.md`
 4. 当前仓库现状
    - 现有入口：`main.py`
    - 现有采集层：`collectors/`

@@ -10,7 +10,7 @@
 
 ## 全局约束
 
-- 以 `docs/architecture/decisions/telegram-dual-channel-delivery-design.md` 为唯一设计契约。
+- 以 `docs/归档/旧设计/架构/决策/telegram-dual-channel-delivery-design.md` 为唯一设计契约。
 - 中文文档优先；不得在任何文件、测试、日志或交付中提交真实 Token/Chat ID。
 - 所有 HTTP 测试使用 mock transport 或注入 client，禁止真实 Telegram 请求。
 - 先写失败测试，再写最小实现；任务完成前不进入下一任务。
@@ -35,7 +35,7 @@
 
 ### 3. 前置依赖
 
-`docs/architecture/decisions/telegram-dual-channel-delivery-design.md` 第 4、6、7 节。
+`docs/归档/旧设计/架构/决策/telegram-dual-channel-delivery-design.md` 第 4、6、7 节。
 
 ### 4. 输入与输出契约
 

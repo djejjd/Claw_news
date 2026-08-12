@@ -1,6 +1,6 @@
 # Claw_news M1+M2 终审修复方案
 
-> 对应终审报告: `docs/tasks/task001/review-final.md`
+> 对应终审报告: `docs/归档/任务/历史任务/task001/review-final.md`
 > 状态: 方案已定，待执行
 
 ## 修改摘要

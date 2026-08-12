@@ -21,7 +21,7 @@
 当前任务文档分散在：
 
 1. `spec/task001/`、`spec/task002/`、`spec/task003/` ...
-2. `docs/tasks/`
+2. `docs/归档/任务/历史任务/`
 3. `docs/architecture/` / `docs/operations/`
 
 ### 2.2 命名方式不稳定
@@ -127,17 +127,17 @@ task003
 - review
 ```
 
-### 3.5 `docs/superpowers/*` 的角色调整
+### 3.5 `docs/归档/任务/开发过程/*` 的角色调整
 
 建议以后：
 
 1. `spec/taskNNN/` 只承载 task 级正式文档
-2. `docs/tasks/` 承载 task 级详细原文
+2. `docs/归档/任务/历史任务/` 承载 task 级详细原文
 3. `docs/architecture/` 与 `docs/operations/` 承载跨 task 与运维文档
 
 也就是说：
 
-1. task 专属正式文档不再长期散落在 `docs/superpowers/*`
+1. task 专属正式文档不再长期散落在 `docs/归档/任务/开发过程/*`
 
 ---
 

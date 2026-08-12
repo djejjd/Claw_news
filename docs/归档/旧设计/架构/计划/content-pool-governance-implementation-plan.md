@@ -8,7 +8,7 @@
 
 **技术栈：** Python 3.11+、dataclasses、PyYAML、JSONL、pytest、pytest-asyncio、Ruff。
 
-**批准设计：** `docs/architecture/decisions/content-pool-governance-design.md`
+**批准设计：** `docs/归档/旧设计/架构/决策/content-pool-governance-design.md`
 
 ## 全局约束
 
@@ -940,7 +940,7 @@ def test_replay_reports_backfill_and_rejections(tmp_path):
 
 - 依赖任务：Task 1 至 Task 7
 - 允许并行：可把代码审查和历史回放交给不同审核 AI，但不得同时修改代码
-- 预计修改：`docs/operations/content-selection-acceptance.md`
+- 预计修改：`docs/归档/旧设计/运维/选材验收.md`
 - 不得修改：业务代码、测试、已批准常量、范围外重构、GitHub 链路、新功能
 - 完成状态：pending
 

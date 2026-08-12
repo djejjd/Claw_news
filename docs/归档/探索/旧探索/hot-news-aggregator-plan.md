@@ -40,7 +40,7 @@ Claw_news/
 │   ├── test_ithome.py
 │   ├── test_merger.py
 │   └── test_wecom.py
-└── docs/superpowers/
+└── docs/归档/任务/开发过程/
     ├── specs/2026-05-15-hot-news-aggregator-design.md
     └── plans/2026-05-15-hot-news-aggregator-plan.md
 ```

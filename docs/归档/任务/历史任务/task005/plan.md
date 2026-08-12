@@ -14,8 +14,8 @@
 
 **新增：**
 - `spec/task005/contract.md`
-- `docs/tasks/task005/design.md`
-- `docs/tasks/task005/plan.md`
+- `docs/归档/任务/历史任务/task005/design.md`
+- `docs/归档/任务/历史任务/task005/plan.md`
 
 **后续阶段建议新增：**
 - `spec/README.md`
@@ -33,7 +33,7 @@
 
 **文件：**
 - `spec/task005/contract.md`
-- `docs/tasks/task005/design.md`
+- `docs/归档/任务/历史任务/task005/design.md`
 
 - [ ] **步骤 1：确认正式目录规范**
 
@@ -58,7 +58,7 @@
 - [ ] **步骤 3：提交规范冻结**
 
 ```bash
-git add spec/task005/contract.md docs/tasks/task005/design.md
+git add spec/task005/contract.md docs/归档/任务/历史任务/task005/design.md
 git commit -m "docs: freeze task document structure governance"
 ```
 
@@ -105,7 +105,7 @@ task003
 ## 任务 3：设计现有 task 的迁移映射
 
 **文件：**
-- `docs/tasks/task005/design.md`
+- `docs/归档/任务/历史任务/task005/design.md`
 
 - [ ] **步骤 1：列出 task003 映射**
 
@@ -137,7 +137,7 @@ task003
 ## 任务 4：设计落地顺序
 
 **文件：**
-- `docs/tasks/task005/plan.md`
+- `docs/归档/任务/历史任务/task005/plan.md`
 
 - [ ] **步骤 1：定义三阶段落地**
 
@@ -196,8 +196,8 @@ task003
 
 ```bash
 find spec -maxdepth 2 -type f | sort
-find docs/superpowers/specs -maxdepth 1 -type f | sort
-find docs/superpowers/plans -maxdepth 1 -type f | sort
+find docs/归档/任务/开发过程/方案 -maxdepth 1 -type f | sort
+find docs/归档/任务/开发过程/计划 -maxdepth 1 -type f | sort
 ```
 
 ---

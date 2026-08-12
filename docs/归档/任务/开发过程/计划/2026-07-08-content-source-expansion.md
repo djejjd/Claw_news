@@ -448,7 +448,7 @@ git commit -m "test: verify ai tool game digest mapping"
 
 ## Execution Handoff
 
-Plan complete and saved to `docs/superpowers/plans/2026-07-08-content-source-expansion.md`. Two execution options:
+Plan complete and saved to `docs/归档/任务/开发过程/计划/2026-07-08-content-source-expansion.md`. Two execution options:
 
 **1. Subagent-Driven (recommended)** - I dispatch a fresh subagent per task, review between tasks, fast iteration
 

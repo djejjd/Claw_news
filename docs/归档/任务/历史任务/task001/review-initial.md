@@ -15,8 +15,8 @@
 
 对照文档：
 
-- `docs/tasks/task001/design.md`
-- `docs/tasks/task001/plan.md`
+- `docs/归档/任务/历史任务/task001/design.md`
+- `docs/归档/任务/历史任务/task001/plan.md`
 
 检视重点：
 

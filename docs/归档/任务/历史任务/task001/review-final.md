@@ -5,11 +5,11 @@
 本次终审基于以下输入：
 
 - 实现设计文档  
-  `docs/tasks/task001/design.md`
+  `docs/归档/任务/历史任务/task001/design.md`
 - 实现计划文档  
-  `docs/tasks/task001/plan.md`
+  `docs/归档/任务/历史任务/task001/plan.md`
 - 二审报告  
-  `docs/tasks/task001/review-second.md`
+  `docs/归档/任务/历史任务/task001/review-second.md`
 - 当前待合并代码  
   `origin/main..HEAD`
 

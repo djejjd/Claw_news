@@ -18,7 +18,7 @@ f007812 fix: address M1 code review — exception handling, feed injection, type
 
 审查依据：
 
-- 上次检视报告 `docs/tasks/task001/review-initial.md`
+- 上次检视报告 `docs/归档/任务/历史任务/task001/review-initial.md`
 - 开发者方案 `@.prompt/developer.md`
 
 ---
