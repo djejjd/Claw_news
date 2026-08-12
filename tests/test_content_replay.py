@@ -391,7 +391,8 @@ def test_replay_fixture_ai_history_only_fills_ai_minimum(tmp_path, monkeypatch):
     assert all(
         selected_by_url[url]["category"] == "ai" for url in expected["historical_backfill_urls"]
     )
-    assert not set(expected["historical_non_backfill_urls"]) & set(selected_by_url)
+    # 当总数不足 top_n 时，历史候选会继续按竞争阶段补位。
+    assert set(expected["historical_non_backfill_urls"]).issubset(selected_by_url)
 
 
 def test_replay_fixture_deep_source_respects_72_hour_boundary(tmp_path, monkeypatch):

@@ -128,11 +128,20 @@ def select_digest(
     def _greedy_pick(pool, phase, target_per_cat=None, per_category=False):
         """通用贪心选材。per_category=True 时按分类顺序逐类选取。"""
         nonlocal selected, source_counts, evidence, seen_urls, category_counts
+
+        def can_add(item) -> bool:
+            policy = policies.get(item.source, SourcePolicy(source=item.source))
+            cap = policy.max_selected_per_digest
+            return cap is None or source_counts.get(item.source, 0) < cap
+
         remaining = [it for it in pool if it.url not in seen_urls]
         # 计算 selection_score
         scored = []
         for it in remaining:
             n = source_counts.get(it.source, 0)
+            policy = policies.get(it.source, SourcePolicy(source=it.source))
+            if policy.max_selected_per_digest is not None and n >= policy.max_selected_per_digest:
+                continue
             pen = source_diversity_penalty(n)
             scored.append((it, it.final_score + pen, pen))
         scored.sort(key=lambda x: (-x[1], -_pub_ts(x[0]), _ck(x[0])))
@@ -149,6 +158,8 @@ def select_digest(
                         break
                     if category_counts[cat] >= need:
                         break
+                    if not can_add(it):
+                        continue
                     selected.append(it)
                     seen_urls.add(it.url)
                     src = it.source
@@ -168,6 +179,8 @@ def select_digest(
             for it, sel_score, pen in scored:
                 if len(selected) >= top_n:
                     break
+                if not can_add(it):
+                    continue
                 cat = it.category if it.category in _CATEGORY_ORDER else "ai"
                 need = target_per_cat.get(cat) if target_per_cat else None
                 if need is not None and category_counts[cat] >= need:
@@ -191,12 +204,16 @@ def select_digest(
     # Phase 1: 今日保底（逐类选取，保证先满足 AI→工具→游戏 最低目标）
     _greedy_pick(today_items, "today_guarantee", _CATEGORY_MINIMUMS, per_category=True)
 
-    # Phase 2: 历史补位（逐类选取）
+    # Phase 2: 历史补位（先补分类最低目标）
     if any(category_counts[c] < _CATEGORY_MINIMUMS[c] for c in _CATEGORY_ORDER):
         _greedy_pick(hist_items, "historical_backfill", _CATEGORY_MINIMUMS, per_category=True)
 
     # Phase 3: 今日自由竞争
     _greedy_pick(today_items, "today_competition")
+
+    # Phase 4: 今日不足时，用剩余历史候选按质量和新鲜度补齐总量。
+    if len(selected) < top_n:
+        _greedy_pick(hist_items, "historical_competition")
 
     # 按 final_score 降序排
     selected.sort(key=lambda x: (-getattr(x, "final_score", 0), _ck(x)))

@@ -25,13 +25,14 @@ class SourcePolicy:
     retention_hours: int = 48
     quality_weight: float = 3.0
     filter_profile: FilterProfile = "standard"
+    max_selected_per_digest: int | None = None
 
 
 DEFAULT_SOURCE_POLICY = SourcePolicy(source="")
 
 _BUILTIN_SOURCE_POLICIES: dict[str, SourcePolicy] = {
-    "ithome": SourcePolicy("ithome", "fast_news", 24, 2.0, "strict"),
-    "taptap": SourcePolicy("taptap", "fast_news", 24, 2.5, "strict"),
+    "ithome": SourcePolicy("ithome", "fast_news", 24, 2.0, "strict", 3),
+    "taptap": SourcePolicy("taptap", "fast_news", 24, 2.5, "strict", 3),
     "eurogamer": SourcePolicy("eurogamer", "fast_news", 24, 3.0, "strict"),
     "qbitai": SourcePolicy("qbitai", "vertical", 48, 3.5, "standard"),
     "leiphone": SourcePolicy("leiphone", "vertical", 48, 3.5, "standard"),
@@ -66,6 +67,7 @@ def build_source_policy_registry(feeds: list[dict]) -> dict[str, SourcePolicy]:
         retention_hours = feed.get("retention_hours", 48)
         quality_weight = feed.get("quality_weight", 3.0)
         filter_profile = feed.get("filter_profile", "standard")
+        max_selected = feed.get("max_selected_per_digest")
 
         # 校验
         if tier not in _VALID_TIERS:
@@ -90,6 +92,13 @@ def build_source_policy_registry(feeds: list[dict]) -> dict[str, SourcePolicy]:
                 f"Source '{source}': invalid filter_profile '{filter_profile}', "
                 f"must be one of {sorted(_VALID_PROFILES)}"
             )
+        if max_selected is not None and (
+            isinstance(max_selected, bool) or not isinstance(max_selected, int) or max_selected <= 0
+        ):
+            raise ValueError(
+                f"Source '{source}': max_selected_per_digest must be a positive integer, "
+                f"got {max_selected}"
+            )
 
         registry[source] = SourcePolicy(
             source=source,
@@ -97,6 +106,7 @@ def build_source_policy_registry(feeds: list[dict]) -> dict[str, SourcePolicy]:
             retention_hours=retention_hours,
             quality_weight=float(quality_weight),
             filter_profile=filter_profile,  # type: ignore[arg-type]
+            max_selected_per_digest=max_selected,
         )
     return registry
 
