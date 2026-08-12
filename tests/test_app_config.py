@@ -2,6 +2,7 @@
 
 import pytest
 
+import app.config as config_module
 from app.config import load_config
 
 
@@ -143,6 +144,43 @@ class TestNewsRssUrlsParsing:
 
 
 class TestHappyPath:
+    def test_loads_dotenv_when_process_environment_is_empty(self, monkeypatch, tmp_path):
+        dotenv_path = tmp_path / ".env"
+        dotenv_path.write_text(
+            "LLM_API_KEY=sk-from-dotenv\n"
+            "LLM_BASE_URL=https://dotenv.example/v1\n"
+            "LLM_MODEL=dotenv-model\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(config_module, "_DOTENV_PATH", dotenv_path)
+        for name in ("LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL"):
+            monkeypatch.delenv(name, raising=False)
+
+        config = load_config()
+
+        assert config.llm_api_key == "sk-from-dotenv"
+        assert config.llm_base_url == "https://dotenv.example/v1"
+        assert config.llm_model == "dotenv-model"
+
+    def test_process_environment_overrides_dotenv(self, monkeypatch, tmp_path):
+        dotenv_path = tmp_path / ".env"
+        dotenv_path.write_text(
+            "LLM_API_KEY=sk-from-dotenv\n"
+            "LLM_BASE_URL=https://dotenv.example/v1\n"
+            "LLM_MODEL=dotenv-model\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(config_module, "_DOTENV_PATH", dotenv_path)
+        monkeypatch.setenv("LLM_API_KEY", "sk-from-environment")
+        monkeypatch.delenv("LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("LLM_MODEL", raising=False)
+
+        config = load_config()
+
+        assert config.llm_api_key == "sk-from-environment"
+        assert config.llm_base_url == "https://dotenv.example/v1"
+        assert config.llm_model == "dotenv-model"
+
     def test_all_fields_set(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test")
         monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")

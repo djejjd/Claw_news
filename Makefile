@@ -1,4 +1,4 @@
-.PHONY: install test lint format run-morning run-evening dry-run clean clean-data release-prod
+.PHONY: install test lint format check-config run-morning run-evening dry-run clean clean-data release-prod
 
 install:
 	python3 -m venv venv
@@ -12,6 +12,9 @@ lint:
 
 format:
 	./venv/bin/ruff format .
+
+check-config:
+	./venv/bin/python -c 'from app.config import load_config; print(load_config())'
 
 run-morning:
 	./venv/bin/python main.py --period morning

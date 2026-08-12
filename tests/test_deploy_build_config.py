@@ -40,7 +40,7 @@ def test_deploy_script_sets_remote_pypi_mirror() -> None:
 def test_makefile_exposes_one_command_release_target() -> None:
     makefile = (ROOT / "Makefile").read_text()
 
-    phony = "install test lint format run-morning run-evening dry-run clean clean-data"
+    phony = "install test lint format check-config run-morning run-evening dry-run clean clean-data"
 
     assert f".PHONY: {phony} release-prod" in makefile
     assert "release-prod: lint test" in makefile

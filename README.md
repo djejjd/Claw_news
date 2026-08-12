@@ -51,7 +51,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 > **注意：**
-> - `.env.example` 是人工参考模板，程序不会自动加载。如需环境变量注入，请在 shell / launchd / cron 中 `export`。
+> - 程序启动时会自动读取项目根目录 `.env`；进程环境中显式设置的变量优先级更高。请勿将包含真实密钥的 `.env` 提交到仓库。
 > - `make dry-run` 只验证 CLI 兼容壳可启动，不触发 LLM 摘要或企业微信推送，也不要求 LLM / webhook 配置。
 > - `make clean` 不删除 `data/`（运行状态），`make clean-data` 清空。
 > - **不要直接使用系统 Python 跑 `pytest`**。标准入口是 `make install` 后再 `make test`。
@@ -59,7 +59,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ### CLI 兼容入口
 
-`main.py` 仍保留 `--period` 和 `--dry-run` 参数，主要用于旧脚本兼容。真实发布建议使用服务模式；如果必须使用 CLI 真实推送，需要提供与服务模式一致的 `LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL` 和 `WECOM_WEBHOOK_URL` 环境变量。
+`main.py` 仍保留 `--period` 和 `--dry-run` 参数，主要用于旧脚本兼容。真实发布建议使用服务模式；CLI 与服务模式都读取项目根目录 `.env`，进程环境变量可覆盖其中配置。
 
 ## 定时自动运行 (macOS launchd)
 
@@ -73,6 +73,13 @@ launchctl load ~/Library/LaunchAgents/com.lanser.clawnews.morning.plist
 launchctl load ~/Library/LaunchAgents/com.lanser.clawnews.evening.plist
 
 # 每天 9:00 早报 / 21:00 晚报，自动推送
+```
+
+launchd 不会读取交互式 shell 的变量；程序会自动读取项目根目录 `.env`。安装后确认 `.env` 存在且权限为 `600`，再执行配置检查：
+
+```bash
+chmod 600 .env
+make check-config
 ```
 
 ## 推送格式
@@ -101,7 +108,7 @@ Claw_news 的正式发布路径是一个长运行的 FastAPI + APScheduler 服�
 
 ### 环境变量
 
-服务模式从环境变量读取配置。先复制 `.env.example` 到 `.env`，再填写实际值：
+服务模式统一使用项目根目录 `.env`。先复制 `.env.example` 到 `.env`，再填写实际值；进程环境变量可以覆盖 `.env` 中的同名字段：
 
 ```bash
 cp .env.example .env

@@ -239,7 +239,7 @@ git pull
 
 ## 5. 配置文件
 
-### 5.1 创建 .env（新服务用）
+### 5.1 创建 .env（唯一运行配置来源）
 
 ```bash
 cd /opt/Claw_news
@@ -268,6 +268,14 @@ AI_RSS_FEEDS=openai_blog|https://openai.com/news/rss.xml
 ```
 
 如果服务器上有历史 `.env` 备份，优先恢复备份，再按需补差异字段，而不是直接从模板重建。这样可以避免把已有的 LLM / WeCom / RSS 配置误删。
+
+程序启动时自动读取项目根目录 `.env`。显式进程环境变量仅作为覆盖项；不要为 Docker、cron 或 systemd 另维护一份配置。配置完成后，在项目目录执行：
+
+```bash
+make check-config
+```
+
+该命令只输出脱敏后的配置对象，不会打印真实密钥。
 
 ### 5.2 准备验证环境配置
 
