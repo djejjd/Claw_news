@@ -45,3 +45,10 @@ def test_makefile_exposes_one_command_release_target() -> None:
     assert f".PHONY: {phony} release-prod" in makefile
     assert "release-prod: lint test" in makefile
     assert "\tbash deploy-prod.sh" in makefile
+
+
+def test_ci_formats_only_python_code_and_tests() -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+
+    assert "ruff format --check main.py app collectors aggregator infra pusher tests" in workflow
+    assert "ruff format --check ." not in workflow
