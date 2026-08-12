@@ -29,7 +29,7 @@ make install
 
 # 2. 准备服务配置
 cp .env.example .env
-# 编辑 .env，填写 LLM_* 与 WECOM_WEBHOOK_URL
+# 编辑 .env，填写三个 LLM_* 变量；需要实际推送时再配置至少一个渠道
 
 # 3. 验证
 make test
@@ -50,7 +50,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 `main.py` 仍保留 `--period` 和 `--dry-run` 参数，主要用于旧脚本兼容。真实发布建议使用服务模式；CLI 与服务模式都读取项目根目录 `.env`，进程环境变量可覆盖其中配置。
 
-## 定时自动运行 (macOS launchd)
+## 定时自动运行（macOS launchd）
+
+launchd 只适合本地或旧 CLI 兼容入口。生产服务使用 APScheduler 时不要同时加载 launchd，避免重复推送。
 
 ```bash
 # 从模板复制后，按你的本机路径修改
@@ -61,7 +63,7 @@ cp docs/运维/launchd/com.lanser.clawnews.evening.plist.example ~/Library/Launc
 launchctl load ~/Library/LaunchAgents/com.lanser.clawnews.morning.plist
 launchctl load ~/Library/LaunchAgents/com.lanser.clawnews.evening.plist
 
-# 每天 9:00 早报 / 21:00 晚报，自动推送
+# 兼容 CLI：每天 9:00 早报 / 21:00 晚报
 ```
 
 launchd 不会读取交互式 shell 的变量；程序会自动读取项目根目录 `.env`。安装后确认 `.env` 存在且权限为 `600`，再执行配置检查：
@@ -93,7 +95,7 @@ make check-config
 
 ## 服务模式
 
-Claw_news 的正式发布路径是一个长运行的 FastAPI + APScheduler 服务：高频采集候选池，定时执行结构化 LLM 摘要，并向企业微信群推送一条 markdown 摘要。
+Claw_news 的正式发布路径是一个长运行的 FastAPI + APScheduler 服务：高频采集候选池，定时执行结构化 LLM 摘要，并向已配置的消息渠道推送摘要。
 
 ### 环境变量
 
@@ -163,11 +165,11 @@ It runs `lint`, then `test`, then `bash deploy-prod.sh`, and stops immediately i
 
 ### 推荐交付策略
 
-如果云服务器访问 GitHub 不稳定，不建议把服务器上的 `git pull` 作为主要部署路径。
+如果云服务器访问 GitHub 不稳定，不建议把服务器上的 `git pull` 作为主要部署路径。当前 `deploy-prod.sh` 由本地执行，通过 `rsync` 同步代码后在服务器构建并重启。
 
 推荐顺序：
 
-1. **首选：** 从本地或 CI 用 `scp` / `rsync` 同步代码到服务器
+1. **首选：** 在本地执行仓库提供的 `deploy-prod.sh`，用 `rsync` 同步代码到服务器
 2. **进阶：** 由 GitHub Actions 构建并交付产物
 3. **备选：** 在服务器上直接 `git pull`
 
