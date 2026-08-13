@@ -32,9 +32,9 @@ All Python source, build config, CI, templates:
 
 | File/Dir | Reason |
 |----------|--------|
-| `docs/operations/launchd/com.lanser.clawnews.morning.plist` | Hardcoded `/Users/lanser/` path |
-| `docs/operations/launchd/com.lanser.clawnews.evening.plist` | Hardcoded `/Users/lanser/` path |
-| `docs/operations/launchd/com.lanser.clawnews.plist` | Hardcoded `/Users/lanser/` path |
+| `docs/operations/launchd/com.lanser.clawnews.morning.plist` | Hardcoded `${HOME}/` path |
+| `docs/operations/launchd/com.lanser.clawnews.evening.plist` | Hardcoded `${HOME}/` path |
+| `docs/operations/launchd/com.lanser.clawnews.plist` | Hardcoded `${HOME}/` path |
 | `docs/归档/任务/开发过程/` | Internal dev process docs (design/spec/plan/review) |
 | `spec/` | Internal task specs (task001/task002) |
 

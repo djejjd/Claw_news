@@ -45,3 +45,15 @@ def test_ci_formats_only_python_code_and_tests() -> None:
 
     assert "ruff format --check main.py app collectors aggregator infra pusher tests" in workflow
     assert "ruff format --check ." not in workflow
+
+
+def test_documentation_has_no_machine_specific_paths() -> None:
+    """公开和归档文档都不得重新带入本机或服务器绝对路径。"""
+    forbidden = ("/home/ubuntu", "/Users/lanser/")
+    offenders = []
+    for path in (ROOT / "docs").rglob("*.md"):
+        text = path.read_text(encoding="utf-8")
+        if any(value in text for value in forbidden):
+            offenders.append(str(path.relative_to(ROOT)))
+
+    assert offenders == []
