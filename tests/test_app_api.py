@@ -426,8 +426,8 @@ class TestRunNewsEndpoint:
                 )
             )
 
-        assert result.status == "degraded"  # push ok but state write partially failed
-        assert "source_metrics_write_failed" in result.errors
+        assert result.status == "ok"
+        assert "source_metrics_write_failed" not in result.errors
 
 
 class TestScheduler:

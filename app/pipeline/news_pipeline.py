@@ -359,7 +359,11 @@ def _finalize_delivery(
             finalization["selected_counts_by_source"]
         )
         if written_sources < len(finalization["selected_counts_by_source"]):
-            errors.append("source_metrics_write_failed")
+            logger.warning(
+                "部分来源没有可回写的采集指标记录: written=%s expected=%s",
+                written_sources,
+                len(finalization["selected_counts_by_source"]),
+            )
     except Exception:
         errors.append("source_metrics_write_failed")
 
@@ -1141,7 +1145,11 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     try:
         written_sources = metrics_store.write_selected_counts(selected_counts_by_source)
         if written_sources < len(selected_counts_by_source):
-            errors.append("source_metrics_write_failed")
+            logger.warning(
+                "部分来源没有可回写的采集指标记录: written=%s expected=%s",
+                written_sources,
+                len(selected_counts_by_source),
+            )
     except Exception:
         errors.append("source_metrics_write_failed")
 
