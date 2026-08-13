@@ -7,7 +7,7 @@
 set -euo pipefail
 
 HOST="${CLAW_HOST:-127.0.0.1}"
-DATA_DIR="${CLAW_DATA:-/home/ubuntu/code/Claw_news/data}"
+DATA_DIR="${CLAW_DATA:-${CLAW_NEWS_DIR:-$(pwd)}/data}"
 TODAY="$(date +%Y-%m-%d)"
 
 echo "========================================"

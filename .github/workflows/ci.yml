@@ -19,3 +19,4 @@ jobs:
       - run: ruff format --check main.py app collectors aggregator infra pusher tests
       - run: ruff check .
       - run: pytest -v
+      - run: bash scripts/check-public-boundary.sh

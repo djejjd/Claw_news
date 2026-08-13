@@ -47,6 +47,17 @@ def test_ci_formats_only_python_code_and_tests() -> None:
     assert "ruff format --check ." not in workflow
 
 
+def test_public_boundary_gate_is_wired_into_local_and_ci_checks() -> None:
+    makefile = (ROOT / "Makefile").read_text()
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+    script = ROOT / "scripts/check-public-boundary.sh"
+
+    assert "check-public:" in makefile
+    assert "bash scripts/check-public-boundary.sh" in makefile
+    assert "bash scripts/check-public-boundary.sh" in workflow
+    assert script.exists()
+
+
 def test_documentation_has_no_machine_specific_paths() -> None:
     """公开和归档文档都不得重新带入本机或服务器绝对路径。"""
     forbidden = ("/home/ubuntu", "/Users/lanser/")

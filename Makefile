@@ -1,4 +1,4 @@
-.PHONY: install test lint format check-config run-morning run-evening dry-run clean clean-data
+.PHONY: install test lint format check-public check-config run-morning run-evening dry-run clean clean-data
 
 install:
 	python3 -m venv venv
@@ -9,6 +9,9 @@ test:
 
 lint:
 	./venv/bin/ruff check .
+
+check-public:
+	bash scripts/check-public-boundary.sh
 
 format:
 	./venv/bin/ruff format .
