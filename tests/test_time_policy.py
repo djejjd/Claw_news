@@ -142,6 +142,14 @@ def test_freshness_negative_returns_zero():
     assert freshness_score(-100) == 0.0
 
 
+def test_local_now_returns_naive_time_in_requested_timezone():
+    from app.content.clock import local_now
+
+    value = local_now("Asia/Shanghai")
+    assert value.tzinfo is None
+    assert value.utcoffset() is None
+
+
 def test_is_today_with_aware_timezone():
     """带时区的 datetime 也能正确判断今天。"""
     from datetime import timedelta, timezone

@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import sys
 import types
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -171,6 +172,27 @@ class TestHealthEndpoint:
         assert data["status"] == "degraded"
         assert data["sources"]["github"] == "degraded"
 
+    def test_health_handles_offset_ingest_timestamp(self):
+        """带时区的采集时间按真实时刻转换，不直接丢弃 offset。"""
+        from fastapi.testclient import TestClient
+
+        main_module = _load_app_module()
+        with (
+            patch.object(main_module, "agent", _make_mock_agent()),
+            patch.object(main_module, "scheduler", MagicMock()),
+            patch.object(main_module, "IngestStatusStore") as mock_store,
+            patch.object(main_module, "local_now", return_value=datetime(2026, 5, 18, 9)),
+        ):
+            mock_store.return_value.load_status.return_value = {
+                "last_ingest_at": "2026-05-18T00:30:00+00:00",
+                "successful_sources": [],
+                "failed_sources": [],
+                "skipped_sources": [],
+            }
+            data = TestClient(main_module.app).get("/health").json()
+
+        assert data["ingest_fresh"] is True
+
     def test_root_returns_200(self):
         """GET / returns 200 with service info."""
         from fastapi.testclient import TestClient
@@ -187,6 +209,20 @@ class TestHealthEndpoint:
         data = resp.json()
         assert "service" in data
         assert data["service"] == "Claw_news AI Assistant"
+
+    def test_root_reports_package_version(self):
+        """接口版本应来自安装包元数据，避免与项目版本漂移。"""
+        from fastapi.testclient import TestClient
+
+        main_module = _load_app_module()
+        with (
+            patch.object(main_module, "agent", _make_mock_agent()),
+            patch.object(main_module, "scheduler", MagicMock()),
+        ):
+            data = TestClient(main_module.app).get("/").json()
+
+        assert data["version"] == main_module.APP_VERSION
+        assert main_module.app.version == main_module.APP_VERSION
 
 
 class TestRunNewsEndpoint:
@@ -404,8 +440,8 @@ class TestRunNewsEndpoint:
                 )
             )
 
-        assert result.status == "degraded"  # push ok but state write partially failed
-        assert "source_metrics_write_failed" in result.errors
+        assert result.status == "ok"
+        assert "source_metrics_write_failed" not in result.errors
 
 
 class TestScheduler:

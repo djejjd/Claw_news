@@ -1166,7 +1166,7 @@ Expected: 全绿
 
 - [ ] **Step 2: 真实跑通前确认凭证来源**
 
-远程 hermes `.env`（`/home/ubuntu/hermes-data/.env`）中读取 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` / `FEISHU_HOME_CHANNEL`，把值填入 Claw_news 远程 `.env` 的 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` / `FEISHU_CHAT_ID`（需要用户授权访问凭证）。
+远程 hermes `.env`（`${HERMES_DATA_DIR}/.env`）中读取 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` / `FEISHU_HOME_CHANNEL`，把值填入 Claw_news 远程 `.env` 的 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` / `FEISHU_CHAT_ID`（需要用户授权访问凭证）。
 
 - [ ] **Step 3: 真实推送验证**
 

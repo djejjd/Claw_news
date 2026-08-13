@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from importlib.metadata import version as package_version
 
 from fastapi import FastAPI
 
 from app.agents.news_agent import NewsAgent
 from app.config import load_config
+from app.content.clock import local_now
 from app.scheduler.jobs import create_scheduler
 from app.storage.ingest_status_store import IngestStatusStore
 
@@ -24,6 +26,7 @@ logging.basicConfig(
 config = load_config()
 agent = NewsAgent(config)
 scheduler = create_scheduler(agent, config.tz)
+APP_VERSION = package_version("claw-news")
 
 
 @asynccontextmanager
@@ -36,7 +39,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Claw_news AI Assistant",
     description="RSS news collection → LLM summarization → WeCom push",
-    version="0.2.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -45,7 +48,7 @@ app = FastAPI(
 async def root():
     return {
         "service": "Claw_news AI Assistant",
-        "version": "0.2.0",
+        "version": APP_VERSION,
         "scheduler": "APScheduler — 09:00 daily",
         "endpoints": {
             "health": "/health",
@@ -66,7 +69,11 @@ async def health():
             from datetime import datetime
 
             last_dt = datetime.fromisoformat(last_ingest_at)
-            ingest_fresh = (datetime.now().replace(tzinfo=None) - last_dt).total_seconds() < 3600
+            if last_dt.tzinfo is not None:
+                from zoneinfo import ZoneInfo
+
+                last_dt = last_dt.astimezone(ZoneInfo(config.tz)).replace(tzinfo=None)
+            ingest_fresh = (local_now(config.tz) - last_dt).total_seconds() < 3600
         except ValueError:
             ingest_fresh = False
 

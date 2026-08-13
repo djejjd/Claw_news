@@ -603,6 +603,8 @@ class TestPipelineGitHubSupplement:
         publish_status = json.loads((tmp_path / "publish_status.json").read_text(encoding="utf-8"))
         assert publish_status["status"] == "failed"
         assert publish_status["selected_count"] == 1
+        assert publish_status["summary_count"] == 0
+        assert publish_status["final_count"] == 0
         assert publish_status["pushed"] is False
         assert publish_status["errors"] == ["llm_parse: bad json"]
 

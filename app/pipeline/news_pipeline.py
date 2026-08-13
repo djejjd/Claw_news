@@ -10,6 +10,7 @@ from pathlib import Path
 from aggregator.merger import Merger
 from app.category_policy import display_category_for_runtime, normalize_category
 from app.classifiers.topic_classifier import TopicClassifier
+from app.content.clock import local_now
 from app.delivery.state import ChannelResult, DeliveryState, make_delivery_id
 from app.delivery.store import PendingDeliveryCorruptError, PendingDeliveryStore
 from app.pipeline.context import RunContext
@@ -275,12 +276,13 @@ def _build_publish_payload_from_pending(
     pending_payload: dict,
     *,
     errors: list[str],
+    tz: str = "Asia/Shanghai",
 ) -> DigestPayload:
     finalization = pending_payload["finalization"]
     return DigestPayload(
         date=finalization["date"],
         period=finalization["period"],
-        published_at=datetime.now().isoformat(),
+        published_at=local_now(tz).isoformat(),
         trigger_mode=finalization["trigger_mode"],
         headline_items=finalization["headline_items"],
         daily_judgement=finalization["daily_judgement"],
@@ -335,6 +337,7 @@ def _finalize_delivery(
     state_store: StateStore,
     metrics_store: SourceMetricsStore,
     exposure_store,
+    tz: str = "Asia/Shanghai",
 ) -> list[str]:
     errors: list[str] = []
     finalization = pending_payload["finalization"]
@@ -346,7 +349,7 @@ def _finalize_delivery(
 
     try:
         metrics_store.append_publish_source_metrics(
-            datetime.now().isoformat(), finalization["metric_rows"]
+            local_now(tz).isoformat(), finalization["metric_rows"]
         )
     except Exception:
         errors.append("publish_metrics_write_failed")
@@ -356,7 +359,11 @@ def _finalize_delivery(
             finalization["selected_counts_by_source"]
         )
         if written_sources < len(finalization["selected_counts_by_source"]):
-            errors.append("source_metrics_write_failed")
+            logger.warning(
+                "部分来源没有可回写的采集指标记录: written=%s expected=%s",
+                written_sources,
+                len(finalization["selected_counts_by_source"]),
+            )
     except Exception:
         errors.append("source_metrics_write_failed")
 
@@ -364,7 +371,7 @@ def _finalize_delivery(
         state_store.merge_pushed_urls(set(finalization["published_urls"]))
         state_store.merge_published_keys(finalization["published_keys"])
         state_store.write_digest(
-            _build_publish_payload_from_pending(pending_payload, errors=errors)
+            _build_publish_payload_from_pending(pending_payload, errors=errors, tz=tz)
         )
     except Exception:
         errors.append("state_write_failed")
@@ -373,10 +380,15 @@ def _finalize_delivery(
 
 
 def _update_pending_channel(
-    pending_payload: dict, channel: str, status: str, error: str | None = None
+    pending_payload: dict,
+    channel: str,
+    status: str,
+    error: str | None = None,
+    *,
+    tz: str = "Asia/Shanghai",
 ) -> None:
     pending_payload["channels"][channel]["status"] = status
-    pending_payload["channels"][channel]["attempted_at"] = datetime.now().isoformat()
+    pending_payload["channels"][channel]["attempted_at"] = local_now(tz).isoformat()
     pending_payload["channels"][channel]["error"] = error
 
 
@@ -405,7 +417,9 @@ async def _resume_pending_delivery(
         delivery_state = _delivery_state_from_payload(pending_payload)
     except Exception as exc:
         _write_publish_status(
-            _make_publish_status("failed", 0, False, [f"pending_delivery_corrupt: {exc}"])
+            _make_publish_status(
+                "failed", 0, False, [f"pending_delivery_corrupt: {exc}"], tz=config.tz
+            )
         )
         return PublishResult(
             status="failed",
@@ -418,7 +432,7 @@ async def _resume_pending_delivery(
 
     if not (_has_feishu_delivery(config) or _has_telegram_delivery(config)):
         errors = ["delivery_config_missing"]
-        _write_publish_status(_make_publish_status("failed", 0, False, errors))
+        _write_publish_status(_make_publish_status("failed", 0, False, errors, tz=config.tz))
         return PublishResult(
             status="failed",
             selected_count=len(pending_payload["finalization"]["published_urls"]),
@@ -438,7 +452,13 @@ async def _resume_pending_delivery(
         ok, error = await _attempt_wecom(
             messages.get("wecom_markdown", ""), config.wecom_webhook_url
         )
-        _update_pending_channel(pending_payload, "wecom", "succeeded" if ok else "failed", error)
+        _update_pending_channel(
+            pending_payload,
+            "wecom",
+            "succeeded" if ok else "failed",
+            error,
+            tz=getattr(config, "tz", "Asia/Shanghai"),
+        )
         if not ok and error:
             errors.append(error)
     if delivery_state.can_attempt("telegram") and _has_telegram_delivery(config):
@@ -448,7 +468,13 @@ async def _resume_pending_delivery(
             config.telegram_chat_id,
             proxy=config.telegram_proxy,
         )
-        _update_pending_channel(pending_payload, "telegram", "succeeded" if ok else "failed", error)
+        _update_pending_channel(
+            pending_payload,
+            "telegram",
+            "succeeded" if ok else "failed",
+            error,
+            tz=getattr(config, "tz", "Asia/Shanghai"),
+        )
         if not ok and error:
             errors.append(error)
     if delivery_state.can_attempt("feishu") and _has_feishu_delivery(config):
@@ -458,7 +484,13 @@ async def _resume_pending_delivery(
             config.feishu_app_secret,
             config.feishu_chat_id,
         )
-        _update_pending_channel(pending_payload, "feishu", "succeeded" if ok else "failed", error)
+        _update_pending_channel(
+            pending_payload,
+            "feishu",
+            "succeeded" if ok else "failed",
+            error,
+            tz=getattr(config, "tz", "Asia/Shanghai"),
+        )
         if not ok and error:
             errors.append(error)
 
@@ -466,7 +498,17 @@ async def _resume_pending_delivery(
 
     status, any_succeeded, all_succeeded = _pending_completion_status(pending_payload)
     if not any_succeeded:
-        _write_publish_status(_make_publish_status(status, selected_count, False, errors))
+        _write_publish_status(
+            _make_publish_status(
+                status,
+                selected_count,
+                False,
+                errors,
+                summary_count=len(pending_payload["finalization"]["headline_items"]),
+                final_count=0,
+                tz=getattr(config, "tz", "Asia/Shanghai"),
+            )
+        )
         return PublishResult(
             status=status,
             selected_count=selected_count,
@@ -477,7 +519,17 @@ async def _resume_pending_delivery(
         )
 
     if not all_succeeded:
-        _write_publish_status(_make_publish_status(status, selected_count, True, errors))
+        _write_publish_status(
+            _make_publish_status(
+                status,
+                selected_count,
+                True,
+                errors,
+                summary_count=len(pending_payload["finalization"]["headline_items"]),
+                final_count=len(pending_payload["finalization"]["headline_items"]),
+                tz=getattr(config, "tz", "Asia/Shanghai"),
+            )
+        )
         return PublishResult(
             status=status,
             selected_count=selected_count,
@@ -493,10 +545,21 @@ async def _resume_pending_delivery(
         state_store=state_store,
         metrics_store=metrics_store,
         exposure_store=exposure_store,
+        tz=getattr(config, "tz", "Asia/Shanghai"),
     )
     errors.extend(final_errors)
     status = "ok" if not errors else "degraded"
-    _write_publish_status(_make_publish_status(status, selected_count, True, errors))
+    _write_publish_status(
+        _make_publish_status(
+            status,
+            selected_count,
+            True,
+            errors,
+            summary_count=len(pending_payload["finalization"]["headline_items"]),
+            final_count=len(pending_payload["finalization"]["headline_items"]),
+            tz=getattr(config, "tz", "Asia/Shanghai"),
+        )
+    )
     if not final_errors:
         pending_store.delete(ctx.time_window_start[:10], ctx.period)
     return PublishResult(
@@ -556,7 +619,13 @@ async def _deliver_with_pending(
         pending_store.save(ctx.time_window_start[:10], ctx.period, pending_payload)
     except Exception as exc:
         _write_publish_status(
-            _make_publish_status("failed", selected_count, False, [f"pending_write_failed: {exc}"])
+            _make_publish_status(
+                "failed",
+                selected_count,
+                False,
+                [f"pending_write_failed: {exc}"],
+                tz=config.tz,
+            )
         )
         return PublishResult(
             status="failed",
@@ -573,7 +642,11 @@ async def _deliver_with_pending(
     if _has_wecom_delivery(config):
         wecom_ok, wecom_error = await _attempt_wecom(markdown, config.wecom_webhook_url)
         _update_pending_channel(
-            pending_payload, "wecom", "succeeded" if wecom_ok else "failed", wecom_error
+            pending_payload,
+            "wecom",
+            "succeeded" if wecom_ok else "failed",
+            wecom_error,
+            tz=getattr(config, "tz", "Asia/Shanghai"),
         )
         if not wecom_ok and wecom_error:
             errors.append(wecom_error)
@@ -593,6 +666,7 @@ async def _deliver_with_pending(
             "telegram",
             "succeeded" if telegram_ok else "failed",
             telegram_error,
+            tz=getattr(config, "tz", "Asia/Shanghai"),
         )
         if not telegram_ok and telegram_error:
             errors.append(telegram_error)
@@ -608,7 +682,11 @@ async def _deliver_with_pending(
             feishu_card, config.feishu_app_id, config.feishu_app_secret, config.feishu_chat_id
         )
         _update_pending_channel(
-            pending_payload, "feishu", "succeeded" if feishu_ok else "failed", feishu_error
+            pending_payload,
+            "feishu",
+            "succeeded" if feishu_ok else "failed",
+            feishu_error,
+            tz=getattr(config, "tz", "Asia/Shanghai"),
         )
         if not feishu_ok and feishu_error:
             errors.append(feishu_error)
@@ -621,7 +699,13 @@ async def _deliver_with_pending(
     if not any_succeeded:
         _write_publish_status(
             _make_publish_status(
-                status, selected_count, bool(wecom_ok or telegram_ok or feishu_ok), errors
+                status,
+                selected_count,
+                bool(wecom_ok or telegram_ok or feishu_ok),
+                errors,
+                summary_count=len(headline_payload),
+                final_count=len(headline_payload),
+                tz=getattr(config, "tz", "Asia/Shanghai"),
             )
         )
         return PublishResult(
@@ -634,7 +718,17 @@ async def _deliver_with_pending(
         )
 
     if not all_succeeded:
-        _write_publish_status(_make_publish_status(status, selected_count, True, errors))
+        _write_publish_status(
+            _make_publish_status(
+                status,
+                selected_count,
+                True,
+                errors,
+                summary_count=len(headline_payload),
+                final_count=len(headline_payload),
+                tz=getattr(config, "tz", "Asia/Shanghai"),
+            )
+        )
         return PublishResult(
             status=status,
             selected_count=selected_count,
@@ -650,10 +744,21 @@ async def _deliver_with_pending(
         state_store=state_store,
         metrics_store=metrics_store,
         exposure_store=exposure_store,
+        tz=getattr(config, "tz", "Asia/Shanghai"),
     )
     errors.extend(final_errors)
     status = "ok" if not errors else "degraded"
-    _write_publish_status(_make_publish_status(status, selected_count, True, errors))
+    _write_publish_status(
+        _make_publish_status(
+            status,
+            selected_count,
+            True,
+            errors,
+            summary_count=len(headline_payload),
+            final_count=len(headline_payload),
+            tz=getattr(config, "tz", "Asia/Shanghai"),
+        )
+    )
     if not final_errors:
         pending_store.delete(ctx.time_window_start[:10], ctx.period)
     return PublishResult(
@@ -690,7 +795,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             pending_payload = pending_store.load(ctx.time_window_start[:10], ctx.period)
         except PendingDeliveryCorruptError as exc:
             errors = [f"pending_delivery_corrupt: {exc}"]
-            _write_publish_status(_make_publish_status("failed", 0, False, errors))
+            _write_publish_status(_make_publish_status("failed", 0, False, errors, tz=config.tz))
             return PublishResult(
                 status="failed",
                 selected_count=0,
@@ -743,7 +848,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         policies = build_source_policy_registry(feeds_raw)
 
         # 2. 72 小时读取
-        now = datetime.now()
+        now = local_now(config.tz)
         window_end = now.isoformat()
         try:
             candidates = ingestion_store.load_recent_candidates(
@@ -768,7 +873,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             candidates = [i for i in candidates if i.category in {"ai", "tool", "game"}]
 
         if not candidates:
-            _write_publish_status(_make_publish_status("skipped", 0, False, []))
+            _write_publish_status(_make_publish_status("skipped", 0, False, [], tz=config.tz))
             return PublishResult(
                 status="skipped",
                 selected_count=0,
@@ -785,7 +890,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         candidates, relevance_rejected = rf.evaluate_batch(candidates, policies)
 
         if not candidates:
-            _write_publish_status(_make_publish_status("skipped", 0, False, []))
+            _write_publish_status(_make_publish_status("skipped", 0, False, [], tz=config.tz))
             return PublishResult(
                 status="skipped",
                 selected_count=0,
@@ -803,7 +908,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         candidates_used_historical = False
         relevance_rejected = []
         selection_result = None
-        now = datetime.now()
+        now = local_now(config.tz)
 
         candidates = ingestion_store.load_window_candidates(
             ctx.time_window_start,
@@ -817,7 +922,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             candidates = [i for i in candidates if i.category in {"ai", "tool", "game"}]
 
         if not candidates:
-            _write_publish_status(_make_publish_status("skipped", 0, False, []))
+            _write_publish_status(_make_publish_status("skipped", 0, False, [], tz=config.tz))
             return PublishResult(
                 status="skipped",
                 selected_count=0,
@@ -863,7 +968,13 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     if "_parse_error" in llm_result and not llm_result.get("headline_items"):
         _write_publish_status(
             _make_publish_status(
-                "failed", len(selected), False, [f"llm_parse: {llm_result['_parse_error']}"]
+                "failed",
+                len(selected),
+                False,
+                [f"llm_parse: {llm_result['_parse_error']}"],
+                summary_count=0,
+                final_count=0,
+                tz=config.tz,
             )
         )
         return PublishResult(
@@ -971,7 +1082,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         pr = await WeComPusher(config.wecom_webhook_url).push_single_markdown(markdown)
     except Exception as exc:
         _write_publish_status(
-            _make_publish_status("failed", len(selected), False, [f"push: {exc}"])
+            _make_publish_status("failed", len(selected), False, [f"push: {exc}"], tz=config.tz)
         )
         return PublishResult(
             status="failed",
@@ -982,7 +1093,9 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             errors=[f"push: {exc}"],
         )
     if not pr.success:
-        _write_publish_status(_make_publish_status("failed", len(selected), False, ["push_failed"]))
+        _write_publish_status(
+            _make_publish_status("failed", len(selected), False, ["push_failed"], tz=config.tz)
+        )
         return PublishResult(
             status="failed",
             selected_count=len(selected),
@@ -1032,7 +1145,11 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     try:
         written_sources = metrics_store.write_selected_counts(selected_counts_by_source)
         if written_sources < len(selected_counts_by_source):
-            errors.append("source_metrics_write_failed")
+            logger.warning(
+                "部分来源没有可回写的采集指标记录: written=%s expected=%s",
+                written_sources,
+                len(selected_counts_by_source),
+            )
     except Exception:
         errors.append("source_metrics_write_failed")
 
@@ -1043,7 +1160,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             DigestPayload(
                 date=ctx.time_window_start[:10],
                 period=ctx.period,
-                published_at=datetime.now().isoformat(),
+                published_at=local_now(config.tz).isoformat(),
                 trigger_mode=ctx.trigger_mode,
                 headline_items=[
                     {
@@ -1104,7 +1221,15 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
 
     publish_ok = len(errors) == 0
     _write_publish_status(
-        _make_publish_status("ok" if publish_ok else "degraded", len(selected), True, errors)
+        _make_publish_status(
+            "ok" if publish_ok else "degraded",
+            len(selected),
+            True,
+            errors,
+            summary_count=len(headline_payload),
+            final_count=len(summary.headline_items),
+            tz=config.tz,
+        )
     )
     return PublishResult(
         status="ok" if publish_ok else "degraded",
@@ -1116,13 +1241,26 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     )
 
 
-def _make_publish_status(status, selected_count, pushed, errors):
+def _make_publish_status(
+    status,
+    selected_count,
+    pushed,
+    errors,
+    *,
+    summary_count: int | None = None,
+    final_count: int | None = None,
+    tz: str = "Asia/Shanghai",
+):
+    summary_count = selected_count if summary_count is None else summary_count
+    final_count = summary_count if final_count is None else final_count
     return {
         "status": status,
         "selected_count": selected_count,
+        "summary_count": summary_count,
+        "final_count": final_count,
         "pushed": pushed,
         "errors": errors,
-        "recorded_at": datetime.now().isoformat(),
+        "recorded_at": local_now(tz).isoformat(),
     }
 
 

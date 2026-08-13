@@ -41,7 +41,7 @@
 
 ### 2.3 飞书凭证来源
 
-hermes（`nousresearch/hermes-agent`，远程 `/home/ubuntu/hermes-data/.env`）已配置飞书应用机器人：
+hermes（`nousresearch/hermes-agent`，远程 `${HERMES_DATA_DIR}/.env`）已配置飞书应用机器人：
 
 ```dotenv
 FEISHU_APP_ID=cli_xxx
