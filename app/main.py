@@ -73,9 +73,7 @@ async def health():
                 from zoneinfo import ZoneInfo
 
                 last_dt = last_dt.astimezone(ZoneInfo(config.tz)).replace(tzinfo=None)
-            ingest_fresh = (
-                local_now(config.tz) - last_dt
-            ).total_seconds() < 3600
+            ingest_fresh = (local_now(config.tz) - last_dt).total_seconds() < 3600
         except ValueError:
             ingest_fresh = False
 
