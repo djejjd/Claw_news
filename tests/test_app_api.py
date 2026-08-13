@@ -210,6 +210,20 @@ class TestHealthEndpoint:
         assert "service" in data
         assert data["service"] == "Claw_news AI Assistant"
 
+    def test_root_reports_package_version(self):
+        """接口版本应来自安装包元数据，避免与项目版本漂移。"""
+        from fastapi.testclient import TestClient
+
+        main_module = _load_app_module()
+        with (
+            patch.object(main_module, "agent", _make_mock_agent()),
+            patch.object(main_module, "scheduler", MagicMock()),
+        ):
+            data = TestClient(main_module.app).get("/").json()
+
+        assert data["version"] == main_module.APP_VERSION
+        assert main_module.app.version == main_module.APP_VERSION
+
 
 class TestRunNewsEndpoint:
     def test_run_news_triggers_agent(self):

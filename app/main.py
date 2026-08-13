@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from importlib.metadata import version as package_version
 
 from fastapi import FastAPI
 
@@ -25,6 +26,7 @@ logging.basicConfig(
 config = load_config()
 agent = NewsAgent(config)
 scheduler = create_scheduler(agent, config.tz)
+APP_VERSION = package_version("claw-news")
 
 
 @asynccontextmanager
@@ -37,7 +39,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Claw_news AI Assistant",
     description="RSS news collection → LLM summarization → WeCom push",
-    version="0.2.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -46,7 +48,7 @@ app = FastAPI(
 async def root():
     return {
         "service": "Claw_news AI Assistant",
-        "version": "0.2.0",
+        "version": APP_VERSION,
         "scheduler": "APScheduler — 09:00 daily",
         "endpoints": {
             "health": "/health",
