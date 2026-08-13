@@ -13,6 +13,7 @@ from fastapi import FastAPI
 
 from app.agents.news_agent import NewsAgent
 from app.config import load_config
+from app.content.clock import local_now
 from app.scheduler.jobs import create_scheduler
 from app.storage.ingest_status_store import IngestStatusStore
 
@@ -66,7 +67,13 @@ async def health():
             from datetime import datetime
 
             last_dt = datetime.fromisoformat(last_ingest_at)
-            ingest_fresh = (datetime.now().replace(tzinfo=None) - last_dt).total_seconds() < 3600
+            if last_dt.tzinfo is not None:
+                from zoneinfo import ZoneInfo
+
+                last_dt = last_dt.astimezone(ZoneInfo(config.tz)).replace(tzinfo=None)
+            ingest_fresh = (
+                local_now(config.tz) - last_dt
+            ).total_seconds() < 3600
         except ValueError:
             ingest_fresh = False
 

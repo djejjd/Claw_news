@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -30,7 +29,7 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------
 
 
-async def run_ingest():
+async def run_ingest(tz: str = "Asia/Shanghai"):
     """Run all AI-relevant collectors, normalize to CandidateItem, write to Ingestion Store.
 
     Each collector is wrapped independently — one failure never
@@ -46,7 +45,9 @@ async def run_ingest():
     metrics_store = SourceMetricsStore()
     state_store = SourceStateStore()
     ingest_run_id = uuid.uuid4().hex[:12]
-    run_started_at = datetime.now().isoformat()
+    from app.content.clock import local_now
+
+    run_started_at = local_now(tz).isoformat()
     all_items: list = []
     source_failures: list[str] = []
     skipped_sources: list[str] = []
@@ -168,9 +169,9 @@ async def run_ingest():
     return {"item_count": 0, "status": "no_items"}
 
 
-async def run_ingest_with_cleanup():
+async def run_ingest_with_cleanup(tz: str = "Asia/Shanghai"):
     """Ingest + expire stale candidates beyond 7 days."""
-    await run_ingest()
+    await run_ingest(tz)
     store = IngestionStore()
     store.prune_expired(keep_days=7)
 
@@ -202,6 +203,7 @@ def create_scheduler(agent, tz: str = "Asia/Shanghai") -> AsyncIOScheduler:
         "interval",
         minutes=30,
         id="ingest_30m",
+        args=[tz],
         max_instances=1,
         coalesce=True,
     )

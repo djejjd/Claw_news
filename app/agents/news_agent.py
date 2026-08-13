@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
 
 from app.config import AppConfig
 from app.pipeline.context import TriggerMode
@@ -75,10 +74,11 @@ class NewsAgent:
     # ------------------------------------------------------------------
 
     async def _run(self, trigger_mode: TriggerMode) -> dict:
+        from app.content.clock import local_now
         from app.pipeline.context import RunContext
         from app.pipeline.news_pipeline import run_pipeline
 
-        now = datetime.now()
+        now = local_now(self._config.tz)
         ctx = RunContext(
             trigger_mode=trigger_mode,
             time_window_start=now.strftime("%Y-%m-%dT00:00:00"),
