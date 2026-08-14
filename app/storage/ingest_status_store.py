@@ -25,6 +25,7 @@ class IngestStatusStore:
                 "successful_sources": [],
                 "failed_sources": [],
                 "skipped_sources": [],
+                "degraded_sources": [],
             }
         try:
             return json.loads(self.path.read_text(encoding="utf-8"))
@@ -35,4 +36,5 @@ class IngestStatusStore:
                 "successful_sources": [],
                 "failed_sources": [],
                 "skipped_sources": [],
+                "degraded_sources": [],
             }

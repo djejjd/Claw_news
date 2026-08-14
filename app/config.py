@@ -52,6 +52,7 @@ class AppConfig:
     wecom_webhook_url: str
     tz: str
     news_rss_urls: list[str]
+    source_failure_degraded_threshold: int = 3
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
     telegram_proxy: str | None = None
@@ -99,6 +100,13 @@ def load_config() -> AppConfig:
     )
 
     tz = _env("TZ", dotenv)
+    threshold_raw = _env("SOURCE_FAILURE_DEGRADED_THRESHOLD", dotenv)
+    try:
+        source_failure_degraded_threshold = int(threshold_raw) if threshold_raw else 3
+    except ValueError as exc:
+        raise ValueError("SOURCE_FAILURE_DEGRADED_THRESHOLD must be a positive integer") from exc
+    if source_failure_degraded_threshold <= 0:
+        raise ValueError("SOURCE_FAILURE_DEGRADED_THRESHOLD must be a positive integer")
     telegram_bot_token = _env("TELEGRAM_BOT_TOKEN", dotenv) or None
     telegram_chat_id = _env("TELEGRAM_CHAT_ID", dotenv) or None
     telegram_proxy = _env("TELEGRAM_PROXY", dotenv) or None
@@ -124,6 +132,7 @@ def load_config() -> AppConfig:
         wecom_webhook_url=_env("WECOM_WEBHOOK_URL", dotenv),
         tz=tz if tz else "Asia/Shanghai",
         news_rss_urls=news_rss_urls,
+        source_failure_degraded_threshold=source_failure_degraded_threshold,
         telegram_bot_token=telegram_bot_token,
         telegram_chat_id=telegram_chat_id,
         telegram_proxy=telegram_proxy,

@@ -84,6 +84,23 @@ class TestDefaults:
         config = load_config()
         assert config.news_rss_urls == []
 
+    def test_source_failure_degraded_threshold_defaults_to_three(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.delenv("SOURCE_FAILURE_DEGRADED_THRESHOLD", raising=False)
+
+        assert load_config().source_failure_degraded_threshold == 3
+
+    def test_source_failure_degraded_threshold_must_be_positive_integer(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.setenv("SOURCE_FAILURE_DEGRADED_THRESHOLD", "0")
+
+        with pytest.raises(ValueError, match="SOURCE_FAILURE_DEGRADED_THRESHOLD"):
+            load_config()
+
 
 class TestNewsRssUrlsParsing:
     def test_parses_single_url(self, monkeypatch):

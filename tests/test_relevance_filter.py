@@ -306,6 +306,51 @@ def test_tool_game_fallback_confidence_with_keywords():
     assert result.reason == "positive_rule"
 
 
+def test_strict_profile_requires_two_distinct_positive_signals():
+    from app.classifiers.relevance_filter import RelevanceFilter
+    from app.content.source_policy import SourcePolicy
+
+    policy = SourcePolicy("ithome", "fast_news", 24, 2.0, "strict")
+    rejected = RelevanceFilter().evaluate(
+        _make_item(title="AI 快讯", summary="普通资讯", source="ithome", category="ai"), policy
+    )
+    accepted = RelevanceFilter().evaluate(
+        _make_item(title="AI 模型发布", summary="普通资讯", source="ithome", category="ai"),
+        policy,
+    )
+
+    assert rejected.accepted is False
+    assert rejected.reason == "below_threshold"
+    assert accepted.accepted is True
+    assert accepted.reason == "positive_rule"
+
+
+def test_strict_profile_does_not_count_contained_keywords_twice():
+    from app.classifiers.relevance_filter import RelevanceFilter
+    from app.content.source_policy import SourcePolicy
+
+    result = RelevanceFilter().evaluate(
+        _make_item(title="大模型快讯", summary="普通资讯", category="ai"),
+        SourcePolicy("ithome", "fast_news", 24, 2.0, "strict"),
+    )
+
+    assert result.accepted is False
+    assert result.matched_positive == ("大模型",)
+
+
+def test_specific_noise_phrase_does_not_reject_technical_legal_ai_news():
+    from app.classifiers.relevance_filter import RelevanceFilter
+    from app.content.source_policy import SourcePolicy
+
+    policy = SourcePolicy("qbitai", "vertical", 48, 3.5, "standard")
+    result = RelevanceFilter().evaluate(
+        _make_item(title="AI 合规研究发布", summary="大模型在法律科技中的应用", category="ai"),
+        policy,
+    )
+
+    assert result.accepted is True
+
+
 def test_all_reason_values_appear():
     """验证 5 个 reason 枚举值在测试中都被覆盖。"""
     reasons = {

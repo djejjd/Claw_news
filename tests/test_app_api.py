@@ -146,8 +146,8 @@ class TestHealthEndpoint:
         assert resp.status_code == 200
         assert resp.json()["ingest"]["last_item_count"] == 3
 
-    def test_health_is_degraded_when_source_is_skipped(self):
-        """Skipped source should pull overall health down to degraded."""
+    def test_health_does_not_degrade_before_failure_threshold(self):
+        """Optional source skipped once is observable but does not cross the degraded threshold."""
         from fastapi.testclient import TestClient
 
         main_module = _load_app_module()
@@ -169,8 +169,49 @@ class TestHealthEndpoint:
 
         assert resp.status_code == 200
         data = resp.json()
+        assert data["status"] == "healthy"
+        assert "github" not in data["sources"]
+
+    def test_health_exposes_structured_degraded_source(self):
+        from fastapi.testclient import TestClient
+
+        main_module = _load_app_module()
+        with (
+            patch.object(main_module, "agent", _make_mock_agent()),
+            patch.object(main_module, "scheduler", MagicMock()),
+            patch.object(main_module, "IngestStatusStore") as mock_store,
+        ):
+            mock_store.return_value.load_status.return_value = {
+                "last_ingest_at": "2099-05-18T08:00:00",
+                "successful_sources": [],
+                "failed_sources": [],
+                "skipped_sources": [],
+                "degraded_sources": [{"source": "huggingface", "consecutive_failure_count": 3}],
+            }
+            data = TestClient(main_module.app).get("/health").json()
+
         assert data["status"] == "degraded"
-        assert data["sources"]["github"] == "degraded"
+        assert data["sources"]["huggingface"] == "degraded"
+
+    def test_failed_source_is_not_overwritten_by_degraded_history(self):
+        from fastapi.testclient import TestClient
+
+        main_module = _load_app_module()
+        with (
+            patch.object(main_module, "agent", _make_mock_agent()),
+            patch.object(main_module, "scheduler", MagicMock()),
+            patch.object(main_module, "IngestStatusStore") as mock_store,
+        ):
+            mock_store.return_value.load_status.return_value = {
+                "last_ingest_at": "2099-05-18T08:00:00",
+                "successful_sources": [],
+                "failed_sources": ["huggingface: timeout"],
+                "skipped_sources": [],
+                "degraded_sources": [{"source": "huggingface", "consecutive_failure_count": 3}],
+            }
+            data = TestClient(main_module.app).get("/health").json()
+
+        assert data["sources"]["huggingface"] == "failed"
 
     def test_health_handles_offset_ingest_timestamp(self):
         """带时区的采集时间按真实时刻转换，不直接丢弃 offset。"""

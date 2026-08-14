@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import json
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from app.content.source_policy import build_source_policy_registry
-from app.pipeline.candidate import CandidateItem
 from app.pipeline.selection import select_digest
-from app.storage.ingestion_store import filter_unexpired_candidates
+from app.storage.ingestion_store import IngestionStore, filter_unexpired_candidates
+from infra.storage.state_store import StateStore
 
 
 def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
@@ -30,14 +29,14 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
         ValueError: at 参数格式非法
         FileNotFoundError: data_dir 不存在
     """
-    data_path = Path(data_dir)
-    if not data_path.exists():
-        raise FileNotFoundError(f"数据目录不存在: {data_dir}")
-
     try:
         now = datetime.fromisoformat(at)
     except (ValueError, TypeError) as e:
         raise ValueError(f"非法时间参数 '{at}': {e}") from e
+
+    data_path = Path(data_dir)
+    if not data_path.exists():
+        raise FileNotFoundError(f"数据目录不存在: {data_dir}")
 
     # 1. 加载 feeds.yaml 配置
     feeds_path = data_path.parent / "feeds.yaml"
@@ -53,40 +52,20 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
         for f in feed_config.get("feeds", {}).get(cat, []):
             if isinstance(f, dict):
                 feeds_raw.append({**f, "category": cat})
+    for source, policy in feed_config.get("source_policies", {}).items():
+        if isinstance(policy, dict):
+            feeds_raw.append({**policy, "source": policy.get("source", source)})
     policies = build_source_policy_registry(feeds_raw)
 
-    # 3. 读取 72 小时内候选
-    # 注：回放按目录日期过滤（宽口径），不做 fetched_at 逐个过滤。
-    # production pipeline 的 load_recent_candidates() 会额外按 fetched_at 窗口裁剪，
-    # 回放为保持纯只读（不修改输入数据）采用目录级判断。对日常用法差异可忽略。
-
-    start_dt = now - timedelta(hours=lookback_hours)
-    candidates: list[CandidateItem] = []
-    ingestion_dir = data_path / "ingestion"
-    if ingestion_dir.exists():
-        for day_dir in sorted(ingestion_dir.iterdir()):
-            if not day_dir.is_dir():
-                continue
-            try:
-                dir_date = datetime.strptime(day_dir.name, "%Y-%m-%d").date()
-            except ValueError:
-                continue
-            if not (start_dt.date() <= dir_date <= now.date()):
-                continue
-            cand_path = day_dir / "candidates.jsonl"
-            if not cand_path.exists():
-                continue
-            for line in cand_path.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    data = json.loads(line)
-                    candidates.append(
-                        CandidateItem(**{k: v for k, v in data.items() if k in _CANDIDATE_FIELDS})
-                    )
-                except (json.JSONDecodeError, TypeError):
-                    continue
+    # 3. 复用生产读取路径：按 fetched_at 限窗、canonical_key 折叠和已发布项过滤。
+    store = IngestionStore(root_dir=data_path.parent)
+    state_store = StateStore(data_path)
+    candidates = store.load_recent_candidates(
+        now.isoformat(),
+        lookback_hours=lookback_hours,
+        pushed_urls=state_store.load_pushed_urls(),
+        pushed_keys=state_store.load_published_keys(),
+    )
 
     candidate_count = len(candidates)
 
@@ -130,6 +109,20 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
         "today_count": today_count,
         "backfill_count": backfill_count,
         "rejection_reasons": dict(rejection_reasons),
+        "soft_source_cap_exceeded_count": sum(
+            evidence.soft_source_cap_exceeded for evidence in result.evidence
+        ),
+        "selection_evidence": [
+            {
+                "canonical_key": evidence.canonical_key,
+                "phase": evidence.phase,
+                "final_score": evidence.final_score,
+                "diversity_penalty": evidence.diversity_penalty,
+                "selection_score": evidence.selection_score,
+                "soft_source_cap_exceeded": evidence.soft_source_cap_exceeded,
+            }
+            for evidence in result.evidence
+        ],
         "selected": [
             {
                 "title": it.title,
@@ -140,9 +133,3 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
             for it in result.selected
         ],
     }
-
-
-_CANDIDATE_FIELDS = {
-    f.name
-    for f in CandidateItem.__dataclass_fields__.values()  # type: ignore[attr-defined]
-}

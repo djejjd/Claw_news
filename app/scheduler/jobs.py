@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------
 
 
-async def run_ingest(tz: str = "Asia/Shanghai"):
+async def run_ingest(tz: str = "Asia/Shanghai", failure_degraded_threshold: int = 3):
     """Run all AI-relevant collectors, normalize to CandidateItem, write to Ingestion Store.
 
     Each collector is wrapped independently — one failure never
@@ -52,6 +52,7 @@ async def run_ingest(tz: str = "Asia/Shanghai"):
     source_failures: list[str] = []
     skipped_sources: list[str] = []
     successful_sources: list[str] = []
+    degraded_sources: list[dict] = []
     recent_seen_keys = set(store.load_recent_seen_canonical_keys())
 
     hf_proxy = os.getenv("HF_PROXY", "").strip() or None
@@ -62,6 +63,7 @@ async def run_ingest(tz: str = "Asia/Shanghai"):
     for spec in collector_specs:
         started_at = time.perf_counter()
         status = "ok"
+        failure_reason = None
         raw_items = []
         source_state = state_store.load_state(spec.name, default_fetch_count=10)
         try:
@@ -77,6 +79,24 @@ async def run_ingest(tz: str = "Asia/Shanghai"):
             if partial_failures:
                 skipped_sources.extend(f"{spec.name}:feed={f}" for f in partial_failures)
                 status = "degraded"
+                for failure in partial_failures:
+                    feed_source, _, feed_error = failure.partition(":")
+                    metrics_store.append_run_metric(
+                        {
+                            "source": f"rss:{feed_source}",
+                            "run_id": ingest_run_id,
+                            "run_started_at": run_started_at,
+                            "raw_fetched_count": 0,
+                            "deduped_new_count": 0,
+                            "accepted_count": 0,
+                            "selected_count": 0,
+                            "rejected_duplicate_count": 0,
+                            "rejected_quality_count": 0,
+                            "duration_ms": 0,
+                            "status": "error",
+                            "failure_reason": feed_error.strip() or failure,
+                        }
+                    )
             successful_sources.append(spec.name)
             raw_items = [
                 item
@@ -88,10 +108,12 @@ async def run_ingest(tz: str = "Asia/Shanghai"):
                 logger.warning("Ingest source skipped: %s (%s)", spec.name, e)
                 skipped_sources.append(f"{spec.name}: {e}")
                 status = "skipped"
+                failure_reason = str(e)
             else:
                 logger.exception("Ingest source failed: %s", spec.name)
                 source_failures.append(f"{spec.name}: {e}")
                 status = "error"
+                failure_reason = str(e)
 
         deduped_items: list[tuple[str, object]] = []
         rejected_duplicate_count = 0
@@ -132,6 +154,7 @@ async def run_ingest(tz: str = "Asia/Shanghai"):
                 "rejected_quality_count": rejected_quality_count,
                 "duration_ms": duration_ms,
                 "status": status,
+                "failure_reason": failure_reason,
             }
         )
 
@@ -141,6 +164,28 @@ async def run_ingest(tz: str = "Asia/Shanghai"):
             recent_metrics,
             run_started_at,
         )
+        # RSS 部分 feed 失败已单独落指标，不能污染聚合 rss 来源的连续失败状态。
+        if status in {"ok", "degraded"}:
+            updated_state.update(
+                consecutive_failure_count=0,
+                last_success_at=run_started_at,
+                last_error=None,
+            )
+        else:
+            failures = int(source_state.get("consecutive_failure_count", 0)) + 1
+            updated_state.update(
+                consecutive_failure_count=failures,
+                last_failure_at=run_started_at,
+                last_error=failure_reason or status,
+            )
+            if failures >= failure_degraded_threshold:
+                degraded_sources.append(
+                    {
+                        "source": spec.name,
+                        "consecutive_failure_count": failures,
+                        "last_error": failure_reason or status,
+                    }
+                )
         state_store.save_state(spec.name, updated_state)
 
     try:
@@ -159,6 +204,7 @@ async def run_ingest(tz: str = "Asia/Shanghai"):
         "successful_sources": successful_sources,
         "failed_sources": source_failures,
         "skipped_sources": skipped_sources,
+        "degraded_sources": degraded_sources,
     }
     IngestStatusStore().write_status(status_payload)
 
@@ -169,9 +215,9 @@ async def run_ingest(tz: str = "Asia/Shanghai"):
     return {"item_count": 0, "status": "no_items"}
 
 
-async def run_ingest_with_cleanup(tz: str = "Asia/Shanghai"):
+async def run_ingest_with_cleanup(tz: str = "Asia/Shanghai", failure_degraded_threshold: int = 3):
     """Ingest + expire stale candidates beyond 7 days."""
-    await run_ingest(tz)
+    await run_ingest(tz, failure_degraded_threshold)
     store = IngestionStore()
     store.prune_expired(keep_days=7)
 
@@ -181,7 +227,9 @@ async def run_ingest_with_cleanup(tz: str = "Asia/Shanghai"):
 # ------------------------------------------------------------------
 
 
-def create_scheduler(agent, tz: str = "Asia/Shanghai") -> AsyncIOScheduler:
+def create_scheduler(
+    agent, tz: str = "Asia/Shanghai", failure_degraded_threshold: int = 3
+) -> AsyncIOScheduler:
     """Create and return a scheduler with news pipeline jobs registered.
 
     Args:
@@ -203,7 +251,7 @@ def create_scheduler(agent, tz: str = "Asia/Shanghai") -> AsyncIOScheduler:
         "interval",
         minutes=30,
         id="ingest_30m",
-        args=[tz],
+        args=[tz, failure_degraded_threshold],
         max_instances=1,
         coalesce=True,
     )

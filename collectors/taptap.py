@@ -46,11 +46,18 @@ class TapTapCollector:
             if not title or not href:
                 continue
 
+            description_el = cell.select_one(
+                '[class*="desc"], [class*="intro"], [class*="summary"]'
+            )
+            summary = description_el.get_text(" ", strip=True) if description_el else ""
+            if not summary:
+                summary = f"TapTap 下载榜第 {i + 1} 名"
+
             items.append(
                 HotItem(
                     title=title,
                     url=href,
-                    summary="",
+                    summary=summary,
                     source="taptap",
                     category="game",
                     source_score=normalize_rank_score(

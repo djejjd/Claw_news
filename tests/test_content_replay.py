@@ -143,6 +143,21 @@ def _seed_replay_fixture(tmp_path: Path) -> Path:
     return data_dir
 
 
+def test_replay_excludes_published_urls_and_keys(tmp_path, monkeypatch):
+    data_dir = _seed_replay_fixture(tmp_path)
+    (data_dir / "pushed_urls.json").write_text(json.dumps(["https://ai1.test"]))
+    (data_dir / "published_keys.json").write_text(json.dumps(["t1"]))
+    monkeypatch.chdir(tmp_path)
+
+    from app.tools.content_replay import run_replay
+
+    result = run_replay(data_dir="data", at=_FIXED_AT)
+    selected_urls = {item["url"] for item in result["selected"]}
+
+    assert "https://ai1.test" not in selected_urls
+    assert "https://t1.test" not in selected_urls
+
+
 def _seed_fixture_with_history(tmp_path: Path) -> Path:
     """创建含历史候选的回放 fixture。"""
     data_dir = tmp_path / "data"
@@ -255,6 +270,8 @@ def test_replay_reports_distribution(tmp_path, monkeypatch):
     assert "selected_count" in result
     assert "source_distribution" in result
     assert "category_distribution" in result
+    assert "soft_source_cap_exceeded_count" in result
+    assert "selection_evidence" in result
 
 
 def test_replay_historical_backfill(tmp_path, monkeypatch):
@@ -403,4 +420,6 @@ def test_replay_fixture_deep_source_respects_72_hour_boundary(tmp_path, monkeypa
     assert expected["within_72h_url"] in selected_urls
     assert expected["exactly_72h_url"] in selected_urls
     assert expected["expired_over_72h_url"] not in selected_urls
-    assert result["rejection_reasons"].get("expired") == expected["expired_count"]
+    # 超过 72 小时的候选由生产读取路径在 fetched_at 窗口阶段排除，
+    # 不会再进入来源有效期过滤并产生 expired 审计行。
+    assert result["rejection_reasons"].get("expired", 0) == 0

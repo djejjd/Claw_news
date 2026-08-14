@@ -346,10 +346,84 @@ def test_source_cap_limits_high_volume_source():
         )
         for i in range(6)
     ]
-    result = select_digest(
-        items, {"ithome": SourcePolicy("ithome", max_selected_per_digest=3)}, now
-    )
-    assert sum(item.source == "ithome" for item in result.selected) == 3
+    result = select_digest(items, {"ithome": SourcePolicy("ithome", tier="fast_news")}, now)
+    assert sum(item.source == "ithome" for item in result.selected) == 2
+
+
+def test_fast_news_hard_cap_never_breaks_when_digest_is_short():
+    """快讯源硬上限 2，即使候选不足也不得突破。"""
+    from app.pipeline.selection import select_digest
+
+    now = _NOW
+    items = [
+        _make_item(
+            title=f"Fast-{i}",
+            url=f"https://fast-{i}.test",
+            source="fast",
+            category="tool",
+            published_at=now.isoformat(),
+        )
+        for i in range(6)
+    ]
+    result = select_digest(items, {"fast": SourcePolicy("fast", tier="fast_news")}, now)
+
+    assert len(result.selected) == 2
+    assert all(not evidence.soft_source_cap_exceeded for evidence in result.evidence)
+
+
+def test_non_fast_source_soft_cap_can_break_only_to_fill_short_digest():
+    """非快讯源常规阶段最多 3 条，不足 top_n 时才允许软上限补位。"""
+    from app.pipeline.selection import select_digest
+
+    now = _NOW
+    items = [
+        _make_item(
+            title=f"Vertical-{i}",
+            url=f"https://vertical-{i}.test",
+            source="vertical",
+            category="ai",
+            published_at=now.isoformat(),
+        )
+        for i in range(6)
+    ]
+    result = select_digest(items, {"vertical": SourcePolicy("vertical")}, now, top_n=5)
+
+    assert len(result.selected) == 5
+    overflow = [e for e in result.evidence if e.soft_source_cap_exceeded]
+    assert len(overflow) == 2
+    assert {e.phase for e in overflow} == {"soft_cap_backfill"}
+
+
+def test_soft_cap_evidence_is_false_when_normal_candidates_fill_digest():
+    from app.pipeline.selection import select_digest
+
+    now = _NOW
+    items = [
+        _make_item(
+            title=f"Vertical-{i}",
+            url=f"https://vertical-{i}.test",
+            source="vertical",
+            category="ai",
+            published_at=now.isoformat(),
+        )
+        for i in range(3)
+    ] + [
+        _make_item(
+            title=f"Other-{i}",
+            url=f"https://other-{i}.test",
+            source=f"other-{i}",
+            category="tool",
+            published_at=now.isoformat(),
+        )
+        for i in range(2)
+    ]
+    policies = {"vertical": SourcePolicy("vertical")}
+    policies.update({f"other-{i}": SourcePolicy(f"other-{i}") for i in range(2)})
+
+    result = select_digest(items, policies, now, top_n=5)
+
+    assert len(result.selected) == 5
+    assert all(not evidence.soft_source_cap_exceeded for evidence in result.evidence)
 
 
 def test_historical_competition_fills_remaining_slots():
@@ -432,9 +506,11 @@ def test_selection_result_has_evidence():
         assert e.canonical_key
         assert isinstance(e.diversity_penalty, float)
         assert isinstance(e.selection_score, float)
+        assert isinstance(e.soft_source_cap_exceeded, bool)
         assert e.phase in {
             "today_guarantee",
             "historical_backfill",
             "today_competition",
             "historical_competition",
+            "soft_cap_backfill",
         }

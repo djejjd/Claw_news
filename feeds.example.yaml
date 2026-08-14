@@ -47,7 +47,7 @@ feeds:
       retention_hours: 24
       quality_weight: 2.0
       filter_profile: strict
-      max_selected_per_digest: 3
+      max_selected_per_digest: 2
     - url: https://www.appinn.com/feed
       source: appinn
       tier: vertical
@@ -100,7 +100,7 @@ source_policies:
     retention_hours: 24
     quality_weight: 2.5
     filter_profile: strict
-    max_selected_per_digest: 3
+    max_selected_per_digest: 2
   huggingface:
     source: huggingface
     tier: deep
@@ -108,5 +108,5 @@ source_policies:
     quality_weight: 4.0
     filter_profile: lenient
 
-# relevance_rules 为可选的顶层配置，供相关性过滤组件使用（Task 4 接入）
-relevance_rules: {}
+# relevance_rules 为可选的顶层配置。strict 来源需至少两个独立正向信号。
+# 未配置时使用代码内置完整词表；若配置某字段，会整体覆盖该字段。
