@@ -819,9 +819,9 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     # 尝试走新路径；无法导入或 feeds.yaml 缺失时回退旧路径
 
     try:
-        from collectors.ai_rss import load_feed_configuration
+        from collectors.ai_rss import load_effective_feed_configuration
 
-        feed_config = load_feed_configuration()
+        feed_config = load_effective_feed_configuration()
         use_new_pipeline = isinstance(feed_config, dict) and bool(feed_config.get("feeds"))
     except Exception:
         use_new_pipeline = False
@@ -838,7 +838,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
 
         # 1. 构建 SourcePolicy registry
         feeds_raw = []
-        for cat in ("ai", "tool", "game"):
+        for cat in ("ai", "tool", "game", "digital"):
             for f in feed_config.get("feeds", {}).get(cat, []):
                 if isinstance(f, dict):
                     feeds_raw.append({**f, "category": cat})
@@ -870,7 +870,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         if ctx.publish_scope == "ai_only":
             candidates = [i for i in candidates if i.category == "ai"]
         elif ctx.publish_scope == "all_digest":
-            candidates = [i for i in candidates if i.category in {"ai", "tool", "game"}]
+            candidates = [i for i in candidates if i.category in {"ai", "tool", "game", "digital"}]
 
         if not candidates:
             _write_publish_status(_make_publish_status("skipped", 0, False, [], tz=config.tz))
@@ -885,7 +885,16 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         # 3. 按源有效期过滤
         candidates, expiry_rejected = filter_unexpired_candidates(candidates, now, policies)
 
-        # 4. 相关性过滤
+        # 4. 综合来源内容级重分类，再执行相关性过滤。
+        from app.classifiers.content_category_classifier import (
+            ContentCategoryClassifier,
+            dynamic_sources_from_feed_config,
+        )
+
+        ContentCategoryClassifier().classify_batch(
+            candidates,
+            dynamic_sources=dynamic_sources_from_feed_config(feed_config),
+        )
         rf = build_relevance_filter(feed_config)
         candidates, relevance_rejected = rf.evaluate_batch(candidates, policies)
 
@@ -899,7 +908,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
                 summary_preview="",
             )
 
-        # 5. 分类 + 三阶段选材
+        # 5. 主题分类 + 三阶段选材
         TopicClassifier().classify_batch(candidates)
         selection_result = select_digest(candidates, policies, now, config.tz, top_n=10)
         selected = selection_result.selected
@@ -919,7 +928,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         if ctx.publish_scope == "ai_only":
             candidates = [i for i in candidates if i.category == "ai"]
         elif ctx.publish_scope == "all_digest":
-            candidates = [i for i in candidates if i.category in {"ai", "tool", "game"}]
+            candidates = [i for i in candidates if i.category in {"ai", "tool", "game", "digital"}]
 
         if not candidates:
             _write_publish_status(_make_publish_status("skipped", 0, False, [], tz=config.tz))

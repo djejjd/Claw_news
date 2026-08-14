@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-RUNTIME_CATEGORIES = frozenset({"ai", "tool", "game"})
+RUNTIME_CATEGORIES = frozenset({"ai", "tool", "game", "digital"})
 
 _CATEGORY_ALIASES = {
-    "device": "tool",
+    "device": "digital",
 }
 
 DISPLAY_CATEGORY_MAP = {
     "ai": "AI",
     "tool": "工具",
     "game": "游戏",
+    "digital": "数码",
 }
 
 

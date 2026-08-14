@@ -55,7 +55,7 @@ class TestRenderDigestBasic:
     def test_heading_present(self):
         result = make_result([make_item()])
         md = render_digest(result)
-        assert md.startswith("# AI / 游戏 / 工具 热点")
+        assert md.startswith("# AI / 工具 / 游戏 / 数码 热点")
 
     def test_single_headline_numbering(self):
         result = make_result([make_item(title="GPT-5 发布")])
@@ -137,6 +137,13 @@ class TestRenderDigestMultiple:
         assert "[开源]" in md
         assert "[新品]" in md
 
+    def test_renders_digital_items_in_the_digital_group(self):
+        md = render_digest(make_result([make_item(title="新手机发布", display_category="数码")]))
+
+        assert "# AI / 工具 / 游戏 / 数码 热点" in md
+        assert "【数码】1" in md
+        assert "【AI】1" not in md
+
     def test_shows_source_on_summary_line(self):
         result = make_result([make_item(source="腾讯云开发者")])
         md = render_digest(result)
@@ -164,13 +171,13 @@ class TestRenderDigestEmpty:
     def test_empty_headlines_renders_heading_only(self):
         result = make_result([], daily_judgement="今天静悄悄。")
         md = render_digest(result)
-        assert "# AI / 游戏 / 工具 热点" in md
+        assert "# AI / 工具 / 游戏 / 数码 热点" in md
         assert "> 今日一句话判断：今天静悄悄。" in md
 
     def test_none_headlines_treated_as_empty(self):
         result = make_result(None, daily_judgement="无事发生。")
         md = render_digest(result)
-        assert "# AI / 游戏 / 工具 热点" in md
+        assert "# AI / 工具 / 游戏 / 数码 热点" in md
         assert "> 今日一句话判断：无事发生。" in md
         # No numbered entries should appear
         assert "**1.**" not in md

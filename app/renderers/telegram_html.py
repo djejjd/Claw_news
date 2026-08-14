@@ -76,7 +76,7 @@ def render_telegram_digest(
     github_recommendations: dict[str, str] | None = None,
 ) -> list[str]:
     """Render a digest as safe Telegram HTML message chunks."""
-    lines = ["<b>AI / 游戏 / 工具 热点</b>"]
+    lines = ["<b>AI / 工具 / 游戏 / 数码 热点</b>"]
     for number, item in enumerate((result.headline_items or [])[:10], 1):
         marker = "续" if pushed_urls is not None and item.url in pushed_urls else "新"
         topic = f"[{escape(item.topic_label, quote=True)}] " if item.topic_label else ""

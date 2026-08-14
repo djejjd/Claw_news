@@ -9,6 +9,7 @@ from pathlib import Path
 from app.content.source_policy import build_source_policy_registry
 from app.pipeline.selection import select_digest
 from app.storage.ingestion_store import IngestionStore, filter_unexpired_candidates
+from collectors.ai_rss import load_effective_feed_configuration
 from infra.storage.state_store import StateStore
 
 
@@ -40,15 +41,11 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
 
     # 1. 加载 feeds.yaml 配置
     feeds_path = data_path.parent / "feeds.yaml"
-    feed_config = {}
-    if feeds_path.exists():
-        import yaml
-
-        feed_config = yaml.safe_load(feeds_path.read_text(encoding="utf-8")) or {}
+    feed_config = load_effective_feed_configuration(feeds_path) or {}
 
     # 2. 构建 SourcePolicy registry
     feeds_raw = []
-    for cat in ("ai", "tool", "game"):
+    for cat in ("ai", "tool", "game", "digital"):
         for f in feed_config.get("feeds", {}).get(cat, []):
             if isinstance(f, dict):
                 feeds_raw.append({**f, "category": cat})
@@ -72,9 +69,17 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
     # 4. 按源有效期过滤
     candidates, expiry_rejected = filter_unexpired_candidates(candidates, now, policies)
 
-    # 5. 相关性过滤
+    # 5. 综合来源内容级重分类，再执行相关性过滤
+    from app.classifiers.content_category_classifier import (
+        ContentCategoryClassifier,
+        dynamic_sources_from_feed_config,
+    )
     from app.classifiers.relevance_filter import build_relevance_filter
 
+    ContentCategoryClassifier().classify_batch(
+        candidates,
+        dynamic_sources=dynamic_sources_from_feed_config(feed_config),
+    )
     rf = build_relevance_filter(feed_config)
     candidates, relevance_rejected = rf.evaluate_batch(candidates, policies)
 

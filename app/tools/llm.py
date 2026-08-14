@@ -16,8 +16,10 @@ logger = logging.getLogger(__name__)
 # Prompt template
 # ---------------------------------------------------------------------------
 
-_SYSTEM_PROMPT = """\
-你是一个专业的AI新闻分析师。请根据提供的新闻列表，生成一份中文的《今日 AI 新闻摘要》。
+_SYSTEM_PROMPT = (
+    "你是一个专业的科技新闻分析师。请根据提供的 AI、工具、游戏和数码新闻列表，"
+    "生成一份中文的《今日综合新闻摘要》。\n"
+    """
 
 你必须严格按照以下 JSON 格式输出，不要输出任何其他内容：
 
@@ -31,7 +33,7 @@ _SYSTEM_PROMPT = """\
       "trend": "该新闻反映的行业趋势"
     }
   ],
-  "daily_judgement": "用一句话总结今天的AI新闻整体态势",
+  "daily_judgement": "用一句话总结今天四类新闻的整体态势",
   "github_projects": [
     {
       "full_name": "owner/repo",
@@ -50,6 +52,7 @@ _SYSTEM_PROMPT = """\
 - core_summary 必须控制在 25 个字以内
 - trend 控制在 10 个字以内
 - github_projects 中的 description_cn 必须翻译为简洁的中文"""
+)
 
 _USER_PROMPT_TEMPLATE = """请总结以下新闻：
 
@@ -61,7 +64,7 @@ _USER_PROMPT_TEMPLATE = """请总结以下新闻：
 
 _FALLBACK_RESULT = {
     "headline_items": [],
-    "daily_judgement": "今日暂无 AI 相关新闻，请稍后再关注。",
+    "daily_judgement": "今日暂无相关新闻，请稍后再关注。",
 }
 _LLM_TIMEOUT = httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=60.0)
 _MAX_PROMPT_SUMMARY_CHARS = 200
@@ -137,7 +140,7 @@ async def summarize_news(
     model: str,
     github_projects: list[dict] | None = None,
 ) -> dict:
-    """Summarize a list of news items into a structured Chinese AI news digest.
+    """Summarize a list of news items into a structured Chinese news digest.
 
     Args:
         items: List of news dicts with keys: title, link, summary, published_at.

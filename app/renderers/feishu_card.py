@@ -15,7 +15,7 @@ from app.renderers.wecom_markdown import (
 )
 from app.tools.summary_result import SummaryResult
 
-_CARD_TITLE = "AI / 游戏 / 工具 热点"
+_CARD_TITLE = "AI / 工具 / 游戏 / 数码 热点"
 # 正文字号：normal=14px，heading=16px。用户希望字体更大些，正文用 heading。
 _BODY_TEXT_SIZE = "heading"
 

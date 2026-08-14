@@ -11,13 +11,15 @@ from collectors.base import Category, HotItem, normalize_category
 CATEGORY_LABELS = {
     "ai": "AI 热点",
     "game": "游戏热点",
-    "tool": "数码硬件",
+    "tool": "工具热点",
+    "digital": "数码热点",
 }
 
 CATEGORY_EMOJI = {
     "ai": "🤖",
     "game": "🎮",
-    "tool": "📱",
+    "tool": "🛠",
+    "digital": "📱",
 }
 
 PERIOD_LABEL = {
@@ -192,12 +194,15 @@ class WeComPusher:
             "ai": list(items_by_category.get("ai", [])),
             "tool": [
                 *items_by_category.get("tool", []),
-                *items_by_category.get("device", []),
             ],
             "game": list(items_by_category.get("game", [])),
+            "digital": [
+                *items_by_category.get("digital", []),
+                *items_by_category.get("device", []),
+            ],
         }
 
-        for category in ("ai", "tool", "game"):
+        for category in ("ai", "tool", "game", "digital"):
             cat_items = normalized_items[category]
             if not cat_items:
                 continue

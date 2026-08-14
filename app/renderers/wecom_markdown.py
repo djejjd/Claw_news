@@ -13,7 +13,7 @@ from app.tools.summary_result import SummaryResult
 
 MAX_PREVIEW_CHARS = 200
 MAX_DIGEST_ITEMS = 10
-DISPLAY_CATEGORY_ORDER = ("AI", "工具", "游戏")
+DISPLAY_CATEGORY_ORDER = ("AI", "工具", "游戏", "数码")
 
 # Characters that have special meaning in WeCom markdown and may appear
 # inside article titles.  Escaping them prevents accidental formatting
@@ -76,7 +76,7 @@ def render_digest(
     - The daily one-sentence judgement is appended at the bottom as a
       block-quote.
     """
-    lines = ["# AI / 游戏 / 工具 热点", ""]
+    lines = ["# AI / 工具 / 游戏 / 数码 热点", ""]
 
     items = (result.headline_items or [])[:MAX_DIGEST_ITEMS]
     grouped_items: OrderedDict[str, list] = OrderedDict(

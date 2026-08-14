@@ -169,6 +169,37 @@ def test_all_default_sources_have_explicit_policy():
     assert registry["qbitai"].quality_weight == 3.5
 
 
+def test_example_config_covers_phase2_approved_source_policies():
+    """示例配置必须为 Phase 2 新来源保留完整来源策略。"""
+    from app.content.source_policy import build_source_policy_registry
+    from collectors.ai_rss import load_feed_configuration
+
+    example = Path(__file__).resolve().parent.parent / "feeds.example.yaml"
+    config = load_feed_configuration(example)
+    assert config is not None
+
+    feeds = [
+        feed for category in ("ai", "tool", "game", "digital") for feed in config["feeds"][category]
+    ]
+    registry = build_source_policy_registry(feeds)
+
+    for source in {
+        "oschina",
+        "v2ex_tech",
+        "hacker_news",
+        "cnbeta",
+        "9to5mac",
+        "techcrunch",
+        "gamesindustry",
+        "nintendo_life",
+        "infoq",
+        "huggingface_blog",
+        "arxiv_cs_ai",
+        "arxiv_cs_cl",
+    }:
+        assert source in registry
+
+
 def test_resolve_source_policy():
     """resolve_source_policy 从 registry 查找策略。"""
     from app.content.source_policy import (
@@ -254,8 +285,8 @@ def test_builtin_policy_covers_non_rss_default_sources(
     assert policy.filter_profile == filter_profile
 
 
-def test_example_config_covers_all_initial_source_policies():
-    """设计第 6.3 节的 15 个初始来源必须都在受版本控制配置中声明。"""
+def test_example_config_covers_all_phase2_source_policies():
+    """Phase 2 全部正式来源必须都在受版本控制配置中声明。"""
     import yaml
 
     from app.content.source_policy import build_source_policy_registry
@@ -282,4 +313,16 @@ def test_example_config_covers_all_initial_source_policies():
         "meituan_tech",
         "cloudflare_cn",
         "huggingface",
+        "oschina",
+        "v2ex_tech",
+        "hacker_news",
+        "cnbeta",
+        "9to5mac",
+        "techcrunch",
+        "gamesindustry",
+        "nintendo_life",
+        "infoq",
+        "huggingface_blog",
+        "arxiv_cs_ai",
+        "arxiv_cs_cl",
     }

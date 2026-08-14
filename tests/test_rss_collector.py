@@ -10,13 +10,13 @@ from collectors.rss_sources import (
 )
 
 
-def test_feed_configs_covers_three_categories():
-    assert len(FEED_CONFIGS) >= 3
+def test_feed_configs_covers_four_categories():
+    assert len(FEED_CONFIGS) >= 4
     for feed in FEED_CONFIGS:
         assert "url" in feed
         assert "category" in feed
         assert "source" in feed
-    assert {feed["category"] for feed in FEED_CONFIGS} == {"ai", "tool", "game"}
+    assert {feed["category"] for feed in FEED_CONFIGS} == {"ai", "tool", "game", "digital"}
 
 
 def test_feed_configs_distinct_sources():

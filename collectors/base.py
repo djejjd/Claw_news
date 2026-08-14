@@ -8,7 +8,7 @@ from app.category_policy import normalize_category
 if TYPE_CHECKING:
     from app.pipeline.candidate import CandidateItem
 
-Category = Literal["ai", "tool", "game"]
+Category = Literal["ai", "tool", "game", "digital"]
 
 
 @dataclass
