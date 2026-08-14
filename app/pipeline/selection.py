@@ -17,8 +17,8 @@ from app.content.source_policy import SourcePolicy, source_selection_cap
 from app.content.time_policy import freshness_score, is_today
 from app.pipeline.candidate import CandidateItem
 
-_CATEGORY_MINIMUMS = {"ai": 3, "tool": 2, "game": 2}
-_CATEGORY_ORDER = ("ai", "tool", "game")
+_CATEGORY_MINIMUMS = {"ai": 3, "tool": 2, "game": 2, "digital": 0}
+_CATEGORY_ORDER = ("ai", "tool", "game", "digital")
 
 # 单源多样性惩罚
 _PENALTY = {0: 0.0, 1: -1.0, 2: -2.0, 3: -3.5}

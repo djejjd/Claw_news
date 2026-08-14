@@ -1,6 +1,6 @@
 """跨分类相关性过滤 — 纯规则、无网络、可解释。
 
-按 AI / 工具 / 游戏三类独立维护正向词和排除词。
+按 AI / 工具 / 游戏 / 数码四类独立维护正向词和排除词。
 三档 profile 只改变复核阈值，不绕过排除规则。
 """
 
@@ -148,6 +148,40 @@ _DEFAULT_RULES: dict[str, dict[str, list[str]]] = {
         ],
         "negative": [],
     },
+    "digital": {
+        "positive": [
+            "手机",
+            "笔记本",
+            "平板",
+            "芯片",
+            "处理器",
+            "macbook",
+            "iphone",
+            "ipad",
+            "安卓",
+            "android",
+            "ios",
+            "操作系统",
+            "系统更新",
+            "显卡",
+            "电脑",
+            "硬件",
+        ],
+        "negative": [
+            "汽车促销",
+            "新能源汽车",
+            "购车优惠",
+            "限时促销",
+            "家电降价",
+            "家电新品",
+            "运营商套餐",
+            "话费",
+            "电影票房",
+            "法律诉讼",
+            "公司人事变动",
+            "天气",
+        ],
+    },
 }
 
 # profile 门槛
@@ -289,17 +323,9 @@ class RelevanceFilter:
     def _classifier_confidence(self, item: CandidateItem) -> float:
         """获取跨分类置信度，不污染 item.topic。
 
-        tool/game 用正向词命中数做轻量判断（TopicClassifier 只面向 AI）。
+        主题分类器为四类内容提供相同的兜底路径。
         置信度映射：0.9 / 0.7 / 0.5 / 0.3 / 0.1
         """
-        # TopicClassifier 只面向 AI，对 tool/game 不适用
-        if item.category in ("tool", "game"):
-            cat_rules = self._rules.get(item.category, {})
-            pos_words = cat_rules.get("positive", [])
-            text = f"{item.title} {item.summary or ''}".lower()
-            pos_hits = sum(1 for w in pos_words if w in text)
-            return 0.5 if pos_hits else 0.1
-
         from app.classifiers.topic_classifier import TopicClassifier
 
         classified = replace(item)

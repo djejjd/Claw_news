@@ -1,7 +1,7 @@
 """
 Topic Classifier — rule-based light classification for CandidateItem.
 
-6 topic buckets with pure keyword matching, no LLM calls.
+四类内容使用分类特定主题桶，纯关键词匹配，不调用 LLM。
 """
 
 from __future__ import annotations
@@ -165,9 +165,65 @@ class TopicClassifier:
             ],
         },
         {
+            "topic": "developer_tooling",
+            "category_check": "tool",
+            "title_keywords": [
+                "开发工具",
+                "命令行",
+                "终端",
+                "ide",
+                "编辑器",
+                "插件",
+                "sdk",
+                "api",
+                "工具",
+            ],
+        },
+        {
+            "topic": "open_source",
+            "category_check": "tool",
+            "title_keywords": ["开源", "github", "代码库", "仓库", "贡献者"],
+        },
+        {
+            "topic": "productivity_software",
+            "category_check": "tool",
+            "title_keywords": ["效率", "办公", "笔记", "自动化", "协作", "软件"],
+        },
+        {
+            "topic": "game_release",
+            "category_check": "game",
+            "title_keywords": ["新游", "发售", "上线", "登陆", "dlc", "资料片", "试玩"],
+        },
+        {
+            "topic": "game_update",
+            "category_check": "game",
+            "title_keywords": ["版本更新", "赛季", "补丁", "联动", "活动更新"],
+        },
+        {
+            "topic": "esports_industry",
+            "category_check": "game",
+            "title_keywords": ["电竞", "战队", "赛事", "比赛", "游戏行业"],
+        },
+        {
+            "topic": "hardware_chip",
+            "category_check": "digital",
+            "title_keywords": ["芯片", "处理器", "显卡", "soc", "gpu", "存储"],
+        },
+        {
+            "topic": "device_release",
+            "category_check": "digital",
+            "title_keywords": ["手机", "笔记本", "平板", "macbook", "iphone", "ipad", "新品"],
+        },
+        {
+            "topic": "os_software",
+            "category_check": "digital",
+            "title_keywords": ["操作系统", "系统更新", "android", "ios", "windows", "固件"],
+        },
+        {
             "topic": "application_case",
             "weight": 1.0,
             "category_check": "ai",
+            "allow_category_only": True,
             "title_keywords": [
                 "应用",
                 "落地",
@@ -201,8 +257,13 @@ class TopicClassifier:
                 )
                 return item
 
-        # Nothing matched — unconditional fallback
-        item.topic = "application_case"
+        # Nothing matched — 保留类别，避免非 AI 内容全部落到“产品”。
+        item.topic = {
+            "ai": "application_case",
+            "tool": "general_tool",
+            "game": "general_game",
+            "digital": "general_digital",
+        }.get(item.category, "application_case")
         item.topic_confidence = 0.1
         return item
 
@@ -230,12 +291,13 @@ class TopicClassifier:
         source_check: Optional[str] = rule.get("source_check")
         category_check: Optional[str] = rule.get("category_check")
 
-        # ---- source / category hit ----
+        # ---- source / category gate ----
         source_hit = False
         if source_check is not None and item.source.lower() == source_check:
             source_hit = True
-        if category_check is not None and item.category == category_check:
-            source_hit = True
+        category_hit = category_check is not None and item.category == category_check
+        if category_check is not None and not category_hit:
+            return None
 
         # ---- special case: model_release has two sub-conditions ----
         if topic == "model_release":
@@ -245,10 +307,15 @@ class TopicClassifier:
         title_hit_count = sum(1 for kw in title_kws if kw in title_lower)
         summary_hit_count = sum(1 for kw in summary_kws if kw in summary_lower)
 
-        if title_hit_count > 0 or summary_hit_count > 0 or source_hit:
+        if (
+            title_hit_count > 0
+            or summary_hit_count > 0
+            or source_hit
+            or (category_hit and rule.get("allow_category_only", False))
+        ):
             return _MatchResult(
                 topic=topic,
-                source_hit=source_hit,
+                source_hit=source_hit or (category_hit and rule.get("allow_category_only", False)),
                 title_hit_count=title_hit_count,
                 summary_hit_count=summary_hit_count,
             )

@@ -8,7 +8,7 @@ class CandidateItem:
     url: str
     summary: str
     source: str
-    category: str  # "ai" | "game" | "tool"
+    category: str  # "ai" | "game" | "tool" | "digital"
     published_at: str = ""  # yyyy-mm-dd 或完整 ISO 时间
     fetched_at: str = ""  # ISO format
     published_time_source: str = ""  # rss / fetched_at / legacy_date / unknown

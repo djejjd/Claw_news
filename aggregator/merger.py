@@ -136,7 +136,12 @@ class Merger:
     def _merge_legacy(
         self, items: List[HotItem], period: str = "morning"
     ) -> Dict[Category, List[HotItem]]:
-        result: Dict[Category, List[HotItem]] = {"ai": [], "tool": [], "game": []}
+        result: Dict[Category, List[HotItem]] = {
+            "ai": [],
+            "tool": [],
+            "game": [],
+            "digital": [],
+        }
 
         for category in result:
             cat_items = [i for i in items if normalize_category(i.category) == category]

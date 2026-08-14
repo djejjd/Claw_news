@@ -306,6 +306,64 @@ def test_category_minimums_3_2_2():
     assert result.category_counts["ai"] >= 3
     assert result.category_counts["tool"] >= 2
     assert result.category_counts["game"] >= 2
+
+
+def test_digital_participates_only_in_open_competition():
+    """数码没有保底名额，但高分数码候选可进入自由竞争。"""
+    from app.pipeline.selection import select_digest
+
+    now = _NOW
+    today = now.strftime("%Y-%m-%d")
+    items = [
+        _make_item(
+            title=f"AI-{index}",
+            url=f"https://ai-{index}.test",
+            source=f"ai-{index}",
+            category="ai",
+            published_at=f"{today}T08:00:00+08:00",
+        )
+        for index in range(3)
+    ]
+    items += [
+        _make_item(
+            title=f"工具-{index}",
+            url=f"https://tool-{index}.test",
+            source=f"tool-{index}",
+            category="tool",
+            published_at=f"{today}T08:00:00+08:00",
+        )
+        for index in range(2)
+    ]
+    items += [
+        _make_item(
+            title=f"游戏-{index}",
+            url=f"https://game-{index}.test",
+            source=f"game-{index}",
+            category="game",
+            published_at=f"{today}T08:00:00+08:00",
+        )
+        for index in range(2)
+    ]
+    items.append(
+        _make_item(
+            title="数码-高分",
+            url="https://digital.test",
+            source="digital-source",
+            category="digital",
+            published_at=f"{today}T08:00:00+08:00",
+        )
+    )
+    policies = {
+        item.source: SourcePolicy(item.source, "vertical", 48, 10.0, "standard") for item in items
+    }
+
+    result = select_digest(items, policies, now)
+
+    assert result.category_counts["digital"] == 1
+    digital_evidence = next(
+        event for event in result.evidence if event.canonical_key == "digital.test"
+    )
+    assert digital_evidence.phase == "today_competition"
     assert len(result.selected) <= 10
 
 

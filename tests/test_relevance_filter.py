@@ -136,6 +136,37 @@ def test_game_positive_words_accept():
     assert result.accepted is True
 
 
+def test_strict_digital_source_accepts_device_news_and_rejects_car_promotion():
+    """数码快讯保留硬件内容，但汽车促销仍必须被拒绝。"""
+    from app.classifiers.relevance_filter import RelevanceFilter
+    from app.content.source_policy import SourcePolicy
+
+    policy = SourcePolicy("ithome", "fast_news", 24, 2.0, "strict")
+    filter_ = RelevanceFilter()
+    accepted = filter_.evaluate(
+        _make_item(
+            title="苹果发布 M5 芯片 MacBook Pro",
+            summary="新款笔记本采用新一代处理器",
+            source="ithome",
+            category="digital",
+        ),
+        policy,
+    )
+    rejected = filter_.evaluate(
+        _make_item(
+            title="新能源汽车限时促销",
+            summary="购车优惠持续至本月底",
+            source="ithome",
+            category="digital",
+        ),
+        policy,
+    )
+
+    assert accepted.accepted is True
+    assert rejected.accepted is False
+    assert rejected.reason in {"negative_rule", "rule_conflict"}
+
+
 # ---- below_threshold ----
 
 

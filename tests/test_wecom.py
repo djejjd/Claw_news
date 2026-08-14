@@ -72,7 +72,8 @@ class TestFormatMessage:
     def test_category_labels(self):
         assert CATEGORY_LABELS["ai"] == "AI 热点"
         assert CATEGORY_LABELS["game"] == "游戏热点"
-        assert CATEGORY_LABELS["tool"] == "数码硬件"
+        assert CATEGORY_LABELS["tool"] == "工具热点"
+        assert CATEGORY_LABELS["digital"] == "数码热点"
 
     def test_domestic_source_has_region_label(self):
         item = make_item("t", "https://x.com/t", "s", source="qbitai", category="ai", score=5.0)
@@ -143,7 +144,7 @@ class TestWeComPusher:
         assert len(httpx_mock.get_requests()) >= 1
 
     @pytest.mark.asyncio
-    async def test_push_accepts_device_input_alias(self, httpx_mock):
+    async def test_push_accepts_device_input_as_digital_alias(self, httpx_mock):
         webhook = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
         httpx_mock.add_response(url=webhook, json={"errcode": 0, "errmsg": "ok"})
 
@@ -153,19 +154,20 @@ class TestWeComPusher:
             "game": [],
             "device": [
                 make_item(
-                    "Tool Test",
+                    "Digital Test",
                     "https://x.com/tool",
                     "summary",
-                    source="sspai",
+                    source="ithome",
                     category="device",
                     score=8.0,
                 )
             ],
         }
 
-        await pusher.push(items)
+        results = await pusher.push(items)
 
         assert len(httpx_mock.get_requests()) == 1
+        assert results[0].category == "digital"
 
 
 @pytest.mark.asyncio

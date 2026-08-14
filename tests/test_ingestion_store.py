@@ -122,7 +122,7 @@ class TestAppendOrMerge:
         data = json.loads(lines[0])
         assert data["canonical_key"] == "d.com/p"
 
-    def test_device_category_alias_is_normalized_to_tool(self, tmp_path: Path):
+    def test_device_category_alias_is_normalized_to_digital(self, tmp_path: Path):
         store = IngestionStore(root_dir=tmp_path)
         d = {
             "title": "Tool Alias",
@@ -137,7 +137,7 @@ class TestAppendOrMerge:
         day_dir = tmp_path / "data" / "ingestion" / _today_str()
         lines = (day_dir / "candidates.jsonl").read_text(encoding="utf-8").strip().split("\n")
         data = json.loads(lines[0])
-        assert data["category"] == "tool"
+        assert data["category"] == "digital"
 
     def test_source_failures_only_keep_current_round(self, tmp_path: Path):
         store = IngestionStore(root_dir=tmp_path)

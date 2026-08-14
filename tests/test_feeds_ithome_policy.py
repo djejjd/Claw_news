@@ -16,7 +16,7 @@ def _build_ithome_policy():
     feed_config = load_feed_configuration(EXAMPLE)
     assert feed_config is not None, "feeds.example.yaml 不存在或解析失败"
     feeds_raw = []
-    for cat in ("ai", "tool", "game"):
+    for cat in ("ai", "tool", "game", "digital"):
         for f in feed_config.get("feeds", {}).get(cat, []):
             if isinstance(f, dict):
                 feeds_raw.append({**f, "category": cat})
@@ -57,3 +57,10 @@ def test_noisy_sources_have_digest_caps():
     assert config is not None
     taptap = config["source_policies"]["taptap"]
     assert taptap["max_selected_per_digest"] == 2
+
+
+def test_ithome_uses_digital_default_and_dynamic_category():
+    config = load_feed_configuration(EXAMPLE)
+    assert config is not None
+    ithome = next(feed for feed in config["feeds"]["digital"] if feed.get("source") == "ithome")
+    assert ithome["dynamic_category"] is True

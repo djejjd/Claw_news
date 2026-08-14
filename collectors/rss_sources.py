@@ -2,6 +2,7 @@ import asyncio
 import re
 import time
 from calendar import timegm
+from collections.abc import Mapping
 from typing import List
 
 import feedparser
@@ -20,6 +21,21 @@ FEED_CONFIGS: List[dict] = load_all_rss_feeds()
 
 def strip_html(text: str) -> str:
     return re.sub(r"<[^>]+>", "", text).strip()
+
+
+def extract_summary(entry: Mapping) -> str:
+    """按 RSS 常见字段优先级读取文章摘要。"""
+    for field in ("summary", "description", "content", "title"):
+        value = entry.get(field, "")
+        if isinstance(value, str) and value.strip():
+            return value
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, Mapping):
+                    content = item.get("value", "")
+                    if isinstance(content, str) and content.strip():
+                        return content
+    return ""
 
 
 def extract_pub_date(published_parsed) -> str:
@@ -93,7 +109,7 @@ class RssCollector:
     def _parse_entry(self, entry: dict, feed: dict) -> "HotItem":
         title = entry.get("title", "")
         url = entry.get("link", "")
-        summary = strip_html(entry.get("summary", ""))
+        summary = strip_html(extract_summary(entry))
         ts = _parse_timestamp(entry)
         pp = entry.get("published_parsed")
         # 优先完整 ISO 时间，回退到 yyyy-mm-dd

@@ -32,7 +32,7 @@ def make_result(items=None, daily_judgement="今天 AI 领域动作频频。"):
 
 def test_header_present():
     card = render_feishu_card(make_result([make_item()]))
-    assert card["header"]["title"]["content"] == "AI / 游戏 / 工具 热点"
+    assert card["header"]["title"]["content"] == "AI / 工具 / 游戏 / 数码 热点"
     assert card["config"]["wide_screen_mode"] is True
 
 
@@ -65,7 +65,7 @@ def test_title_markdown_escaped():
 
 def test_no_items_still_has_header_and_judgement():
     card = render_feishu_card(make_result([], daily_judgement="今日无内容。"))
-    assert card["header"]["title"]["content"] == "AI / 游戏 / 工具 热点"
+    assert card["header"]["title"]["content"] == "AI / 工具 / 游戏 / 数码 热点"
     assert any("今日无内容" in json_str(n) for n in card["elements"] if n["tag"] == "note")
 
 
@@ -103,6 +103,15 @@ def test_item_numbering_is_sequential_per_category():
     assert "**1.**" in text
     assert "**2.**" in text
     assert "**3.**" not in text
+
+
+def test_digital_item_uses_digital_group_and_four_category_title():
+    card = render_feishu_card(make_result([make_item(title="新手机发布", display_category="数码")]))
+    text = "".join(e["text"]["content"] for e in card["elements"] if e["tag"] == "div")
+
+    assert card["header"]["title"]["content"] == "AI / 工具 / 游戏 / 数码 热点"
+    assert "【数码】1" in text
+    assert "【AI】1" not in text
 
 
 def test_div_text_size_is_heading():

@@ -57,7 +57,7 @@ async def run_ingest(tz: str = "Asia/Shanghai", failure_degraded_threshold: int 
 
     hf_proxy = os.getenv("HF_PROXY", "").strip() or None
 
-    # AI / tool / game 三类内容采集
+    # AI / tool / game / digital 四类内容采集
     collector_specs = build_ingest_source_specs(hf_proxy=hf_proxy)
 
     for spec in collector_specs:
@@ -101,7 +101,7 @@ async def run_ingest(tz: str = "Asia/Shanghai", failure_degraded_threshold: int 
             raw_items = [
                 item
                 for item in items
-                if normalize_category(item.category) in {"ai", "tool", "game"}
+                if normalize_category(item.category) in {"ai", "tool", "game", "digital"}
             ]
         except Exception as e:
             if is_optional_source(spec):

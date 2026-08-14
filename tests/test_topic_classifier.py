@@ -83,8 +83,8 @@ class TestTopicClassifier:
         # title hits: gpu(1) = 1 → 0.7
         assert result.topic_confidence == 0.7
 
-    def test_application_case_fallback_no_match(self):
-        """application_case fallback: no keywords match any bucket."""
+    def test_category_specific_fallback_no_match(self):
+        """无命中时保留分类特定兜底，而不是把游戏写成 AI 产品。"""
         classifier = TopicClassifier()
         item = _make_item(
             title="Random unrelated news",
@@ -93,8 +93,20 @@ class TestTopicClassifier:
             summary="Nothing AI-related here",
         )
         result = classifier.classify(item)
-        assert result.topic == "application_case"
+        assert result.topic == "general_game"
         assert result.topic_confidence == 0.1
+
+    def test_tool_game_and_digital_topics_have_specific_buckets(self):
+        """三类非 AI 内容应命中各自主题桶。"""
+        classifier = TopicClassifier()
+
+        tool = classifier.classify(_make_item("开源终端工具发布", category="tool"))
+        game = classifier.classify(_make_item("新游发售并公布 DLC 计划", category="game"))
+        digital = classifier.classify(_make_item("新款手机搭载旗舰芯片", category="digital"))
+
+        assert tool.topic == "developer_tooling"
+        assert game.topic == "game_release"
+        assert digital.topic == "hardware_chip"
 
     def test_priority_order_first_match_wins(self):
         """When multiple buckets could match, the first in priority order wins."""
@@ -176,7 +188,7 @@ class TestTopicClassifier:
         assert results[0].topic == "model_release"
         assert results[1].topic == "agent_workflow"
         assert results[2].topic == "developer_tooling"
-        assert results[3].topic == "application_case"
+        assert results[3].topic == "general_game"
         # Verify in-place modification
         assert items[0].topic == "model_release"
         assert items[0] is results[0]

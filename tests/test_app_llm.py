@@ -167,6 +167,26 @@ class TestSummarizeNews:
         assert kwargs["timeout"] == httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=60.0)
 
     @pytest.mark.asyncio
+    async def test_system_prompt_covers_all_runtime_categories(self):
+        """四分类日报不应继续使用仅 AI 的摘要身份。"""
+        from app.tools.llm import summarize_news
+
+        mock_client = _build_mock_client(
+            _make_valid_response(json.dumps({"headline_items": [], "daily_judgement": "判断"}))
+        )
+        with patch("app.tools.llm.httpx.AsyncClient", return_value=mock_client):
+            await summarize_news(
+                _make_news_items(1),
+                base_url="https://api.example.com",
+                api_key="test-key",
+                model="test-model",
+            )
+
+        system_prompt = mock_client.post.call_args.kwargs["json"]["messages"][0]["content"]
+        assert "AI、工具、游戏和数码" in system_prompt
+        assert "今日综合新闻摘要" in system_prompt
+
+    @pytest.mark.asyncio
     async def test_prompt_truncates_only_long_summary(self):
         from app.tools.llm import summarize_news
 

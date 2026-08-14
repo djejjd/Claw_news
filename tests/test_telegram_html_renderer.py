@@ -39,6 +39,12 @@ def test_renderer_adds_safe_http_link():
     assert '<a href="https://example.test/article">A &lt; B</a>' in text
 
 
+def test_renderer_title_covers_digital_category():
+    text = "\n".join(render_telegram_digest(_result()))
+
+    assert "AI / 工具 / 游戏 / 数码 热点" in text
+
+
 def test_split_telegram_text_keeps_each_chunk_within_limit():
     parts = split_telegram_text("first\n" + "x" * 20 + "\nlast", limit=20)
 

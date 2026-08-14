@@ -34,6 +34,30 @@ feeds:
       retention_hours: 72
       quality_weight: 4.0
       filter_profile: lenient
+    - url: https://www.infoq.cn/feed
+      source: infoq
+      tier: vertical
+      retention_hours: 48
+      quality_weight: 3.5
+      filter_profile: standard
+    - url: https://huggingface.co/blog/feed.xml
+      source: huggingface_blog
+      tier: deep
+      retention_hours: 72
+      quality_weight: 4.0
+      filter_profile: lenient
+    - url: https://rss.arxiv.org/rss/cs.AI
+      source: arxiv_cs_ai
+      tier: deep
+      retention_hours: 72
+      quality_weight: 4.0
+      filter_profile: strict
+    - url: https://rss.arxiv.org/rss/cs.CL
+      source: arxiv_cs_cl
+      tier: deep
+      retention_hours: 72
+      quality_weight: 4.0
+      filter_profile: strict
   tool:
     - url: https://sspai.com/feed
       source: sspai
@@ -41,13 +65,6 @@ feeds:
       retention_hours: 48
       quality_weight: 3.5
       filter_profile: standard
-    - url: https://www.ithome.com/rss/
-      source: ithome
-      tier: fast_news
-      retention_hours: 24
-      quality_weight: 2.0
-      filter_profile: strict
-      max_selected_per_digest: 2
     - url: https://www.appinn.com/feed
       source: appinn
       tier: vertical
@@ -60,6 +77,25 @@ feeds:
       retention_hours: 72
       quality_weight: 4.0
       filter_profile: lenient
+    - url: https://www.oschina.net/news/rss
+      source: oschina
+      tier: vertical
+      retention_hours: 48
+      quality_weight: 3.5
+      filter_profile: standard
+    - url: https://www.v2ex.com/feed/tab/tech.xml
+      source: v2ex_tech
+      tier: fast_news
+      retention_hours: 24
+      quality_weight: 2.0
+      filter_profile: strict
+      max_selected_per_digest: 2
+    - url: https://news.ycombinator.com/rss
+      source: hacker_news
+      tier: vertical
+      retention_hours: 48
+      quality_weight: 3.5
+      filter_profile: standard
   game:
     - url: https://www.yystv.cn/rss/feed
       source: yystv
@@ -91,6 +127,47 @@ feeds:
       retention_hours: 24
       quality_weight: 3.0
       filter_profile: strict
+    - url: https://www.gamesindustry.biz/feed
+      source: gamesindustry
+      tier: deep
+      retention_hours: 72
+      quality_weight: 4.0
+      filter_profile: lenient
+    - url: https://www.nintendolife.com/feeds/latest
+      source: nintendo_life
+      tier: vertical
+      retention_hours: 48
+      quality_weight: 3.5
+      filter_profile: standard
+  digital:
+    - url: https://www.ithome.com/rss/
+      source: ithome
+      tier: fast_news
+      retention_hours: 24
+      quality_weight: 2.0
+      filter_profile: strict
+      max_selected_per_digest: 2
+      dynamic_category: true
+    - url: https://www.cnbeta.com.tw/backend.php
+      source: cnbeta
+      tier: fast_news
+      retention_hours: 24
+      quality_weight: 2.0
+      filter_profile: strict
+      max_selected_per_digest: 2
+      dynamic_category: true
+    - url: https://9to5mac.com/feed/
+      source: 9to5mac
+      tier: vertical
+      retention_hours: 48
+      quality_weight: 3.5
+      filter_profile: standard
+    - url: https://techcrunch.com/feed/
+      source: techcrunch
+      tier: vertical
+      retention_hours: 48
+      quality_weight: 3.5
+      filter_profile: standard
 
 # 非 RSS collector 的来源策略。它们不会被 RSS loader 当作 feed 拉取。
 source_policies:
