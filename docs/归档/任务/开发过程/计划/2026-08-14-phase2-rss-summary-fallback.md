@@ -21,7 +21,7 @@ Phase 2 来源扩展和服务器实测结果；不改变其来源、分类和策
 
 ## 4. 输入与输出契约
 
-输入为 feedparser 条目。输出摘要优先级固定为 `summary -> description -> content`，经 HTML 清理后写入 `HotItem.summary`；若三者都为空，保持空字符串。
+输入为 feedparser 条目。输出摘要优先级固定为 `summary -> description -> content -> title`，经 HTML 清理后写入 `HotItem.summary`；仅标题可用的 feed 以标题作为最小可解释摘要。
 
 ## 5. 修改范围
 

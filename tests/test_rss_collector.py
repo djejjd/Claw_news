@@ -84,9 +84,17 @@ def test_parse_entry_falls_back_to_description_and_content_for_summary():
         },
         feed,
     )
+    title_item = collector._parse_entry(
+        {
+            "title": "Only title is available",
+            "link": "https://example.test/title",
+        },
+        feed,
+    )
 
     assert description_item.summary == "来自 description 的摘要"
     assert content_item.summary == "来自 content 的摘要"
+    assert title_item.summary == "Only title is available"
 
 
 def test_rss_collector_uses_injected_feeds():

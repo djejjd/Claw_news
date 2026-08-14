@@ -25,7 +25,7 @@ def strip_html(text: str) -> str:
 
 def extract_summary(entry: Mapping) -> str:
     """按 RSS 常见字段优先级读取文章摘要。"""
-    for field in ("summary", "description", "content"):
+    for field in ("summary", "description", "content", "title"):
         value = entry.get(field, "")
         if isinstance(value, str) and value.strip():
             return value
