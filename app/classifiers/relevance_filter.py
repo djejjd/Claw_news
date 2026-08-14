@@ -191,7 +191,7 @@ class RelevanceFilter:
         matched_neg = tuple(w for w in all_neg_words if w in text)
 
         # 2. 检查正向词
-        matched_pos = tuple(w for w in pos_words if w in text)
+        matched_pos = self._distinct_positive_hits(pos_words, text)
 
         # 3. 正负冲突 → 拒绝
         if matched_neg and matched_pos:
@@ -275,6 +275,16 @@ class RelevanceFilter:
         return kept, rejected
 
     # ---- Internal ----
+
+    @staticmethod
+    def _distinct_positive_hits(words: list[str], text: str) -> tuple[str, ...]:
+        """保留不互相包含的命中词，避免复合词被计作多个独立信号。"""
+        hits = [word for word in words if word in text]
+        distinct: list[str] = []
+        for word in sorted(hits, key=len, reverse=True):
+            if not any(word in existing for existing in distinct):
+                distinct.append(word)
+        return tuple(distinct)
 
     def _classifier_confidence(self, item: CandidateItem) -> float:
         """获取跨分类置信度，不污染 item.topic。

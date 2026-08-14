@@ -325,6 +325,19 @@ def test_strict_profile_requires_two_distinct_positive_signals():
     assert accepted.reason == "positive_rule"
 
 
+def test_strict_profile_does_not_count_contained_keywords_twice():
+    from app.classifiers.relevance_filter import RelevanceFilter
+    from app.content.source_policy import SourcePolicy
+
+    result = RelevanceFilter().evaluate(
+        _make_item(title="大模型快讯", summary="普通资讯", category="ai"),
+        SourcePolicy("ithome", "fast_news", 24, 2.0, "strict"),
+    )
+
+    assert result.accepted is False
+    assert result.matched_positive == ("大模型",)
+
+
 def test_specific_noise_phrase_does_not_reject_technical_legal_ai_news():
     from app.classifiers.relevance_filter import RelevanceFilter
     from app.content.source_policy import SourcePolicy

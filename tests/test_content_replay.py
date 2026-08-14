@@ -405,4 +405,6 @@ def test_replay_fixture_deep_source_respects_72_hour_boundary(tmp_path, monkeypa
     assert expected["within_72h_url"] in selected_urls
     assert expected["exactly_72h_url"] in selected_urls
     assert expected["expired_over_72h_url"] not in selected_urls
-    assert result["rejection_reasons"].get("expired") == expected["expired_count"]
+    # 超过 72 小时的候选由生产读取路径在 fetched_at 窗口阶段排除，
+    # 不会再进入来源有效期过滤并产生 expired 审计行。
+    assert result["rejection_reasons"].get("expired", 0) == 0

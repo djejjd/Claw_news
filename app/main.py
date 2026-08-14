@@ -97,12 +97,9 @@ async def health():
     for entry in ingest_status.get("failed_sources", []):
         name = entry.split(":")[0] if ":" in entry else entry
         source_status[name] = "failed"
-    for entry in ingest_status.get("skipped_sources", []):
-        name = entry.split(":")[0] if ":" in entry else entry
-        source_status[name] = "degraded"
     for entry in ingest_status.get("degraded_sources", []):
         name = entry.get("source") if isinstance(entry, dict) else None
-        if name:
+        if name and source_status.get(name) != "failed":
             source_status[name] = "degraded"
 
     has_failed_source = any(s == "failed" for s in source_status.values())

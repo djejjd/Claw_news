@@ -109,15 +109,4 @@ source_policies:
     filter_profile: lenient
 
 # relevance_rules 为可选的顶层配置。strict 来源需至少两个独立正向信号。
-# 未列出的分类继续使用代码内置默认规则；配置某字段会整体覆盖该字段。
-relevance_rules:
-  tool:
-    negative:
-      - 汽车促销
-      - 汽车发布会
-      - 家电降价
-      - 话费
-      - 电影票房
-      - 公司人事变动
-      - 法律诉讼
-      - 天气
+# 未配置时使用代码内置完整词表；若配置某字段，会整体覆盖该字段。
