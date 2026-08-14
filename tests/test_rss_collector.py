@@ -42,6 +42,7 @@ def test_parse_entry_full():
         "title": "GPT-5 发布",
         "link": "https://x.com/1",
         "summary": "<p>OpenAI <b>发布</b> GPT-5</p>",
+        "description": "<p>不应覆盖 summary</p>",
         "published_parsed": (2026, 5, 15, 10, 0, 0, 4, 136, 0),
     }
     feed = {"url": "https://qbitai.com/feed", "category": "ai", "source": "qbitai"}
@@ -61,6 +62,31 @@ def test_parse_entry_missing():
     assert item.url == ""
     assert item.pub_date == ""
     assert item.source == "yystv"
+
+
+def test_parse_entry_falls_back_to_description_and_content_for_summary():
+    collector = RssCollector()
+    feed = {"url": "https://example.test/feed", "category": "ai", "source": "example"}
+
+    description_item = collector._parse_entry(
+        {
+            "title": "Description fallback",
+            "link": "https://example.test/description",
+            "description": "<p>来自 description 的摘要</p>",
+        },
+        feed,
+    )
+    content_item = collector._parse_entry(
+        {
+            "title": "Content fallback",
+            "link": "https://example.test/content",
+            "content": [{"value": "<p>来自 content 的摘要</p>"}],
+        },
+        feed,
+    )
+
+    assert description_item.summary == "来自 description 的摘要"
+    assert content_item.summary == "来自 content 的摘要"
 
 
 def test_rss_collector_uses_injected_feeds():
