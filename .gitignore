@@ -18,3 +18,5 @@ docs/*.plist
 
 .worktrees/
 .superpowers/
+.venv312/
+*.egg-info/
