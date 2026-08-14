@@ -25,7 +25,7 @@ logging.basicConfig(
 
 config = load_config()
 agent = NewsAgent(config)
-scheduler = create_scheduler(agent, config.tz)
+scheduler = create_scheduler(agent, config.tz, config.source_failure_degraded_threshold)
 APP_VERSION = package_version("claw-news")
 
 
@@ -100,6 +100,10 @@ async def health():
     for entry in ingest_status.get("skipped_sources", []):
         name = entry.split(":")[0] if ":" in entry else entry
         source_status[name] = "degraded"
+    for entry in ingest_status.get("degraded_sources", []):
+        name = entry.get("source") if isinstance(entry, dict) else None
+        if name:
+            source_status[name] = "degraded"
 
     has_failed_source = any(s == "failed" for s in source_status.values())
     has_degraded_source = any(s == "degraded" for s in source_status.values())

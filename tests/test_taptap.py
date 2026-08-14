@@ -32,6 +32,7 @@ def test_parse_html_to_items():
     assert items[0].url == "https://www.taptap.cn/app/12345"
     assert items[0].category == "game"
     assert items[0].source == "taptap"
+    assert all(len(item.summary) >= 5 for item in items)
     assert items[0].source_score > items[1].source_score  # rank 1 > rank 2
     assert all(item.pub_date != "" for item in items)
 
@@ -51,3 +52,18 @@ async def test_collect_mocked(httpx_mock):
     items = await collector.collect()
     assert len(items) == 3
     assert all(item.category == "game" for item in items)
+
+
+def test_parse_html_uses_game_description_when_present():
+    collector = TapTapCollector()
+    items = collector._parse_html(
+        """
+        <div class="game-list-cell">
+          <a href="/app/99"></a>
+          <span class="game-list-cell-title">测试游戏</span>
+          <p class="game-list-cell-desc">开放世界冒险游戏</p>
+        </div>
+        """
+    )
+
+    assert items[0].summary == "开放世界冒险游戏"

@@ -64,6 +64,7 @@ _FALLBACK_RESULT = {
     "daily_judgement": "今日暂无 AI 相关新闻，请稍后再关注。",
 }
 _LLM_TIMEOUT = httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=60.0)
+_MAX_PROMPT_SUMMARY_CHARS = 200
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +165,7 @@ async def summarize_news(
         {
             "title": item["title"],
             "link": item["link"],
-            "summary": item.get("summary", ""),
+            "summary": (item.get("summary", "") or "")[:_MAX_PROMPT_SUMMARY_CHARS],
             "published_at": item.get("published_at", ""),
         }
         for item in items

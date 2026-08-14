@@ -27,4 +27,5 @@ def test_load_status_defaults_include_skipped_sources(tmp_path: Path):
         "successful_sources": [],
         "failed_sources": [],
         "skipped_sources": [],
+        "degraded_sources": [],
     }

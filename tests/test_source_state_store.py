@@ -14,6 +14,10 @@ def test_load_state_returns_default_when_missing(tmp_path: Path):
     assert state["max_fetch_count"] == 10
     assert state["cooldown_remaining"] == 0
     assert state["last_adjusted_at"] is None
+    assert state["consecutive_failure_count"] == 0
+    assert state["last_success_at"] is None
+    assert state["last_failure_at"] is None
+    assert state["last_error"] is None
 
 
 def test_load_state_returns_default_when_json_is_not_object(tmp_path: Path):
@@ -101,6 +105,10 @@ def test_save_state_then_load_state_preserves_known_fields_only(tmp_path: Path):
             "max_fetch_count": 20,
             "cooldown_remaining": 2,
             "last_adjusted_at": "2026-05-19T10:00:00",
+            "consecutive_failure_count": 2,
+            "last_success_at": "2026-05-19T09:00:00",
+            "last_failure_at": "2026-05-19T10:00:00",
+            "last_error": "timeout",
             "unexpected": "value",
         },
     )
@@ -113,6 +121,10 @@ def test_save_state_then_load_state_preserves_known_fields_only(tmp_path: Path):
     assert state["max_fetch_count"] == 20
     assert state["cooldown_remaining"] == 2
     assert state["last_adjusted_at"] == "2026-05-19T10:00:00"
+    assert state["consecutive_failure_count"] == 2
+    assert state["last_success_at"] == "2026-05-19T09:00:00"
+    assert state["last_failure_at"] == "2026-05-19T10:00:00"
+    assert state["last_error"] == "timeout"
     assert "unexpected" not in state
 
 

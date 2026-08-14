@@ -172,6 +172,27 @@ class TestHealthEndpoint:
         assert data["status"] == "degraded"
         assert data["sources"]["github"] == "degraded"
 
+    def test_health_exposes_structured_degraded_source(self):
+        from fastapi.testclient import TestClient
+
+        main_module = _load_app_module()
+        with (
+            patch.object(main_module, "agent", _make_mock_agent()),
+            patch.object(main_module, "scheduler", MagicMock()),
+            patch.object(main_module, "IngestStatusStore") as mock_store,
+        ):
+            mock_store.return_value.load_status.return_value = {
+                "last_ingest_at": "2099-05-18T08:00:00",
+                "successful_sources": [],
+                "failed_sources": [],
+                "skipped_sources": [],
+                "degraded_sources": [{"source": "huggingface", "consecutive_failure_count": 3}],
+            }
+            data = TestClient(main_module.app).get("/health").json()
+
+        assert data["status"] == "degraded"
+        assert data["sources"]["huggingface"] == "degraded"
+
     def test_health_handles_offset_ingest_timestamp(self):
         """带时区的采集时间按真实时刻转换，不直接丢弃 offset。"""
         from fastapi.testclient import TestClient

@@ -35,6 +35,10 @@ class SourceStateStore:
                     "max_fetch_count",
                     "cooldown_remaining",
                     "last_adjusted_at",
+                    "consecutive_failure_count",
+                    "last_success_at",
+                    "last_failure_at",
+                    "last_error",
                 )
                 if key in loaded
             },
@@ -53,6 +57,10 @@ class SourceStateStore:
             "max_fetch_count",
             "cooldown_remaining",
             "last_adjusted_at",
+            "consecutive_failure_count",
+            "last_success_at",
+            "last_failure_at",
+            "last_error",
         ):
             if field in payload:
                 state[field] = payload[field]
@@ -74,4 +82,8 @@ class SourceStateStore:
             "max_fetch_count": default_fetch_count,
             "cooldown_remaining": 0,
             "last_adjusted_at": None,
+            "consecutive_failure_count": 0,
+            "last_success_at": None,
+            "last_failure_at": None,
+            "last_error": None,
         }

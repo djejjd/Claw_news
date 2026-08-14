@@ -87,6 +87,8 @@ _DEFAULT_RULES: dict[str, dict[str, list[str]]] = {
         ],
         "negative": [
             "汽车促销",
+            "汽车发布会",
+            "汽车召回",
             "限时促销",
             "大降价",
             "清仓",
@@ -100,6 +102,7 @@ _DEFAULT_RULES: dict[str, dict[str, list[str]]] = {
             "热播剧",
             "综艺",
             "家电降价",
+            "家电新品",
             "空调促销",
             "冰箱洗衣机",
             "天气",
@@ -110,6 +113,9 @@ _DEFAULT_RULES: dict[str, dict[str, list[str]]] = {
             "基金",
             "期货",
             "理财",
+            "公司人事变动",
+            "高管离职",
+            "法律诉讼",
         ],
     },
     "game": {
@@ -206,8 +212,15 @@ class RelevanceFilter:
                 matched_negative=matched_neg,
             )
 
-        # 5. 正向词命中 → 接受
+        # 5. 正向词命中 → 接受。strict 来源需要两种独立信号，避免快讯凭宽泛词放行。
         if matched_pos:
+            if policy.filter_profile == "strict" and len(matched_pos) < 2:
+                return RelevanceResult(
+                    accepted=False,
+                    confidence=0.0,
+                    reason="below_threshold",
+                    matched_positive=matched_pos,
+                )
             confidence = 0.9 if len(matched_pos) >= 2 else 0.7
             return RelevanceResult(
                 accepted=True,

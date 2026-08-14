@@ -167,6 +167,27 @@ class TestSummarizeNews:
         assert kwargs["timeout"] == httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=60.0)
 
     @pytest.mark.asyncio
+    async def test_prompt_truncates_only_long_summary(self):
+        from app.tools.llm import summarize_news
+
+        prefix = "a" * 200
+        items = _make_news_items(1)
+        items[0]["summary"] = prefix + "TAIL-MUST-NOT-REACH-LLM"
+        mock_client = _build_mock_client(
+            _make_valid_response(json.dumps({"headline_items": [], "daily_judgement": "判断"}))
+        )
+
+        with patch("app.tools.llm.httpx.AsyncClient", return_value=mock_client):
+            result = await summarize_news(
+                items, base_url="https://api.example.com", api_key="test-key", model="test-model"
+            )
+
+        prompt = mock_client.post.call_args.kwargs["json"]["messages"][1]["content"]
+        assert prefix in prompt
+        assert "TAIL-MUST-NOT-REACH-LLM" not in prompt
+        assert result["headline_items"][0]["core_summary"] == items[0]["summary"]
+
+    @pytest.mark.asyncio
     async def test_partial_model_output_is_filled_without_changing_input_urls(self):
         from app.tools.llm import summarize_news
 
