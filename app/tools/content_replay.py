@@ -9,6 +9,7 @@ from pathlib import Path
 from app.content.source_policy import build_source_policy_registry
 from app.pipeline.selection import select_digest
 from app.storage.ingestion_store import IngestionStore, filter_unexpired_candidates
+from infra.storage.state_store import StateStore
 
 
 def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
@@ -58,7 +59,13 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
 
     # 3. 复用生产读取路径：按 fetched_at 限窗、canonical_key 折叠和已发布项过滤。
     store = IngestionStore(root_dir=data_path.parent)
-    candidates = store.load_recent_candidates(now.isoformat(), lookback_hours=lookback_hours)
+    state_store = StateStore(data_path)
+    candidates = store.load_recent_candidates(
+        now.isoformat(),
+        lookback_hours=lookback_hours,
+        pushed_urls=state_store.load_pushed_urls(),
+        pushed_keys=state_store.load_published_keys(),
+    )
 
     candidate_count = len(candidates)
 

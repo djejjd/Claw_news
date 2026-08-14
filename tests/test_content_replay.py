@@ -143,6 +143,21 @@ def _seed_replay_fixture(tmp_path: Path) -> Path:
     return data_dir
 
 
+def test_replay_excludes_published_urls_and_keys(tmp_path, monkeypatch):
+    data_dir = _seed_replay_fixture(tmp_path)
+    (data_dir / "pushed_urls.json").write_text(json.dumps(["https://ai1.test"]))
+    (data_dir / "published_keys.json").write_text(json.dumps(["t1"]))
+    monkeypatch.chdir(tmp_path)
+
+    from app.tools.content_replay import run_replay
+
+    result = run_replay(data_dir="data", at=_FIXED_AT)
+    selected_urls = {item["url"] for item in result["selected"]}
+
+    assert "https://ai1.test" not in selected_urls
+    assert "https://t1.test" not in selected_urls
+
+
 def _seed_fixture_with_history(tmp_path: Path) -> Path:
     """创建含历史候选的回放 fixture。"""
     data_dir = tmp_path / "data"
