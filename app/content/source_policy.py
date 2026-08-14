@@ -14,6 +14,8 @@ FilterProfile = Literal["strict", "standard", "lenient"]
 
 _VALID_TIERS: frozenset[str] = frozenset({"fast_news", "vertical", "deep"})
 _VALID_PROFILES: frozenset[str] = frozenset({"strict", "standard", "lenient"})
+_FAST_NEWS_HARD_CAP = 2
+_DEFAULT_SOFT_CAP = 3
 
 
 @dataclass(frozen=True)
@@ -118,3 +120,18 @@ def resolve_source_policy(source: str, registry: dict[str, SourcePolicy]) -> Sou
     if source in _BUILTIN_SOURCE_POLICIES:
         return _BUILTIN_SOURCE_POLICIES[source]
     return SourcePolicy(source=source)  # uses DEFAULT_SOURCE_POLICY field defaults
+
+
+def source_selection_cap(policy: SourcePolicy) -> tuple[int, bool]:
+    """返回来源选材上限及其是否为不可突破的硬限制。
+
+    快讯源始终受 2 条硬上限约束；其余来源默认 3 条软上限，
+    显式配置可收紧但不会改变软上限语义。
+    """
+    configured_cap = policy.max_selected_per_digest
+    if policy.tier == "fast_news":
+        return (
+            min(configured_cap, _FAST_NEWS_HARD_CAP) if configured_cap else _FAST_NEWS_HARD_CAP,
+            True,
+        )
+    return (configured_cap if configured_cap is not None else _DEFAULT_SOFT_CAP, False)

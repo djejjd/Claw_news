@@ -255,6 +255,8 @@ def test_replay_reports_distribution(tmp_path, monkeypatch):
     assert "selected_count" in result
     assert "source_distribution" in result
     assert "category_distribution" in result
+    assert "soft_source_cap_exceeded_count" in result
+    assert "selection_evidence" in result
 
 
 def test_replay_historical_backfill(tmp_path, monkeypatch):

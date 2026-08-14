@@ -1042,6 +1042,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
                 "final_score": e.final_score,
                 "diversity_penalty": e.diversity_penalty,
                 "selection_score": e.selection_score,
+                "soft_source_cap_exceeded": e.soft_source_cap_exceeded,
             }
             for e in selection_result.evidence
         ]
@@ -1207,6 +1208,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
                             "final_score": e.final_score,
                             "diversity_penalty": e.diversity_penalty,
                             "selection_score": e.selection_score,
+                            "soft_source_cap_exceeded": e.soft_source_cap_exceeded,
                         }
                         for e in selection_result.evidence
                     ]

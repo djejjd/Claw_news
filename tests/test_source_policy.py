@@ -34,6 +34,21 @@ def test_explicit_max_selected_per_digest_is_loaded():
     assert registry["ithome"].max_selected_per_digest == 3
 
 
+def test_selection_cap_uses_fast_news_hard_default_and_other_soft_default():
+    from app.content.source_policy import SourcePolicy, source_selection_cap
+
+    assert source_selection_cap(SourcePolicy(source="fast", tier="fast_news")) == (2, True)
+    assert source_selection_cap(SourcePolicy(source="vertical", tier="vertical")) == (3, False)
+
+
+def test_fast_news_cap_cannot_exceed_hard_limit():
+    from app.content.source_policy import SourcePolicy, source_selection_cap
+
+    assert source_selection_cap(
+        SourcePolicy(source="fast", tier="fast_news", max_selected_per_digest=3)
+    ) == (2, True)
+
+
 def test_invalid_max_selected_per_digest_is_rejected():
     from app.content.source_policy import build_source_policy_registry
 

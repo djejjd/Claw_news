@@ -30,14 +30,14 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
         ValueError: at 参数格式非法
         FileNotFoundError: data_dir 不存在
     """
-    data_path = Path(data_dir)
-    if not data_path.exists():
-        raise FileNotFoundError(f"数据目录不存在: {data_dir}")
-
     try:
         now = datetime.fromisoformat(at)
     except (ValueError, TypeError) as e:
         raise ValueError(f"非法时间参数 '{at}': {e}") from e
+
+    data_path = Path(data_dir)
+    if not data_path.exists():
+        raise FileNotFoundError(f"数据目录不存在: {data_dir}")
 
     # 1. 加载 feeds.yaml 配置
     feeds_path = data_path.parent / "feeds.yaml"
@@ -130,6 +130,20 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
         "today_count": today_count,
         "backfill_count": backfill_count,
         "rejection_reasons": dict(rejection_reasons),
+        "soft_source_cap_exceeded_count": sum(
+            evidence.soft_source_cap_exceeded for evidence in result.evidence
+        ),
+        "selection_evidence": [
+            {
+                "canonical_key": evidence.canonical_key,
+                "phase": evidence.phase,
+                "final_score": evidence.final_score,
+                "diversity_penalty": evidence.diversity_penalty,
+                "selection_score": evidence.selection_score,
+                "soft_source_cap_exceeded": evidence.soft_source_cap_exceeded,
+            }
+            for evidence in result.evidence
+        ],
         "selected": [
             {
                 "title": it.title,

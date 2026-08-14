@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from app.content.source_policy import SourcePolicy
+from app.content.source_policy import SourcePolicy, source_selection_cap
 from app.content.time_policy import freshness_score, is_today
 from app.pipeline.candidate import CandidateItem
 
@@ -30,10 +30,17 @@ _PENALTY = {0: 0.0, 1: -1.0, 2: -2.0, 3: -3.5}
 @dataclass(frozen=True)
 class SelectionEvidence:
     canonical_key: str
-    phase: Literal["today_guarantee", "historical_backfill", "today_competition"]
+    phase: Literal[
+        "today_guarantee",
+        "historical_backfill",
+        "today_competition",
+        "historical_competition",
+        "soft_cap_backfill",
+    ]
     final_score: float
     diversity_penalty: float
     selection_score: float
+    soft_source_cap_exceeded: bool = False
 
 
 @dataclass(frozen=True)
@@ -125,14 +132,14 @@ def select_digest(
     source_counts: dict[str, int] = {}
     category_counts: dict[str, int] = {c: 0 for c in _CATEGORY_ORDER}
 
-    def _greedy_pick(pool, phase, target_per_cat=None, per_category=False):
+    def _greedy_pick(pool, phase, target_per_cat=None, per_category=False, allow_soft_cap=False):
         """通用贪心选材。per_category=True 时按分类顺序逐类选取。"""
         nonlocal selected, source_counts, evidence, seen_urls, category_counts
 
         def can_add(item) -> bool:
             policy = policies.get(item.source, SourcePolicy(source=item.source))
-            cap = policy.max_selected_per_digest
-            return cap is None or source_counts.get(item.source, 0) < cap
+            cap, hard_cap = source_selection_cap(policy)
+            return source_counts.get(item.source, 0) < cap or (allow_soft_cap and not hard_cap)
 
         remaining = [it for it in pool if it.url not in seen_urls]
         # 计算 selection_score
@@ -140,7 +147,8 @@ def select_digest(
         for it in remaining:
             n = source_counts.get(it.source, 0)
             policy = policies.get(it.source, SourcePolicy(source=it.source))
-            if policy.max_selected_per_digest is not None and n >= policy.max_selected_per_digest:
+            cap, hard_cap = source_selection_cap(policy)
+            if n >= cap and (hard_cap or not allow_soft_cap):
                 continue
             pen = source_diversity_penalty(n)
             scored.append((it, it.final_score + pen, pen))
@@ -163,6 +171,9 @@ def select_digest(
                     selected.append(it)
                     seen_urls.add(it.url)
                     src = it.source
+                    policy = policies.get(src, SourcePolicy(source=src))
+                    cap, _ = source_selection_cap(policy)
+                    soft_cap_exceeded = allow_soft_cap and source_counts.get(src, 0) >= cap
                     source_counts[src] = source_counts.get(src, 0) + 1
                     category_counts[cat] += 1
                     ck2 = it.canonical_key or CandidateItem.make_canonical_key(it.url or "")
@@ -173,6 +184,7 @@ def select_digest(
                             final_score=it.final_score,
                             diversity_penalty=pen,
                             selection_score=sel_score,
+                            soft_source_cap_exceeded=soft_cap_exceeded,
                         )
                     )
         else:
@@ -188,6 +200,9 @@ def select_digest(
                 selected.append(it)
                 seen_urls.add(it.url)
                 src = it.source
+                policy = policies.get(src, SourcePolicy(source=src))
+                cap, _ = source_selection_cap(policy)
+                soft_cap_exceeded = allow_soft_cap and source_counts.get(src, 0) >= cap
                 source_counts[src] = source_counts.get(src, 0) + 1
                 category_counts[cat] += 1
                 ck = it.canonical_key or CandidateItem.make_canonical_key(it.url or "")
@@ -198,6 +213,7 @@ def select_digest(
                         final_score=it.final_score,
                         diversity_penalty=pen,
                         selection_score=sel_score,
+                        soft_source_cap_exceeded=soft_cap_exceeded,
                     )
                 )
 
@@ -214,6 +230,10 @@ def select_digest(
     # Phase 4: 今日不足时，用剩余历史候选按质量和新鲜度补齐总量。
     if len(selected) < top_n:
         _greedy_pick(hist_items, "historical_competition")
+
+    # Phase 5: 只有总量仍不足时，非快讯来源才可突破 3 条软上限。
+    if len(selected) < top_n:
+        _greedy_pick(today_items + hist_items, "soft_cap_backfill", allow_soft_cap=True)
 
     # 按 final_score 降序排
     selected.sort(key=lambda x: (-getattr(x, "final_score", 0), _ck(x)))
