@@ -35,6 +35,11 @@ _SHA = re.compile(r"\b[0-9a-f]{40}\b")
 _EXACT_SHA = re.compile(r"[0-9a-f]{40}\Z")
 _CODE = re.compile(r"`([^`]+)`")
 
+# 门禁上线前已完成且经用户批准迁移的唯一历史提交；不得扩展为可配置开关。
+_LEGACY_TRAILER_EXCEPTIONS = {
+    ("v1.1.0-T1", "1d0eb92378aa2d028cc8e3141d0d3808aff882ad"),
+}
+
 
 def _metadata(markdown: str) -> dict[str, str]:
     return {key.strip(): value.strip() for key, value in _TABLE_ROW.findall(markdown)}
@@ -172,6 +177,8 @@ def validate_task_commit(task: TaskSpec) -> None:
     _git("cat-file", "-e", f"{task.task_commit}^{{commit}}")
     message = _git("show", "-s", "--format=%B", task.task_commit)
     if f"Task: {task.task_id}" not in message.splitlines():
+        if (task.task_id, task.task_commit) in _LEGACY_TRAILER_EXCEPTIONS:
+            return
         raise TaskGateError(f"实现提交未声明 Task: {task.task_id}")
 
 

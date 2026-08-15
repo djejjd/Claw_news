@@ -17,6 +17,7 @@ from scripts.task_gate import (
     validate_combined_paths,
     validate_dependencies,
     validate_paths,
+    validate_task_commit,
 )
 
 
@@ -175,6 +176,31 @@ def test_commit_and_ci_reject_tasks_without_approved_preflight(monkeypatch):
     completed = TaskSpec(**{**task.__dict__, "state": "completed", "task_commit": "a" * 40})
     with pytest.raises(TaskGateError, match="独立启动审查"):
         ci([completed], "origin/main")
+
+
+def test_legacy_migration_allows_only_the_exact_pre_gate_t1_commit(monkeypatch):
+    monkeypatch.setattr(
+        "scripts.task_gate._git",
+        lambda *args: "legacy commit without task trailer" if "show" in args else "",
+    )
+    legacy_t1 = TaskSpec(
+        path=Path("docs/计划/网站/v1.1.0/T1-公共读取仓储与契约.md"),
+        task_id="v1.1.0-T1",
+        state="completed",
+        dependencies=(),
+        design_sha="0" * 40,
+        allowed_paths=("app/publication/store.py",),
+        preflight="approved",
+        review="approved",
+        task_commit="1d0eb92378aa2d028cc8e3141d0d3808aff882ad",
+    )
+
+    validate_task_commit(legacy_t1)
+
+    with pytest.raises(TaskGateError, match="Task"):
+        validate_task_commit(TaskSpec(**{**legacy_t1.__dict__, "task_commit": "a" * 40}))
+    with pytest.raises(TaskGateError, match="Task"):
+        validate_task_commit(TaskSpec(**{**legacy_t1.__dict__, "task_id": "v1.1.0-T2"}))
 
 
 def test_porcelain_paths_keeps_hidden_and_chinese_paths_unquoted():
