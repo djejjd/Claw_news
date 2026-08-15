@@ -116,7 +116,8 @@ def _dependency_spec(task: TaskSpec, dependency_id: str) -> TaskSpec | None:
     matches: list[TaskSpec] = []
     for candidate in candidates:
         markdown = candidate.read_text(encoding="utf-8")
-        if dependency_id not in _TASK_ID.findall(markdown):
+        task_ids = _TASK_ID.findall(_metadata(markdown).get("任务编号", ""))
+        if task_ids != [dependency_id]:
             continue
         spec = parse_task(candidate)
         if spec.task_id == dependency_id:
