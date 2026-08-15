@@ -258,6 +258,34 @@ def test_validate_dependencies_supports_dependencies_in_another_task_directory(t
     validate_dependencies(parse_task(child))
 
 
+def test_validate_dependencies_ignores_an_incomplete_sibling_that_only_references_dependency(
+    tmp_path,
+):
+    parent = tmp_path / "docs" / "计划" / "治理" / "v0.2.2" / "T1-parent.md"
+    child = tmp_path / "docs" / "计划" / "网站" / "v1.1.0" / "T2-child.md"
+    sibling = child.parent / "T5-draft.md"
+    parent.parent.mkdir(parents=True)
+    child.parent.mkdir(parents=True)
+    parent.write_text(
+        _task_markdown(
+            task_id="v0.2.2-T1",
+            dependencies="无",
+            state="completed",
+            preflight="approved",
+            review="approved",
+            task_commit="a" * 40,
+        ),
+        encoding="utf-8",
+    )
+    child.write_text(_task_markdown(dependencies="`v0.2.2-T1`"), encoding="utf-8")
+    sibling.write_text(
+        "| 项目 | 内容 |\n|---|---|\n| 任务编号 | `v1.1.0-T5` |\n| 依赖任务 | `v0.2.2-T1` |\n",
+        encoding="utf-8",
+    )
+
+    validate_dependencies(parse_task(child))
+
+
 def test_tasks_from_pr_requires_the_task_package_field_and_supports_multiple_tasks():
     assert tasks_from_pr(
         "- 任务包：`docs/计划/网站/v1.1.0/T1-公共读取仓储与契约.md`, "
