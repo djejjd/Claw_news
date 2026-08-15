@@ -332,7 +332,7 @@ class TestRunNewsEndpoint:
             ),
         ]
         fake_metrics_store = MagicMock()
-        fake_metrics_store.write_selected_counts.return_value = 2
+        fake_metrics_store.write_selection_eligible_counts.return_value = 2
 
         with (
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_ingestion_store,
@@ -392,8 +392,12 @@ class TestRunNewsEndpoint:
             )
 
         assert result.status == "ok"
-        fake_metrics_store.write_selected_counts.assert_called_once_with(
-            {"qbitai": 1, "huggingface": 1}
+        fake_metrics_store.write_selection_eligible_counts.assert_called_once()
+        assert fake_metrics_store.write_selection_eligible_counts.call_args.args == (
+            {"qbitai": 1, "huggingface": 1},
+        )
+        assert (
+            "run_started_at" in fake_metrics_store.write_selection_eligible_counts.call_args.kwargs
         )
 
     def test_run_news_records_error_when_source_metrics_write_is_short(self):
@@ -422,7 +426,7 @@ class TestRunNewsEndpoint:
             ),
         ]
         fake_metrics_store = MagicMock()
-        fake_metrics_store.write_selected_counts.return_value = 1
+        fake_metrics_store.write_selection_eligible_counts.return_value = 1
 
         with (
             patch("app.pipeline.news_pipeline.IngestionStore") as mock_ingestion_store,

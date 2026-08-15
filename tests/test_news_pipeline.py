@@ -185,6 +185,16 @@ class TestDigestPayloadFields:
         assert d.published_urls == []
         assert d.published_keys == []
 
+    def test_relevance_degradation_fields_default_to_compatible_values(self):
+        from app.tools.summary_result import DigestPayload
+
+        digest = DigestPayload(
+            date="2026-05-18", period="morning", published_at="", trigger_mode="manual"
+        )
+
+        assert digest.degradation_reasons == []
+        assert digest.daily_judgement_source == "initial_selection_llm"
+
 
 # ===================================================================
 # 4. pipeline 函数签名正确（import 验证）
@@ -328,3 +338,88 @@ class TestMatchSelectedCandidate:
             },
         )
         assert result is None
+
+
+class TestLlmRelevanceAudit:
+    def test_reselection_cluster_events_preserve_their_actual_round_numbers(self):
+        from app.pipeline.candidate import CandidateItem
+        from app.pipeline.news_pipeline import _selection_evidence_payload
+        from app.pipeline.selection import SelectionEvidence, SelectionResult, TopicClusterEvent
+
+        first = CandidateItem("A", "https://a.test/1", "", "a", "ai", canonical_key="a.test/1")
+        second = CandidateItem("B", "https://b.test/1", "", "b", "ai", canonical_key="b.test/1")
+        result = SelectionResult(
+            selected=[first],
+            evidence=[SelectionEvidence(first.canonical_key, "today_guarantee", 4, 0, 4)],
+            category_counts={"ai": 1, "tool": 0, "game": 0, "digital": 0},
+        )
+        event = TopicClusterEvent(2, first.canonical_key, second.canonical_key, 0.8, 0.8, (), 3, 3)
+
+        evidence = _selection_evidence_payload(
+            result,
+            [],
+            [first, second],
+            relevance_scores={},
+            reselection_cluster_events=[event],
+        )
+
+        excluded = next(item for item in evidence if item["event"] == "topic_cluster_excluded")
+        assert excluded["selection_stage"] == "llm_reselection"
+        assert excluded["selection_round"] == 2
+
+    def test_audit_records_initial_rejection_backfill_and_final_selection_in_order(self):
+        from app.pipeline.candidate import CandidateItem
+        from app.pipeline.news_pipeline import _selection_evidence_payload
+        from app.pipeline.selection import SelectionEvidence, SelectionResult
+
+        initial = CandidateItem(
+            title="初选低相关",
+            url="https://initial.test/low",
+            summary="",
+            source="initial",
+            category="ai",
+            canonical_key="initial.test/low",
+            topic="model_release",
+            final_score=5.0,
+        )
+        backfill = CandidateItem(
+            title="补位",
+            url="https://backfill.test/high",
+            summary="",
+            source="backfill",
+            category="ai",
+            canonical_key="backfill.test/high",
+            topic="model_release",
+            final_score=4.0,
+        )
+        initial_result = SelectionResult(
+            selected=[initial],
+            evidence=[SelectionEvidence(initial.canonical_key, "today_guarantee", 5.0, 0.0, 5.0)],
+            category_counts={"ai": 1, "tool": 0, "game": 0, "digital": 0},
+        )
+        final_result = SelectionResult(
+            selected=[backfill],
+            evidence=[SelectionEvidence(backfill.canonical_key, "today_guarantee", 4.0, 0.0, 4.0)],
+            category_counts={"ai": 1, "tool": 0, "game": 0, "digital": 0},
+        )
+
+        evidence = _selection_evidence_payload(
+            final_result,
+            [],
+            [initial, backfill],
+            initial_selection_result=initial_result,
+            relevance_scores={initial.url: 0.2},
+            relevance_threshold=0.5,
+            relevance_backfills=[{"canonical_key": backfill.canonical_key}],
+        )
+
+        assert [item["event"] for item in evidence] == [
+            "temporary_selected",
+            "llm_relevance_rejected",
+            "llm_relevance_backfill",
+            "final_selected",
+        ]
+        assert evidence[1]["relevance"] == 0.2
+        assert evidence[1]["threshold"] == 0.5
+        assert evidence[2]["relevance_source"] == "not_scored_backfill"
+        assert all(item["schema_version"] == 2 for item in evidence)

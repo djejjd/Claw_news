@@ -274,6 +274,116 @@ def test_replay_reports_distribution(tmp_path, monkeypatch):
     assert "selection_evidence" in result
 
 
+def test_replay_reports_selected_diversity_penalty_profile(tmp_path, monkeypatch):
+    """回放结果必须标明所用 profile，便于保留 linear / exponential 对照。"""
+    from app.tools.content_replay import run_replay
+
+    _seed_replay_fixture(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    result = run_replay(
+        data_dir="data",
+        at=_FIXED_AT,
+        diversity_penalty_profile="exponential",
+    )
+
+    assert result["diversity_penalty_profile"] == "exponential"
+
+
+def test_replay_relevance_audit_uses_shared_event_contract(tmp_path, monkeypatch):
+    """回放的相关性事件必须与 digest/pending 使用同一审计语义。"""
+    from app.tools.content_replay import run_replay
+
+    _seed_replay_fixture(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    result = run_replay(
+        data_dir="data",
+        at=_FIXED_AT,
+        llm_relevance_scores={
+            "https://ai1.test": 0.2,
+            "https://t1.test": 0.9,
+            "https://g1.test": 0.9,
+        },
+    )
+
+    events = result["llm_relevance_events"]
+    names = [event["event"] for event in events]
+    assert names[:4] == [
+        "temporary_selected",
+        "temporary_selected",
+        "temporary_selected",
+        "llm_relevance_rejected",
+    ]
+    assert names[-2:] == ["final_selected", "final_selected"]
+    rejected = events[3]
+    assert rejected["schema_version"] == 2
+    assert rejected["canonical_key"] == "ai1"
+    assert rejected["selection_round"] == 2
+    assert rejected["source"] == "qbitai"
+    assert rejected["category"] == "ai"
+    assert rejected["topic"] == "application_case"
+    assert rejected["final_score"] == 6.5
+    assert rejected["selection_score"] == 6.5
+    assert rejected["relevance"] == 0.2
+    assert rejected["threshold"] == 0.5
+    assert all(event["schema_version"] == 2 for event in events)
+
+
+def test_replay_cluster_round_counts_exclude_prior_losers(tmp_path, monkeypatch):
+    from app.pipeline.selection import SelectionResult, TopicClusterRound
+    from app.tools.content_replay import run_replay
+
+    _seed_replay_fixture(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    trace = (
+        TopicClusterRound(
+            selection_round=1,
+            available_count=3,
+            selected_before_count=3,
+            excluded_count=2,
+            cumulative_excluded_count=2,
+            converged=False,
+        ),
+        TopicClusterRound(
+            selection_round=2,
+            available_count=1,
+            selected_before_count=1,
+            excluded_count=0,
+            cumulative_excluded_count=2,
+            converged=True,
+        ),
+    )
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            "app.tools.content_replay.select_digest_with_topic_clustering",
+            lambda *args, **kwargs: (SelectionResult([], [], {}, cluster_rounds=trace), []),
+        )
+        result = run_replay(data_dir="data", at=_FIXED_AT, topic_cluster_enabled=True)
+
+    rounds = result["topic_cluster_rounds"]
+    assert len(rounds) == 2
+    assert rounds == [
+        {
+            "selection_round": 1,
+            "available_count": 3,
+            "selected_before_count": 3,
+            "excluded_count": 2,
+            "cumulative_excluded_count": 2,
+            "converged": False,
+        },
+        {
+            "selection_round": 2,
+            "available_count": 1,
+            "selected_before_count": 1,
+            "excluded_count": 0,
+            "cumulative_excluded_count": 2,
+            "converged": True,
+        },
+    ]
+
+
 def test_replay_historical_backfill(tmp_path, monkeypatch):
     """历史候选用于补足分类不足。"""
     from app.tools.content_replay import run_replay

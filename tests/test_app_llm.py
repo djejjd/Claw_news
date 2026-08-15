@@ -247,6 +247,54 @@ class TestSummarizeNews:
         assert result["headline_items"][0]["core_summary"] == "模型摘要"
         assert result["headline_items"][1]["core_summary"] == items[1]["summary"]
 
+    @pytest.mark.asyncio
+    async def test_completed_items_keep_model_relevance_aligned_by_input_url(self):
+        from app.tools.llm import summarize_news
+
+        items = _make_news_items(2)
+        output = {
+            "headline_items": [
+                {
+                    "url": items[1]["link"],
+                    "core_summary": "第二条摘要",
+                    "importance": "高",
+                    "trend": "趋势",
+                    "relevance": 0.81,
+                },
+                {
+                    "url": items[0]["link"],
+                    "core_summary": "第一条摘要",
+                    "importance": "中",
+                    "trend": "趋势",
+                    "relevance": 0.42,
+                },
+            ],
+            "daily_judgement": "判断",
+        }
+        mock_client = _build_mock_client(_make_valid_response(json.dumps(output)))
+
+        with patch("app.tools.llm.httpx.AsyncClient", return_value=mock_client):
+            result = await summarize_news(
+                items,
+                base_url="https://api.example.com",
+                api_key="test-key",
+                model="test-model",
+            )
+
+        assert [entry["url"] for entry in result["headline_items"]] == [
+            item["link"] for item in items
+        ]
+        assert [entry["relevance"] for entry in result["headline_items"]] == [0.42, 0.81]
+
+    @pytest.mark.parametrize(
+        "relevance", [None, True, "0.8", float("nan"), float("inf"), -0.1, 1.1]
+    )
+    def test_relevance_validation_rejects_missing_or_invalid_values(self, relevance):
+        from app.tools.llm import validate_relevance_scores
+
+        with pytest.raises(ValueError, match="invalid LLM relevance"):
+            validate_relevance_scores([{"url": "https://example.test/1", "relevance": relevance}])
+
     # -- Empty items ---------------------------------------------------------
 
     @pytest.mark.asyncio

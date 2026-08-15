@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 
@@ -26,7 +27,12 @@ class PendingDeliveryStore:
             ) from exc
         if not isinstance(payload, dict):
             raise PendingDeliveryCorruptError(f"pending delivery is not an object: {path.name}")
-        self._validate_secret_free(payload)
+        try:
+            self._validate_secret_free(payload)
+        except ValueError as exc:
+            raise PendingDeliveryCorruptError(
+                f"pending delivery contains secret field: {path.name}"
+            ) from exc
         return payload
 
     def save(self, date: str, period: str, payload: dict) -> None:
@@ -47,10 +53,30 @@ class PendingDeliveryStore:
 
     @staticmethod
     def _validate_secret_free(payload: dict) -> None:
+        allowed_non_secret_fields = {"tokenizer_version"}
+        secret_fragments = {
+            "token",
+            "secret",
+            "apikey",
+            "password",
+            "authorization",
+            "credential",
+            "webhook",
+            "chatid",
+            "privatekey",
+            "bearer",
+        }
+        exact_secret_fields = {"auth", "bearer", "bearerauth"}
+
         def walk(value: object) -> None:
             if isinstance(value, dict):
                 for key, child in value.items():
-                    if "token" in key.lower() or "chat_id" in key.lower():
+                    normalized_key = re.sub(r"[^a-z0-9]", "", key.casefold())
+                    allowed = key.casefold() in allowed_non_secret_fields
+                    if not allowed and (
+                        normalized_key in exact_secret_fields
+                        or any(fragment in normalized_key for fragment in secret_fragments)
+                    ):
                         raise ValueError("pending delivery payload contains secret field")
                     walk(child)
             elif isinstance(value, list):

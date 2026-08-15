@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +45,17 @@ def _env(name: str, dotenv: dict[str, str]) -> str:
     return dotenv.get(name, "").strip()
 
 
+def _bool_env(name: str, dotenv: dict[str, str], default: bool = False) -> bool:
+    raw = _env(name, dotenv).lower()
+    if not raw:
+        return default
+    if raw in {"1", "true", "yes"}:
+        return True
+    if raw in {"0", "false", "no"}:
+        return False
+    raise ValueError(f"{name} must be 0 or 1")
+
+
 @dataclass(frozen=True)
 class AppConfig:
     llm_api_key: str
@@ -53,6 +65,12 @@ class AppConfig:
     tz: str
     news_rss_urls: list[str]
     source_failure_degraded_threshold: int = 3
+    selection_diversity_penalty_profile: str = "linear"
+    topic_cluster_enabled: bool = False
+    topic_cluster_similarity_threshold: float = 0.7
+    topic_cluster_max_rounds: int = 10
+    llm_relevance_enabled: bool = False
+    llm_relevance_threshold: float = 0.5
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
     telegram_proxy: str | None = None
@@ -107,6 +125,32 @@ def load_config() -> AppConfig:
         raise ValueError("SOURCE_FAILURE_DEGRADED_THRESHOLD must be a positive integer") from exc
     if source_failure_degraded_threshold <= 0:
         raise ValueError("SOURCE_FAILURE_DEGRADED_THRESHOLD must be a positive integer")
+    diversity_profile = _env("SELECTION_DIVERSITY_PENALTY_PROFILE", dotenv).lower() or "linear"
+    if diversity_profile not in {"linear", "exponential"}:
+        raise ValueError("SELECTION_DIVERSITY_PENALTY_PROFILE must be linear or exponential")
+    topic_cluster_enabled = _bool_env("TOPIC_CLUSTER_ENABLED", dotenv)
+    cluster_threshold_raw = _env("TOPIC_CLUSTER_SIMILARITY_THRESHOLD", dotenv)
+    try:
+        topic_cluster_similarity_threshold = float(cluster_threshold_raw or "0.7")
+    except ValueError as exc:
+        raise ValueError("TOPIC_CLUSTER_SIMILARITY_THRESHOLD must be in (0, 1]") from exc
+    if not 0 < topic_cluster_similarity_threshold <= 1:
+        raise ValueError("TOPIC_CLUSTER_SIMILARITY_THRESHOLD must be in (0, 1]")
+    rounds_raw = _env("TOPIC_CLUSTER_MAX_ROUNDS", dotenv)
+    try:
+        topic_cluster_max_rounds = int(rounds_raw or "10")
+    except ValueError as exc:
+        raise ValueError("TOPIC_CLUSTER_MAX_ROUNDS must be positive") from exc
+    if topic_cluster_max_rounds <= 0:
+        raise ValueError("TOPIC_CLUSTER_MAX_ROUNDS must be positive")
+    llm_relevance_enabled = _bool_env("LLM_RELEVANCE_ENABLED", dotenv)
+    relevance_threshold_raw = _env("LLM_RELEVANCE_THRESHOLD", dotenv)
+    try:
+        llm_relevance_threshold = float(relevance_threshold_raw or "0.5")
+    except ValueError as exc:
+        raise ValueError("LLM_RELEVANCE_THRESHOLD must be in (0, 1]") from exc
+    if not math.isfinite(llm_relevance_threshold) or not 0 < llm_relevance_threshold <= 1:
+        raise ValueError("LLM_RELEVANCE_THRESHOLD must be in (0, 1]")
     telegram_bot_token = _env("TELEGRAM_BOT_TOKEN", dotenv) or None
     telegram_chat_id = _env("TELEGRAM_CHAT_ID", dotenv) or None
     telegram_proxy = _env("TELEGRAM_PROXY", dotenv) or None
@@ -133,6 +177,12 @@ def load_config() -> AppConfig:
         tz=tz if tz else "Asia/Shanghai",
         news_rss_urls=news_rss_urls,
         source_failure_degraded_threshold=source_failure_degraded_threshold,
+        selection_diversity_penalty_profile=diversity_profile,
+        topic_cluster_enabled=topic_cluster_enabled,
+        topic_cluster_similarity_threshold=topic_cluster_similarity_threshold,
+        topic_cluster_max_rounds=topic_cluster_max_rounds,
+        llm_relevance_enabled=llm_relevance_enabled,
+        llm_relevance_threshold=llm_relevance_threshold,
         telegram_bot_token=telegram_bot_token,
         telegram_chat_id=telegram_chat_id,
         telegram_proxy=telegram_proxy,
