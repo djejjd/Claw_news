@@ -23,7 +23,16 @@ def main() -> None:
     parser.add_argument(
         "--format", choices=("text", "json"), default="text", help="输出格式 (默认 text)"
     )
+    parser.add_argument("--topic-cluster-enabled", action="store_true", help="启用同热点聚类")
+    parser.add_argument("--topic-cluster-similarity-threshold", type=float, default=0.7)
+    parser.add_argument("--topic-cluster-max-rounds", type=int, default=10)
     parser.add_argument("--lookback-hours", type=int, default=72, help="回看小时数 (默认 72)")
+    parser.add_argument(
+        "--diversity-penalty-profile",
+        choices=("linear", "exponential"),
+        default="linear",
+        help="来源多样性惩罚 profile (默认 linear)",
+    )
     args = parser.parse_args()
 
     try:
@@ -33,6 +42,10 @@ def main() -> None:
             data_dir=args.data_dir,
             at=args.at,
             lookback_hours=args.lookback_hours,
+            diversity_penalty_profile=args.diversity_penalty_profile,
+            topic_cluster_enabled=args.topic_cluster_enabled,
+            topic_cluster_similarity_threshold=args.topic_cluster_similarity_threshold,
+            topic_cluster_max_rounds=args.topic_cluster_max_rounds,
         )
     except Exception as e:
         print(f"回放失败: {e}", file=sys.stderr)
@@ -45,6 +58,8 @@ def main() -> None:
         print(f"候选总数:    {result['candidate_count']}")
         print(f"合格候选:    {result['eligible_count']}")
         print(f"最终入选:    {result['selected_count']}")
+        print(f"多样性 profile: {result['diversity_penalty_profile']}")
+        print(f"聚类排除:    {result['topic_cluster_excluded_count']}")
         print(f"今日入选:    {result['today_count']}")
         print(f"跨日补位:    {result['backfill_count']}")
         print()

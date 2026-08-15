@@ -123,6 +123,87 @@ class TestDefaults:
         with pytest.raises(ValueError, match="PUBLICATION_DATABASE_URL"):
             load_config()
 
+    def test_selection_diversity_profile_defaults_to_linear(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.delenv("SELECTION_DIVERSITY_PENALTY_PROFILE", raising=False)
+
+        assert load_config().selection_diversity_penalty_profile == "linear"
+
+    def test_selection_diversity_profile_rejects_unknown_value(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.setenv("SELECTION_DIVERSITY_PENALTY_PROFILE", "stepped")
+
+        with pytest.raises(ValueError, match="SELECTION_DIVERSITY_PENALTY_PROFILE"):
+            load_config()
+
+    def test_topic_cluster_defaults_are_disabled(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        for name in (
+            "TOPIC_CLUSTER_ENABLED",
+            "TOPIC_CLUSTER_SIMILARITY_THRESHOLD",
+            "TOPIC_CLUSTER_MAX_ROUNDS",
+        ):
+            monkeypatch.delenv(name, raising=False)
+
+        config = load_config()
+
+        assert config.topic_cluster_enabled is False
+        assert config.topic_cluster_similarity_threshold == 0.7
+        assert config.topic_cluster_max_rounds == 10
+
+    @pytest.mark.parametrize(
+        ("name", "value", "message"),
+        [
+            ("TOPIC_CLUSTER_ENABLED", "enabled", "must be 0 or 1"),
+            ("TOPIC_CLUSTER_SIMILARITY_THRESHOLD", "0", "must be in"),
+            ("TOPIC_CLUSTER_SIMILARITY_THRESHOLD", "1.1", "must be in"),
+            ("TOPIC_CLUSTER_MAX_ROUNDS", "0", "must be positive"),
+        ],
+    )
+    def test_topic_cluster_invalid_config_is_rejected(self, monkeypatch, name, value, message):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.setenv(name, value)
+
+        with pytest.raises(ValueError, match=message):
+            load_config()
+
+    @pytest.mark.parametrize(
+        ("name", "value", "message"),
+        [
+            ("LLM_RELEVANCE_ENABLED", "enabled", "must be 0 or 1"),
+            ("LLM_RELEVANCE_THRESHOLD", "0", "must be in"),
+            ("LLM_RELEVANCE_THRESHOLD", "1.1", "must be in"),
+        ],
+    )
+    def test_llm_relevance_invalid_config_is_rejected(self, monkeypatch, name, value, message):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.setenv(name, value)
+
+        with pytest.raises(ValueError, match=message):
+            load_config()
+
+    def test_llm_relevance_defaults_are_disabled(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.delenv("LLM_RELEVANCE_ENABLED", raising=False)
+        monkeypatch.delenv("LLM_RELEVANCE_THRESHOLD", raising=False)
+
+        config = load_config()
+
+        assert config.llm_relevance_enabled is False
+        assert config.llm_relevance_threshold == 0.5
+
 
 class TestNewsRssUrlsParsing:
     def test_parses_single_url(self, monkeypatch):

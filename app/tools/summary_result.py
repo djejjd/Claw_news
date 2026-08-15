@@ -46,3 +46,5 @@ class DigestPayload:
     errors: list = field(default_factory=list)
     selection_evidence: list = field(default_factory=list)
     relevance_rejections: list = field(default_factory=list)
+    degradation_reasons: list[str] = field(default_factory=list)
+    daily_judgement_source: str = "initial_selection_llm"

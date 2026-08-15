@@ -1,6 +1,8 @@
 """Task 5: 三阶段选材与唯一评分 — 失败测试。"""
 
+import json
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -73,6 +75,283 @@ def test_diversity_penalty(count, penalty):
     from app.pipeline.selection import source_diversity_penalty
 
     assert source_diversity_penalty(count) == penalty
+
+
+@pytest.mark.parametrize(
+    ("count", "penalty"),
+    [(0, 0.0), (1, -1.0), (2, -3.0), (3, -6.0), (4, -10.0), (9, -10.0)],
+)
+def test_exponential_diversity_penalty_profile(count, penalty):
+    from app.pipeline.selection import source_diversity_penalty
+
+    assert source_diversity_penalty(count, profile="exponential") == penalty
+
+
+def test_unknown_diversity_penalty_profile_is_rejected():
+    from app.pipeline.selection import source_diversity_penalty
+
+    with pytest.raises(ValueError, match="SELECTION_DIVERSITY_PENALTY_PROFILE"):
+        source_diversity_penalty(1, profile="unknown")
+
+
+def test_exponential_profile_changes_only_selection_score():
+    from app.pipeline.selection import select_digest
+
+    items = [
+        _make_item(
+            title=f"同源 AI {index}",
+            url=f"https://same.test/{index}",
+            source="same",
+            category="ai",
+        )
+        for index in range(3)
+    ]
+    policies = {"same": SourcePolicy("same", quality_weight=3.5)}
+
+    linear = select_digest(items, policies, _NOW, top_n=3, diversity_penalty_profile="linear")
+    exponential = select_digest(
+        items, policies, _NOW, top_n=3, diversity_penalty_profile="exponential"
+    )
+
+    assert [item.final_score for item in exponential.selected] == [
+        item.final_score for item in linear.selected
+    ]
+    assert [event.diversity_penalty for event in linear.evidence] == [0.0, -1.0, -2.0]
+    assert [event.diversity_penalty for event in exponential.evidence] == [0.0, -1.0, -3.0]
+
+
+def test_topic_cluster_reselects_after_excluding_lower_scored_duplicate():
+    from app.pipeline.selection import select_digest_with_topic_clustering
+
+    items = [
+        _make_item(
+            title="OpenAI 发布 GPT 5 API",
+            url="https://a.test/openai-gpt-5-api",
+            source="a",
+            topic="model_release",
+        ),
+        _make_item(
+            title="GPT 5 API 已由 OpenAI 正式发布",
+            url="https://b.test/openai-gpt-5-api-news",
+            source="b",
+            topic="model_release",
+        ),
+        _make_item(
+            title="Claude 推出新的 Agent 工作流",
+            url="https://c.test/claude-agent",
+            source="c",
+            topic="agent_workflow",
+        ),
+    ]
+    policies = {
+        "a": SourcePolicy("a", quality_weight=5.0),
+        "b": SourcePolicy("b", quality_weight=3.0),
+        "c": SourcePolicy("c", quality_weight=2.0),
+    }
+
+    result, events = select_digest_with_topic_clustering(
+        items, policies, _NOW, top_n=3, enabled=True, threshold=0.7, max_rounds=10
+    )
+
+    assert {item.source for item in result.selected} == {"a", "c"}
+    assert events[0].loser_canonical_key == "b.test/openai-gpt-5-api-news"
+
+
+def test_topic_cluster_uses_smallest_canonical_key_for_score_tie():
+    from app.pipeline.selection import select_digest_with_topic_clustering
+
+    items = [
+        _make_item(
+            title="GPT 5 API 发布 OpenAI",
+            url="https://a.test/gpt-5-api",
+            source="a",
+            topic="model_release",
+        ),
+        _make_item(
+            title="OpenAI 正式发布 GPT 5 API",
+            url="https://b.test/gpt-5-api-news",
+            source="b",
+            topic="model_release",
+        ),
+    ]
+    policies = {item.source: SourcePolicy(item.source) for item in items}
+
+    _, events = select_digest_with_topic_clustering(
+        items, policies, _NOW, top_n=2, enabled=True, threshold=0.7
+    )
+
+    assert events[0].winner_canonical_key == "a.test/gpt-5-api"
+
+
+def test_topic_cluster_chain_overlap_keeps_one_deterministic_winner():
+    from app.pipeline.selection import select_digest_with_topic_clustering
+
+    items = [
+        _make_item(
+            title="GPT 5 API OpenAI 发布",
+            url="https://a.test/gpt-5-api",
+            source="a",
+            topic="model_release",
+        ),
+        _make_item(
+            title="OpenAI GPT 5 API 正式发布",
+            url="https://b.test/gpt-5-api-news",
+            source="b",
+            topic="model_release",
+        ),
+        _make_item(
+            title="GPT 5 API 正式上线",
+            url="https://c.test/gpt-5-api-launch",
+            source="c",
+            topic="model_release",
+        ),
+    ]
+    policies = {item.source: SourcePolicy(item.source) for item in items}
+
+    result, events = select_digest_with_topic_clustering(
+        items, policies, _NOW, top_n=3, enabled=True, threshold=0.5
+    )
+
+    assert [item.canonical_key for item in result.selected] == ["a.test/gpt-5-api"]
+    assert {event.loser_canonical_key for event in events} == {
+        "b.test/gpt-5-api-news",
+        "c.test/gpt-5-api-launch",
+    }
+    assert all(event.trigger_edges for event in events)
+    assert len(result.cluster_rounds) == 2
+    first_round, final_round = result.cluster_rounds
+    assert first_round.selection_round == 1
+    assert first_round.available_count == 3
+    assert first_round.selected_before_count == 3
+    assert first_round.excluded_count == 2
+    assert first_round.cumulative_excluded_count == 2
+    assert first_round.converged is False
+    assert final_round.selection_round == 2
+    assert final_round.available_count == 1
+    assert final_round.selected_before_count == 1
+    assert final_round.excluded_count == 0
+    assert final_round.cumulative_excluded_count == 2
+    assert final_round.converged is True
+
+
+def test_topic_cluster_fails_when_max_rounds_is_exhausted():
+    from app.pipeline.selection import select_digest_with_topic_clustering
+
+    items = [
+        _make_item(
+            title="GPT 5 API OpenAI 发布",
+            url="https://a.test/gpt-5-api",
+            source="a",
+            topic="model_release",
+        ),
+        _make_item(
+            title="OpenAI GPT 5 API 正式发布",
+            url="https://b.test/gpt-5-api-news",
+            source="b",
+            topic="model_release",
+        ),
+    ]
+    policies = {item.source: SourcePolicy(item.source) for item in items}
+
+    with pytest.raises(RuntimeError, match="topic_cluster_non_convergent"):
+        select_digest_with_topic_clustering(
+            items, policies, _NOW, top_n=2, enabled=True, threshold=0.5, max_rounds=1
+        )
+
+
+def test_topic_cluster_disabled_matches_plain_selection():
+    from app.pipeline.selection import select_digest, select_digest_with_topic_clustering
+
+    items, policies = build_selection_fixture(_NOW)
+    plain = select_digest(items, policies, _NOW)
+    clustered, events = select_digest_with_topic_clustering(items, policies, _NOW, enabled=False)
+
+    assert [item.canonical_key for item in clustered.selected] == [
+        item.canonical_key for item in plain.selected
+    ]
+    assert events == []
+
+
+def test_llm_relevance_reselection_excludes_low_initial_item_and_marks_unscored_backfill():
+    from app.pipeline.selection import reselect_digest_after_llm_relevance
+
+    initial = _make_item(url="https://initial.test/low", source="initial", category="ai")
+    replacement = _make_item(
+        url="https://replacement.test/high", source="replacement", category="ai"
+    )
+    policies = {
+        "initial": SourcePolicy("initial", quality_weight=5.0),
+        "replacement": SourcePolicy("replacement", quality_weight=4.0),
+    }
+
+    result, cluster_events, events = reselect_digest_after_llm_relevance(
+        [initial, replacement],
+        policies,
+        _NOW,
+        excluded_canonical_keys={initial.canonical_key},
+        initially_scored_keys={initial.canonical_key},
+        top_n=1,
+    )
+
+    assert [item.canonical_key for item in result.selected] == [replacement.canonical_key]
+    assert cluster_events == []
+    assert events == [
+        {
+            "event": "llm_relevance_backfill",
+            "canonical_key": replacement.canonical_key,
+            "relevance": None,
+            "relevance_source": "not_scored_backfill",
+        }
+    ]
+
+
+@pytest.mark.skip(reason="CG-P3-02-FOLLOWUP-01：等待真实候选池的人工标注样本")
+def test_topic_cluster_annotation_calibration_gate():
+    """标注集必须覆盖 200 对样本及四类内容，并满足误差门槛。"""
+    from app.pipeline.selection import _topic_similarity_edges
+
+    fixture_path = Path(__file__).parent / "fixtures" / "topic_cluster_annotations.json"
+    pairs = json.loads(fixture_path.read_text(encoding="utf-8"))["pairs"]
+
+    assert len(pairs) >= 200
+    category_counts = {category: 0 for category in ("ai", "tool", "game", "digital")}
+    false_aggregations = 0
+    missed_aggregations = 0
+    expected_aggregations = 0
+    expected_non_aggregations = 0
+
+    for index, pair in enumerate(pairs):
+        category = pair["category"]
+        assert category in category_counts
+        category_counts[category] += 1
+        left = _make_item(
+            title=pair["left_title"],
+            url=f"https://left-{index}.example/alpha-{index}",
+            source="left",
+            category=category,
+            topic=pair["topic"],
+        )
+        right = _make_item(
+            title=pair["right_title"],
+            url=f"https://right-{index}.example/beta-{index}",
+            source="right",
+            category=category,
+            topic=pair["topic"],
+        )
+        predicted_cluster = bool(_topic_similarity_edges([left, right], threshold=0.7))
+        should_cluster = pair["should_cluster"]
+        if should_cluster:
+            expected_aggregations += 1
+            missed_aggregations += not predicted_cluster
+        else:
+            expected_non_aggregations += 1
+            false_aggregations += predicted_cluster
+
+    assert all(count >= 40 for count in category_counts.values())
+    assert expected_aggregations > 0
+    assert expected_non_aggregations > 0
+    assert false_aggregations / expected_non_aggregations <= 0.02
+    assert missed_aggregations / expected_aggregations <= 0.15
 
 
 # ======================== 三阶段选材 ========================
