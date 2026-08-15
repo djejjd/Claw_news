@@ -19,8 +19,8 @@
 | 允许并行 | 无；与已建立的公共路由模块串行修改 |
 | 预计修改文件 | 公共 API 路由模块、`app/publication/store.py`、来源 API/读取仓储测试、`tests/test_app_api.py` |
 | 不得修改文件 | `source_feeds` 写入、来源管理逻辑、采集策略、认证/订阅/管理路由、前端工程 |
-| 完成状态 | blocked：等待设计批准 |
-| 设计基线 | 待批准；批准后记录《公共内容 API 设计》的 Git commit SHA |
+| 完成状态 | blocked：等待 T1、T3 完成并通过主审核 |
+| 设计基线 | 《公共内容 API 设计》：`610c77cfc927f10564d973c9af4d37c4b38cdf58` |
 
 ## 接口变更表
 

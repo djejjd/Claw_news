@@ -18,8 +18,8 @@
 | 允许并行 | 无；与 T3/T4 共享公共路由模块，按 T2 → T3 → T4 顺序实现 |
 | 预计修改文件 | 公共 API 路由模块、`app/main.py`、`tests/test_app_api.py`、日报 API 测试 |
 | 不得修改文件 | `app/publication/models.py`、迁移、`app/scheduler/jobs.py`、采集/选材/投递模块、前端工程 |
-| 完成状态 | blocked：等待设计批准 |
-| 设计基线 | 待批准；批准后记录《公共内容 API 设计》的 Git commit SHA |
+| 完成状态 | blocked：等待 T1 完成并通过主审核 |
+| 设计基线 | 《公共内容 API 设计》：`610c77cfc927f10564d973c9af4d37c4b38cdf58` |
 
 ## 接口变更表
 
