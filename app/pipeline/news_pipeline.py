@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from aggregator.merger import Merger
@@ -449,6 +449,7 @@ def _build_pending_payload(
     relevance_rejected: list[dict],
     selected_counts_by_source: dict[str, int],
     metric_rows: list[dict],
+    initial_errors: list[str] | None = None,
     degradation_reasons: list[str] | None = None,
     daily_judgement_source: str = "initial_selection_llm",
 ) -> dict:
@@ -487,6 +488,7 @@ def _build_pending_payload(
             "relevance_rejections": relevance_rejected,
             "selected_counts_by_source": selected_counts_by_source,
             "metric_rows": metric_rows,
+            "initial_errors": initial_errors or [],
             "degradation_reasons": degradation_reasons or [],
             "daily_judgement_source": daily_judgement_source,
         },
@@ -562,8 +564,8 @@ def _finalize_delivery(
     exposure_store,
     tz: str = "Asia/Shanghai",
 ) -> list[str]:
-    errors: list[str] = []
     finalization = pending_payload["finalization"]
+    errors: list[str] = []
 
     try:
         exposure_store.record([r["full_name"] for r in finalization["github_projects"]])
@@ -622,6 +624,7 @@ async def _resume_pending_delivery(
     metrics_store: SourceMetricsStore,
     exposure_store,
     pending_store: PendingDeliveryStore,
+    initial_errors: list[str] | None = None,
 ) -> PublishResult:
     try:
         delivery_state = _delivery_state_from_payload(pending_payload)
@@ -640,7 +643,11 @@ async def _resume_pending_delivery(
             errors=[f"pending_delivery_corrupt: {exc}"],
         )
 
-    if not (_has_feishu_delivery(config) or _has_telegram_delivery(config)):
+    if not (
+        _has_wecom_delivery(config)
+        or _has_feishu_delivery(config)
+        or _has_telegram_delivery(config)
+    ):
         errors = ["delivery_config_missing"]
         _write_publish_status(_make_publish_status("failed", 0, False, errors, tz=config.tz))
         return PublishResult(
@@ -655,7 +662,9 @@ async def _resume_pending_delivery(
     messages = pending_payload["messages"]
     finalization = pending_payload["finalization"]
     degradation_reasons = finalization.get("degradation_reasons", [])
-    errors: list[str] = []
+    errors = list(
+        dict.fromkeys(list(initial_errors or []) + list(finalization.get("initial_errors", [])))
+    )
     selected_count = len(finalization["published_urls"])
     summary_preview = make_preview(messages.get("wecom_markdown", ""))
 
@@ -810,6 +819,7 @@ async def _deliver_with_pending(
     state_store: StateStore,
     metrics_store: SourceMetricsStore,
     exposure_store,
+    initial_errors: list[str] | None = None,
 ) -> PublishResult:
     degradation_reasons = degradation_reasons or []
     pending_store = _pending_store()
@@ -831,6 +841,7 @@ async def _deliver_with_pending(
         relevance_rejected=relevance_rejected,
         selected_counts_by_source=selected_counts_by_source,
         metric_rows=metric_rows,
+        initial_errors=initial_errors or [],
         degradation_reasons=degradation_reasons,
         daily_judgement_source=daily_judgement_source,
     )
@@ -855,7 +866,7 @@ async def _deliver_with_pending(
             errors=[f"pending_write_failed: {exc}"],
         )
 
-    errors: list[str] = []
+    errors: list[str] = list(initial_errors or [])
     wecom_ok = False
     wecom_error = None
     if _has_wecom_delivery(config):
@@ -1011,8 +1022,56 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     ingest_status_snapshot = IngestStatusStore().load_status()
     metrics_store = SourceMetricsStore()
     pending_store = _pending_store()
+    publication_errors: list[str] = []
+    publisher = None
+    retry_store = None
+    article_replay_succeeded = True
+    recovered_digest_for_run = False
+    try:
+        from app.publication.locking import publication_write_lock
+        from app.publication.publisher import Publisher
+        from app.publication.retry_store import PublicationRetryStore
 
-    if _has_feishu_delivery(config) or _has_telegram_delivery(config):
+        async with publication_write_lock:
+            publisher = Publisher.from_config(config)
+            if publisher is not None:
+                retry_store = PublicationRetryStore(_DATA_DIR)
+                digest_date = ctx.time_window_start[:10]
+                recovered_digest_for_run = retry_store.has_pending_digest(
+                    digest_date
+                ) or retry_store.has_recovered_digest(digest_date)
+                try:
+                    retry_store.replay_articles(publisher)
+                except Exception as exc:
+                    logger.exception("Publication article replay failed")
+                    article_replay_succeeded = False
+                    publication_errors.append(
+                        f"publication_article_replay_failed: {type(exc).__name__}"
+                    )
+                if article_replay_succeeded:
+                    try:
+                        retry_store.replay_digests(publisher)
+                    except Exception as exc:
+                        logger.exception("Publication digest replay failed")
+                        publication_errors.append(
+                            f"publication_digest_replay_failed: {type(exc).__name__}"
+                        )
+                else:
+                    publication_errors.append("publication_digest_replay_deferred")
+                # 数据库首版日报是同日内容定版的最终真相源。即使本地 receipt
+                # 或待投递文件落盘失败，也不能重新生成并覆盖 version=1。
+                recovered_digest_for_run = recovered_digest_for_run or (
+                    publisher.digest_exists(digest_date) is True
+                )
+    except Exception as exc:
+        logger.exception("Publication retry setup failed")
+        publication_errors.append(f"publication_retry_setup_failed: {type(exc).__name__}")
+
+    if (
+        _has_wecom_delivery(config)
+        or _has_feishu_delivery(config)
+        or _has_telegram_delivery(config)
+    ):
         try:
             pending_payload = pending_store.load(ctx.time_window_start[:10], ctx.period)
         except PendingDeliveryCorruptError as exc:
@@ -1027,7 +1086,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
                 errors=errors,
             )
         if pending_payload is not None:
-            return await _resume_pending_delivery(
+            result = await _resume_pending_delivery(
                 ctx=ctx,
                 config=config,
                 pending_payload=pending_payload,
@@ -1035,7 +1094,40 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
                 metrics_store=metrics_store,
                 exposure_store=GitHubExposureStore(),
                 pending_store=pending_store,
+                initial_errors=publication_errors,
             )
+            if result.pushed and retry_store is not None:
+                try:
+                    async with publication_write_lock:
+                        retry_store.mark_digest_published(ctx.time_window_start[:10])
+                except Exception as exc:
+                    logger.exception("Publication digest receipt write failed")
+                    result.status = "degraded"
+                    result.errors.append(f"publication_digest_receipt_failed: {type(exc).__name__}")
+                    _write_publish_status(
+                        _make_publish_status(
+                            result.status,
+                            result.selected_count,
+                            result.pushed,
+                            result.errors,
+                            tz=config.tz,
+                        )
+                    )
+            return result
+
+    if recovered_digest_for_run:
+        status = "recovered" if not publication_errors else "degraded"
+        _write_publish_status(
+            _make_publish_status(status, 0, False, publication_errors, tz=config.tz)
+        )
+        return PublishResult(
+            status=status,
+            selected_count=0,
+            pushed=False,
+            message_type="markdown",
+            summary_preview="",
+            errors=publication_errors,
+        )
 
     # ---- Task 6: 统一发布链路 ----
     # 尝试走新路径；无法导入或 feeds.yaml 缺失时回退旧路径
@@ -1099,13 +1191,17 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             candidates = [i for i in candidates if i.category in {"ai", "tool", "game", "digital"}]
 
         if not candidates:
-            _write_publish_status(_make_publish_status("skipped", 0, False, [], tz=config.tz))
+            status = "degraded" if publication_errors else "skipped"
+            _write_publish_status(
+                _make_publish_status(status, 0, False, publication_errors, tz=config.tz)
+            )
             return PublishResult(
-                status="skipped",
+                status=status,
                 selected_count=0,
                 pushed=False,
                 message_type="markdown",
                 summary_preview="",
+                errors=publication_errors,
             )
 
         # 3. 按源有效期过滤
@@ -1125,13 +1221,17 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         candidates, relevance_rejected = rf.evaluate_batch(candidates, policies)
 
         if not candidates:
-            _write_publish_status(_make_publish_status("skipped", 0, False, [], tz=config.tz))
+            status = "degraded" if publication_errors else "skipped"
+            _write_publish_status(
+                _make_publish_status(status, 0, False, publication_errors, tz=config.tz)
+            )
             return PublishResult(
-                status="skipped",
+                status=status,
                 selected_count=0,
                 pushed=False,
                 message_type="markdown",
                 summary_preview="",
+                errors=publication_errors,
             )
 
         # 5. 主题分类 + 三阶段选材
@@ -1176,13 +1276,17 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             candidates = [i for i in candidates if i.category in {"ai", "tool", "game", "digital"}]
 
         if not candidates:
-            _write_publish_status(_make_publish_status("skipped", 0, False, [], tz=config.tz))
+            status = "degraded" if publication_errors else "skipped"
+            _write_publish_status(
+                _make_publish_status(status, 0, False, publication_errors, tz=config.tz)
+            )
             return PublishResult(
-                status="skipped",
+                status=status,
                 selected_count=0,
                 pushed=False,
                 message_type="markdown",
                 summary_preview="",
+                errors=publication_errors,
             )
 
         TopicClassifier().classify_batch(candidates)
@@ -1374,12 +1478,66 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
         reselection_cluster_events=reselection_cluster_events,
     )
 
-    errors: list[str] = []
+    errors: list[str] = list(publication_errors)
     if use_new_pipeline and not candidates_used_historical:
         errors.append("historical_candidates_read_failed")
 
-    if _has_feishu_delivery(config) or _has_telegram_delivery(config):
-        return await _deliver_with_pending(
+    if publisher is not None:
+        try:
+            async with publication_write_lock:
+                # 另一条并发运行可能在本轮摘要期间完成同日首版，因此写入前复核。
+                recovered_digest_for_run = (
+                    publisher.digest_exists(ctx.time_window_start[:10]) is True
+                )
+                if not recovered_digest_for_run:
+                    publisher.publish_digest(
+                        digest_date=ctx.time_window_start[:10],
+                        published_at=datetime.now(timezone.utc),
+                        headline_items=headline_payload,
+                        selected=selected,
+                        daily_judgement=summary.daily_judgement,
+                        github_projects=_build_github_projects_payload(github_ranked),
+                    )
+        except Exception as exc:
+            logger.exception("Publication digest write failed")
+            errors.append(f"publication_digest_write_failed: {type(exc).__name__}")
+            if retry_store is not None:
+                try:
+                    async with publication_write_lock:
+                        retry_store.enqueue_digest(
+                            date=ctx.time_window_start[:10],
+                            period=ctx.period,
+                            payload={
+                                "digest_date": ctx.time_window_start[:10],
+                                "published_at": datetime.now(timezone.utc).isoformat(),
+                                "headline_items": headline_payload,
+                                "selected": [asdict(item) for item in selected],
+                                "daily_judgement": summary.daily_judgement,
+                                "github_projects": _build_github_projects_payload(github_ranked),
+                            },
+                        )
+                except Exception as queue_exc:
+                    logger.exception("Publication digest retry write failed")
+                    errors.append(f"publication_digest_outbox_failed: {type(queue_exc).__name__}")
+
+    if recovered_digest_for_run:
+        status = "recovered" if not errors else "degraded"
+        _write_publish_status(_make_publish_status(status, 0, False, errors, tz=config.tz))
+        return PublishResult(
+            status=status,
+            selected_count=0,
+            pushed=False,
+            message_type="markdown",
+            summary_preview="",
+            errors=errors,
+        )
+
+    if (
+        _has_wecom_delivery(config)
+        or _has_feishu_delivery(config)
+        or _has_telegram_delivery(config)
+    ):
+        result = await _deliver_with_pending(
             ctx=ctx,
             config=config,
             markdown=markdown,
@@ -1402,7 +1560,26 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             state_store=state_store,
             metrics_store=metrics_store,
             exposure_store=GitHubExposureStore(),
+            initial_errors=errors,
         )
+        if result.pushed and retry_store is not None:
+            try:
+                async with publication_write_lock:
+                    retry_store.mark_digest_published(ctx.time_window_start[:10])
+            except Exception as exc:
+                logger.exception("Publication digest receipt write failed")
+                result.status = "degraded"
+                result.errors.append(f"publication_digest_receipt_failed: {type(exc).__name__}")
+                _write_publish_status(
+                    _make_publish_status(
+                        result.status,
+                        result.selected_count,
+                        result.pushed,
+                        result.errors,
+                        tz=config.tz,
+                    )
+                )
+        return result
 
     # 7. 推送
     try:

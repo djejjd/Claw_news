@@ -727,6 +727,334 @@ class TestLlmRelevancePipeline:
             assert digest[field] == initial_finalization[field]
 
     @pytest.mark.asyncio
+    async def test_digest_publication_failure_is_degraded_and_queued(self, tmp_path: Path):
+        """消息投递成功不能掩盖网站日报写入失败。"""
+        from app.pipeline.news_pipeline import run_pipeline
+
+        candidate = _make_candidate()
+        publisher = MagicMock()
+        publisher.publish_digest.side_effect = RuntimeError("database unavailable")
+        retry_store = MagicMock()
+        retry_store.has_pending_digest.return_value = False
+        retry_store.has_recovered_digest.return_value = False
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=_make_llm_result()),
+            ),
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
+            patch("app.pipeline.news_pipeline.TopicClassifier"),
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
+            patch("app.publication.publisher.Publisher.from_config", return_value=publisher),
+            patch("app.publication.retry_store.PublicationRetryStore", return_value=retry_store),
+        ):
+            mock_is.return_value.load_window_candidates.return_value = [candidate]
+            mock_pusher_cls.return_value.push_single_markdown = AsyncMock(
+                return_value=_make_push_result()
+            )
+            mock_metrics_store_cls.return_value.write_selected_counts.return_value = 1
+
+            result = await run_pipeline(
+                _make_ctx(),
+                _make_config(
+                    publication_enabled=True,
+                    publication_database_url="postgresql+psycopg://example.test/news",
+                ),
+            )
+
+        assert result.status == "degraded"
+        assert "publication_digest_write_failed: RuntimeError" in result.errors
+        retry_store.enqueue_digest.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_article_replay_failure_defers_digest_replay_and_degrades_empty_run(
+        self, tmp_path: Path
+    ):
+        """内容重放按文章、日报的顺序执行，失败不能被空运行覆盖。"""
+        from app.pipeline.news_pipeline import run_pipeline
+
+        publisher = MagicMock()
+        retry_store = MagicMock()
+        retry_store.replay_articles.side_effect = RuntimeError("database unavailable")
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch("app.publication.publisher.Publisher.from_config", return_value=publisher),
+            patch("app.publication.retry_store.PublicationRetryStore", return_value=retry_store),
+        ):
+            mock_is.return_value.load_window_candidates.return_value = []
+            result = await run_pipeline(
+                _make_ctx(),
+                _make_config(
+                    publication_enabled=True,
+                    publication_database_url="postgresql+psycopg://example.test/news",
+                ),
+            )
+
+        assert result.status == "degraded"
+        assert "publication_article_replay_failed: RuntimeError" in result.errors
+        assert "publication_digest_replay_deferred" in result.errors
+        retry_store.replay_digests.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_pending_digest_recovery_does_not_generate_a_second_same_day_digest(
+        self, tmp_path: Path
+    ):
+        """已投递消息对应的待恢复日报优先于同日的新选材。"""
+        from app.pipeline.news_pipeline import run_pipeline
+        from app.publication.retry_store import PublicationRetryStore
+
+        candidate = _make_candidate()
+        retries = PublicationRetryStore(tmp_path)
+        retries.enqueue_digest(
+            date="2026-05-18",
+            period="morning",
+            payload={
+                "digest_date": "2026-05-18",
+                "published_at": "2026-05-18T01:00:00+00:00",
+                "headline_items": [],
+                "selected": [],
+                "daily_judgement": "first digest",
+                "github_projects": [],
+            },
+        )
+        publisher = MagicMock()
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=_make_llm_result()),
+            ),
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
+            patch("app.pipeline.news_pipeline.TopicClassifier"),
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
+            patch("app.publication.publisher.Publisher.from_config", return_value=publisher),
+        ):
+            mock_is.return_value.load_window_candidates.return_value = [candidate]
+            mock_pusher_cls.return_value.push_single_markdown = AsyncMock(
+                return_value=_make_push_result()
+            )
+            mock_metrics_store_cls.return_value.write_selected_counts.return_value = 1
+
+            result = await run_pipeline(
+                _make_ctx(),
+                _make_config(
+                    publication_enabled=True,
+                    publication_database_url="postgresql+psycopg://example.test/news",
+                ),
+            )
+
+        assert result.status == "recovered"
+        assert publisher.publish_digest.call_count == 1
+        mock_pusher_cls.assert_not_called()
+
+        publisher.reset_mock()
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=_make_llm_result()),
+            ),
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
+            patch("app.pipeline.news_pipeline.TopicClassifier"),
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
+            patch("app.publication.publisher.Publisher.from_config", return_value=publisher),
+        ):
+            mock_is.return_value.load_window_candidates.return_value = [candidate]
+            mock_pusher_cls.return_value.push_single_markdown = AsyncMock(
+                return_value=_make_push_result()
+            )
+            mock_metrics_store_cls.return_value.write_selected_counts.return_value = 1
+            result = await run_pipeline(
+                _make_ctx(),
+                _make_config(
+                    publication_enabled=True,
+                    publication_database_url="postgresql+psycopg://example.test/news",
+                ),
+            )
+
+        assert result.status == "recovered"
+        publisher.publish_digest.assert_not_called()
+        mock_pusher_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_successful_digest_is_not_rewritten_by_a_same_day_rerun(self, tmp_path: Path):
+        """首版日报成功后，手动重跑不得生成不同的网站日报或二次推送。"""
+        from app.pipeline.news_pipeline import run_pipeline
+
+        candidate = _make_candidate()
+        publisher = MagicMock()
+        config = _make_config(
+            publication_enabled=True,
+            publication_database_url="postgresql+psycopg://example.test/news",
+        )
+        ctx = _make_ctx()
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=_make_llm_result()),
+            ) as summarize,
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
+            patch("app.pipeline.news_pipeline.TopicClassifier"),
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
+            patch("app.publication.publisher.Publisher.from_config", return_value=publisher),
+        ):
+            mock_is.return_value.load_window_candidates.return_value = [candidate]
+            mock_pusher_cls.return_value.push_single_markdown = AsyncMock(
+                return_value=_make_push_result()
+            )
+            mock_metrics_store_cls.return_value.write_selected_counts.return_value = 1
+
+            first_result = await run_pipeline(ctx, config)
+            second_result = await run_pipeline(ctx, config)
+
+        assert first_result.status == "ok"
+        assert second_result.status == "recovered"
+        assert publisher.publish_digest.call_count == 1
+        assert summarize.await_count == 1
+        assert mock_pusher_cls.return_value.push_single_markdown.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_wecom_failure_retries_the_same_day_digest_without_rewriting_it(
+        self, tmp_path: Path
+    ):
+        """内容发布成功、企微失败后，只重试原消息而不重算日报。"""
+        from app.pipeline.news_pipeline import run_pipeline
+
+        candidate = _make_candidate()
+        publisher = MagicMock()
+        config = _make_config(
+            publication_enabled=True,
+            publication_database_url="postgresql+psycopg://example.test/news",
+        )
+        ctx = _make_ctx()
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=_make_llm_result()),
+            ) as summarize,
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
+            patch("app.pipeline.news_pipeline.TopicClassifier"),
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
+            patch("app.publication.publisher.Publisher.from_config", return_value=publisher),
+        ):
+            mock_is.return_value.load_window_candidates.return_value = [candidate]
+            mock_pusher_cls.return_value.push_single_markdown = AsyncMock(
+                side_effect=[_make_push_result(success=False), _make_push_result(success=True)]
+            )
+            mock_metrics_store_cls.return_value.write_selected_counts.return_value = 1
+
+            first_result = await run_pipeline(ctx, config)
+            second_result = await run_pipeline(ctx, config)
+
+        assert first_result.status == "failed"
+        assert second_result.status == "ok"
+        assert publisher.publish_digest.call_count == 1
+        assert summarize.await_count == 1
+        assert mock_pusher_cls.return_value.push_single_markdown.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_pending_delivery_write_failure_cannot_rewrite_a_published_digest(
+        self, tmp_path: Path
+    ):
+        """本地待投递文件失败时，数据库首版日报仍是同日定版真相源。"""
+        from app.pipeline.news_pipeline import run_pipeline
+
+        candidate = _make_candidate()
+        publisher = MagicMock()
+        publisher.digest_exists.side_effect = [False, False, True]
+        config = _make_config(
+            publication_enabled=True,
+            publication_database_url="postgresql+psycopg://example.test/news",
+        )
+        ctx = _make_ctx()
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=_make_llm_result()),
+            ) as summarize,
+            patch("app.pipeline.news_pipeline.TopicClassifier"),
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
+            patch("app.publication.publisher.Publisher.from_config", return_value=publisher),
+            patch("app.delivery.store.PendingDeliveryStore.save", side_effect=OSError("disk full")),
+        ):
+            mock_is.return_value.load_window_candidates.return_value = [candidate]
+            mock_metrics_store_cls.return_value.write_selected_counts.return_value = 1
+
+            first_result = await run_pipeline(ctx, config)
+            second_result = await run_pipeline(ctx, config)
+
+        assert first_result.status == "failed"
+        assert second_result.status == "recovered"
+        assert publisher.publish_digest.call_count == 1
+        assert summarize.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_digest_receipt_write_failure_cannot_rewrite_a_published_digest(
+        self, tmp_path: Path
+    ):
+        """消息已送达但 receipt 写入失败时，数据库首版仍阻止同日覆盖。"""
+        from app.pipeline.news_pipeline import run_pipeline
+
+        candidate = _make_candidate()
+        publisher = MagicMock()
+        publisher.digest_exists.side_effect = [False, False, True]
+        retry_store = MagicMock()
+        retry_store.has_pending_digest.return_value = False
+        retry_store.has_recovered_digest.return_value = False
+        retry_store.mark_digest_published.side_effect = OSError("disk full")
+        config = _make_config(
+            publication_enabled=True,
+            publication_database_url="postgresql+psycopg://example.test/news",
+        )
+        ctx = _make_ctx()
+
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_is,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=_make_llm_result()),
+            ) as summarize,
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_pusher_cls,
+            patch("app.pipeline.news_pipeline.TopicClassifier"),
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics_store_cls,
+            patch("app.publication.publisher.Publisher.from_config", return_value=publisher),
+            patch("app.publication.retry_store.PublicationRetryStore", return_value=retry_store),
+        ):
+            mock_is.return_value.load_window_candidates.return_value = [candidate]
+            mock_pusher_cls.return_value.push_single_markdown = AsyncMock(
+                return_value=_make_push_result()
+            )
+            mock_metrics_store_cls.return_value.write_selected_counts.return_value = 1
+
+            first_result = await run_pipeline(ctx, config)
+            second_result = await run_pipeline(ctx, config)
+
+        assert first_result.status == "degraded"
+        assert first_result.pushed is True
+        assert "publication_digest_receipt_failed: OSError" in first_result.errors
+        assert second_result.status == "recovered"
+        assert publisher.publish_digest.call_count == 1
+        assert summarize.await_count == 1
+
+    @pytest.mark.asyncio
     async def test_pipeline_uses_top_ten_selection_limit(self, tmp_path: Path):
         from app.pipeline.news_pipeline import run_pipeline
 
