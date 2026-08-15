@@ -7,13 +7,21 @@ from datetime import datetime
 from pathlib import Path
 
 from app.content.source_policy import build_source_policy_registry
-from app.pipeline.selection import select_digest
+from app.pipeline.selection import select_digest, select_digest_with_topic_clustering
 from app.storage.ingestion_store import IngestionStore, filter_unexpired_candidates
 from collectors.ai_rss import load_effective_feed_configuration
 from infra.storage.state_store import StateStore
 
 
-def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
+def run_replay(
+    data_dir: str,
+    at: str,
+    lookback_hours: int = 72,
+    diversity_penalty_profile: str = "linear",
+    topic_cluster_enabled: bool = False,
+    topic_cluster_similarity_threshold: float = 0.7,
+    topic_cluster_max_rounds: int = 10,
+) -> dict:
     """只读回放：读取历史候选，模拟过期过滤→相关性→选材，返回分布统计。
 
     Args:
@@ -91,11 +99,42 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
     from app.classifiers.topic_classifier import TopicClassifier
 
     TopicClassifier().classify_batch(candidates)
-    result = select_digest(candidates, policies, now, "Asia/Shanghai", top_n=10)
+    baseline = select_digest(
+        candidates,
+        policies,
+        now,
+        "Asia/Shanghai",
+        top_n=10,
+        diversity_penalty_profile=diversity_penalty_profile,
+    )
+    result, cluster_events = select_digest_with_topic_clustering(
+        candidates,
+        policies,
+        now,
+        "Asia/Shanghai",
+        top_n=10,
+        diversity_penalty_profile=diversity_penalty_profile,
+        enabled=topic_cluster_enabled,
+        threshold=topic_cluster_similarity_threshold,
+        max_rounds=topic_cluster_max_rounds,
+    )
 
     # 7. 统计
     source_dist = dict(Counter(it.source for it in result.selected))
     cat_dist = dict(Counter(it.category for it in result.selected))
+    cluster_rounds = [
+        {
+            "selection_round": round_trace.selection_round,
+            "available_count": round_trace.available_count,
+            "selected_before_count": round_trace.selected_before_count,
+            "excluded_count": round_trace.excluded_count,
+            "cumulative_excluded_count": round_trace.cumulative_excluded_count,
+            "converged": round_trace.converged,
+        }
+        for round_trace in result.cluster_rounds
+    ]
+    if cluster_events:
+        rejection_reasons["topic_cluster_similarity"] += len(cluster_events)
 
     today_count = 0
     backfill_count = 0
@@ -107,6 +146,25 @@ def run_replay(data_dir: str, at: str, lookback_hours: int = 72) -> dict:
 
     return {
         "candidate_count": candidate_count,
+        "diversity_penalty_profile": diversity_penalty_profile,
+        "topic_cluster_enabled": topic_cluster_enabled,
+        "topic_cluster_before_count": len(baseline.selected),
+        "topic_cluster_excluded_count": len(cluster_events),
+        "topic_cluster_rounds": cluster_rounds,
+        "topic_cluster_calibration": {
+            "status": "pending_real_annotations",
+            "followup": "CG-P3-02-FOLLOWUP-01",
+        },
+        "topic_cluster_events": [
+            {
+                "selection_round": event.selection_round,
+                "winner_canonical_key": event.winner_canonical_key,
+                "loser_canonical_key": event.loser_canonical_key,
+                "title_similarity": event.title_similarity,
+                "url_similarity": event.url_similarity,
+            }
+            for event in cluster_events
+        ],
         "eligible_count": eligible_count,
         "selected_count": len(result.selected),
         "source_distribution": source_dist,

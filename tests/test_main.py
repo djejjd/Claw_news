@@ -92,6 +92,21 @@ def _make_push_result(*, success: bool = True) -> "PushResult":
     )
 
 
+def _new_pipeline_feed_config() -> dict:
+    return {
+        "feeds": {
+            "ai": [
+                {"source": "source-a", "quality_weight": 4.0},
+                {"source": "source-b", "quality_weight": 3.0},
+            ],
+            "tool": [],
+            "game": [],
+            "digital": [],
+        },
+        "source_policies": {},
+    }
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -143,6 +158,267 @@ class TestPipelineSuccess:
         assert result.pushed is True
         assert result.selected_count == 1
         assert result.errors == []
+
+
+class TestTopicClusterPersistence:
+    @staticmethod
+    def _clustered_candidates() -> list[CandidateItem]:
+        candidates = [
+            _make_candidate(
+                title="OpenAI releases GPT 5 API",
+                url="https://source-a.example/gpt-5-api",
+                source="source-a",
+                published_at="2026-05-18T08:00:00+08:00",
+            ),
+            _make_candidate(
+                title="OpenAI releases GPT 5 API",
+                url="https://source-b.example/gpt-5-api-news",
+                source="source-b",
+                published_at="2026-05-18T07:00:00+08:00",
+            ),
+        ]
+        for candidate in candidates:
+            candidate.topic = "model_release"
+        return candidates
+
+    @staticmethod
+    def _llm_result() -> dict:
+        return {
+            "headline_items": [
+                {
+                    "title": "OpenAI releases GPT 5 API",
+                    "url": "https://source-a.example/gpt-5-api",
+                    "core_summary": "Model API update.",
+                    "importance": "high",
+                    "trend": "up",
+                }
+            ],
+            "daily_judgement": "Model update.",
+        }
+
+    @staticmethod
+    def _assert_cluster_audit_contract(evidence: list[dict]) -> None:
+        excluded_index = next(
+            index
+            for index, event in enumerate(evidence)
+            if event.get("event") == "topic_cluster_excluded"
+        )
+        event = evidence[excluded_index]
+        assert event["schema_version"] == 2
+        assert event["canonical_key"] == "source-b.example/gpt-5-api-news"
+        assert event["component_winner_canonical_key"] == "source-a.example/gpt-5-api"
+        assert event["selection_round"] == 1
+        assert event["source"] == "source-b"
+        assert event["category"] == "ai"
+        assert event["topic"] == "model_release"
+        assert event["rejection_reason"] == "topic_cluster_similarity"
+        assert event["tokenizer_version"] == "nfkc-casefold-v1"
+        assert event["title_similarity"] == 1.0
+        assert event["trigger_edges"]
+        assert any(item["event"] == "temporary_selected" for item in evidence[:excluded_index])
+        assert any(item["event"] == "final_selected" for item in evidence[excluded_index + 1 :])
+
+    @pytest.mark.asyncio
+    async def test_topic_cluster_event_persists_to_immediate_digest(self, tmp_path: Path):
+        from app.pipeline.news_pipeline import run_pipeline
+
+        config = _make_config(topic_cluster_enabled=True)
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch(
+                "collectors.ai_rss.load_effective_feed_configuration",
+                return_value=_new_pipeline_feed_config(),
+            ),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_ingestion,
+            patch("app.pipeline.news_pipeline.IngestStatusStore") as mock_status,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics,
+            patch("app.pipeline.news_pipeline.GitHubStore") as mock_github,
+            patch("app.pipeline.news_pipeline.GitHubExposureStore"),
+            patch("app.pipeline.news_pipeline.TopicClassifier"),
+            patch("app.pipeline.news_pipeline.ContentCategoryClassifier", create=True),
+            patch("app.classifiers.content_category_classifier.ContentCategoryClassifier"),
+            patch("app.pipeline.news_pipeline.build_relevance_filter", create=True),
+            patch("app.classifiers.relevance_filter.build_relevance_filter") as mock_filter,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=self._llm_result()),
+            ),
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_wecom,
+        ):
+            candidates = self._clustered_candidates()
+            mock_ingestion.return_value.load_recent_candidates.return_value = candidates
+            mock_status.return_value.load_status.return_value = {"failed_sources": []}
+            mock_metrics.return_value.write_selected_counts.return_value = 1
+            mock_github.return_value.load_latest_snapshot.return_value = []
+            mock_filter.return_value.evaluate_batch.return_value = (candidates, [])
+            mock_wecom.return_value.push_single_markdown = AsyncMock(
+                return_value=_make_push_result()
+            )
+
+            result = await run_pipeline(_make_ctx(), config)
+
+        assert result.status == "ok"
+        digest = json.loads((tmp_path / "2026-05-18" / "ai_digest.json").read_text())
+        self._assert_cluster_audit_contract(digest["selection_evidence"])
+
+    @pytest.mark.asyncio
+    async def test_topic_cluster_event_persists_to_pending_delivery(self, tmp_path: Path):
+        from app.delivery.store import PendingDeliveryStore
+        from app.pipeline.news_pipeline import run_pipeline
+
+        config = _make_config(
+            topic_cluster_enabled=True, telegram_bot_token="bot", telegram_chat_id="chat"
+        )
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch(
+                "collectors.ai_rss.load_effective_feed_configuration",
+                return_value=_new_pipeline_feed_config(),
+            ),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_ingestion,
+            patch("app.pipeline.news_pipeline.IngestStatusStore") as mock_status,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics,
+            patch("app.pipeline.news_pipeline.GitHubStore") as mock_github,
+            patch("app.pipeline.news_pipeline.GitHubExposureStore"),
+            patch("app.pipeline.news_pipeline.TopicClassifier"),
+            patch("app.classifiers.content_category_classifier.ContentCategoryClassifier"),
+            patch("app.classifiers.relevance_filter.build_relevance_filter") as mock_filter,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(return_value=self._llm_result()),
+            ),
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_wecom,
+            patch("app.pipeline.news_pipeline.TelegramPusher") as mock_telegram,
+        ):
+            candidates = self._clustered_candidates()
+            mock_ingestion.return_value.load_recent_candidates.return_value = candidates
+            mock_status.return_value.load_status.return_value = {"failed_sources": []}
+            mock_metrics.return_value.write_selected_counts.return_value = 1
+            mock_github.return_value.load_latest_snapshot.return_value = []
+            mock_filter.return_value.evaluate_batch.return_value = (candidates, [])
+            mock_wecom.return_value.push_single_markdown = AsyncMock(
+                return_value=_make_push_result()
+            )
+            mock_telegram.return_value.push_messages = AsyncMock(side_effect=RuntimeError("down"))
+
+            result = await run_pipeline(_make_ctx(), config)
+
+        assert result.status == "degraded", result.errors
+        pending = PendingDeliveryStore(tmp_path).load("2026-05-18", "morning")
+        assert pending is not None
+        self._assert_cluster_audit_contract(pending["finalization"]["selection_evidence"])
+
+    @pytest.mark.asyncio
+    async def test_topic_cluster_evidence_is_identical_in_digest_and_pending(self, tmp_path: Path):
+        """两条持久化路径必须存储同一份完整聚类审计证据。"""
+        from app.delivery.store import PendingDeliveryStore
+        from app.pipeline.news_pipeline import run_pipeline
+
+        async def run_with_delivery(data_dir: Path, *, fail_telegram: bool) -> list[dict]:
+            config = _make_config(
+                topic_cluster_enabled=True,
+                **(
+                    {"telegram_bot_token": "bot", "telegram_chat_id": "chat"}
+                    if fail_telegram
+                    else {}
+                ),
+            )
+            with (
+                patch("app.pipeline.news_pipeline._DATA_DIR", data_dir),
+                patch(
+                    "collectors.ai_rss.load_effective_feed_configuration",
+                    return_value=_new_pipeline_feed_config(),
+                ),
+                patch("app.pipeline.news_pipeline.IngestionStore") as mock_ingestion,
+                patch("app.pipeline.news_pipeline.IngestStatusStore") as mock_status,
+                patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics,
+                patch("app.pipeline.news_pipeline.GitHubStore") as mock_github,
+                patch("app.pipeline.news_pipeline.GitHubExposureStore"),
+                patch("app.pipeline.news_pipeline.TopicClassifier"),
+                patch("app.classifiers.content_category_classifier.ContentCategoryClassifier"),
+                patch("app.classifiers.relevance_filter.build_relevance_filter") as mock_filter,
+                patch(
+                    "app.pipeline.news_pipeline.summarize_news",
+                    new=AsyncMock(return_value=self._llm_result()),
+                ),
+                patch("app.pipeline.news_pipeline.WeComPusher") as mock_wecom,
+                patch("app.pipeline.news_pipeline.TelegramPusher") as mock_telegram,
+            ):
+                candidates = self._clustered_candidates()
+                mock_ingestion.return_value.load_recent_candidates.return_value = candidates
+                mock_status.return_value.load_status.return_value = {"failed_sources": []}
+                mock_metrics.return_value.write_selected_counts.return_value = 1
+                mock_github.return_value.load_latest_snapshot.return_value = []
+                mock_filter.return_value.evaluate_batch.return_value = (candidates, [])
+                mock_wecom.return_value.push_single_markdown = AsyncMock(
+                    return_value=_make_push_result()
+                )
+                mock_telegram.return_value.push_messages = AsyncMock(
+                    side_effect=RuntimeError("down") if fail_telegram else None
+                )
+                result = await run_pipeline(_make_ctx(), config)
+
+            assert result.status == ("degraded" if fail_telegram else "ok"), result.errors
+            if fail_telegram:
+                pending = PendingDeliveryStore(data_dir).load("2026-05-18", "morning")
+                assert pending is not None
+                return pending["finalization"]["selection_evidence"]
+            digest = json.loads((data_dir / "2026-05-18" / "ai_digest.json").read_text())
+            return digest["selection_evidence"]
+
+        digest_evidence = await run_with_delivery(tmp_path / "direct", fail_telegram=False)
+        pending_evidence = await run_with_delivery(tmp_path / "pending", fail_telegram=True)
+
+        self._assert_cluster_audit_contract(digest_evidence)
+        self._assert_cluster_audit_contract(pending_evidence)
+        assert pending_evidence == digest_evidence
+
+    @pytest.mark.asyncio
+    async def test_topic_cluster_non_convergence_skips_llm_and_delivery(self, tmp_path: Path):
+        from app.pipeline.news_pipeline import run_pipeline
+
+        config = _make_config(
+            topic_cluster_enabled=True,
+            telegram_bot_token="bot",
+            telegram_chat_id="chat",
+            feishu_app_id="app",
+            feishu_app_secret="secret",
+            feishu_chat_id="chat",
+        )
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch(
+                "collectors.ai_rss.load_effective_feed_configuration",
+                return_value=_new_pipeline_feed_config(),
+            ),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_ingestion,
+            patch("app.pipeline.news_pipeline.IngestStatusStore") as mock_status,
+            patch("app.pipeline.news_pipeline.TopicClassifier"),
+            patch("app.classifiers.content_category_classifier.ContentCategoryClassifier"),
+            patch("app.classifiers.relevance_filter.build_relevance_filter") as mock_filter,
+            patch(
+                "app.pipeline.selection.select_digest_with_topic_clustering",
+                side_effect=RuntimeError("topic_cluster_non_convergent"),
+            ),
+            patch("app.pipeline.news_pipeline.summarize_news", new=AsyncMock()) as mock_summarize,
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_wecom,
+            patch("app.pipeline.news_pipeline.TelegramPusher") as mock_telegram,
+            patch("app.pipeline.news_pipeline.FeishuPusher") as mock_feishu,
+        ):
+            candidates = self._clustered_candidates()
+            mock_ingestion.return_value.load_recent_candidates.return_value = candidates
+            mock_status.return_value.load_status.return_value = {"failed_sources": []}
+            mock_filter.return_value.evaluate_batch.return_value = (candidates, [])
+
+            result = await run_pipeline(_make_ctx(), config)
+
+        assert result.status == "failed"
+        assert result.errors == ["topic_cluster_non_convergent"]
+        mock_summarize.assert_not_awaited()
+        mock_wecom.assert_not_called()
+        mock_telegram.assert_not_called()
+        mock_feishu.assert_not_called()
+        assert not (tmp_path / "pending_deliveries").exists()
 
     @pytest.mark.asyncio
     async def test_pipeline_uses_top_ten_selection_limit(self, tmp_path: Path):

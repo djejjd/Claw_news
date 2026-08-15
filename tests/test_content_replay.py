@@ -274,6 +274,76 @@ def test_replay_reports_distribution(tmp_path, monkeypatch):
     assert "selection_evidence" in result
 
 
+def test_replay_reports_selected_diversity_penalty_profile(tmp_path, monkeypatch):
+    """回放结果必须标明所用 profile，便于保留 linear / exponential 对照。"""
+    from app.tools.content_replay import run_replay
+
+    _seed_replay_fixture(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    result = run_replay(
+        data_dir="data",
+        at=_FIXED_AT,
+        diversity_penalty_profile="exponential",
+    )
+
+    assert result["diversity_penalty_profile"] == "exponential"
+
+
+def test_replay_cluster_round_counts_exclude_prior_losers(tmp_path, monkeypatch):
+    from app.pipeline.selection import SelectionResult, TopicClusterRound
+    from app.tools.content_replay import run_replay
+
+    _seed_replay_fixture(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    trace = (
+        TopicClusterRound(
+            selection_round=1,
+            available_count=3,
+            selected_before_count=3,
+            excluded_count=2,
+            cumulative_excluded_count=2,
+            converged=False,
+        ),
+        TopicClusterRound(
+            selection_round=2,
+            available_count=1,
+            selected_before_count=1,
+            excluded_count=0,
+            cumulative_excluded_count=2,
+            converged=True,
+        ),
+    )
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            "app.tools.content_replay.select_digest_with_topic_clustering",
+            lambda *args, **kwargs: (SelectionResult([], [], {}, cluster_rounds=trace), []),
+        )
+        result = run_replay(data_dir="data", at=_FIXED_AT, topic_cluster_enabled=True)
+
+    rounds = result["topic_cluster_rounds"]
+    assert len(rounds) == 2
+    assert rounds == [
+        {
+            "selection_round": 1,
+            "available_count": 3,
+            "selected_before_count": 3,
+            "excluded_count": 2,
+            "cumulative_excluded_count": 2,
+            "converged": False,
+        },
+        {
+            "selection_round": 2,
+            "available_count": 1,
+            "selected_before_count": 1,
+            "excluded_count": 0,
+            "cumulative_excluded_count": 2,
+            "converged": True,
+        },
+    ]
+
+
 def test_replay_historical_backfill(tmp_path, monkeypatch):
     """历史候选用于补足分类不足。"""
     from app.tools.content_replay import run_replay

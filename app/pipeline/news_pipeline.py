@@ -196,6 +196,81 @@ def _build_metric_rows(selected: list, now: datetime, tz: str) -> list[dict]:
     return metric_rows
 
 
+def _selection_evidence_payload(
+    selection_result,
+    cluster_events: list,
+    candidates: list,
+) -> list[dict]:
+    from app.pipeline.candidate import CandidateItem
+
+    evidence: list[dict] = []
+    candidates_by_key = {
+        item.canonical_key or CandidateItem.make_canonical_key(item.url): item
+        for item in candidates
+    }
+    recorded_rounds: set[int] = set()
+    for event in sorted(
+        cluster_events, key=lambda item: (item.selection_round, item.loser_canonical_key)
+    ):
+        if event.selection_round not in recorded_rounds:
+            recorded_rounds.add(event.selection_round)
+            for selected in event.round_evidence:
+                item = candidates_by_key.get(selected.canonical_key)
+                evidence.append(
+                    {
+                        "schema_version": 2,
+                        "event": "temporary_selected",
+                        "canonical_key": selected.canonical_key,
+                        "selection_round": event.selection_round,
+                        "final_score": selected.final_score,
+                        "selection_score": selected.selection_score,
+                        "source": item.source if item else "",
+                        "category": item.category if item else "",
+                        "topic": item.topic if item else "",
+                    }
+                )
+        item = candidates_by_key.get(event.loser_canonical_key)
+        evidence.append(
+            {
+                "schema_version": 2,
+                "event": "topic_cluster_excluded",
+                "rejection_reason": "topic_cluster_similarity",
+                "canonical_key": event.loser_canonical_key,
+                "selection_round": event.selection_round,
+                "final_score": event.final_score,
+                "selection_score": event.selection_score,
+                "source": item.source if item else "",
+                "category": item.category if item else "",
+                "topic": item.topic if item else "",
+                "component_winner_canonical_key": event.winner_canonical_key,
+                "trigger_edges": [
+                    {"left": left, "right": right, "title_similarity": title, "url_similarity": url}
+                    for left, right, title, url in event.trigger_edges
+                ],
+                "title_similarity": event.title_similarity,
+                "url_similarity": event.url_similarity,
+                "tokenizer_version": "nfkc-casefold-v1",
+            }
+        )
+    for selected in selection_result.evidence if selection_result else []:
+        item = candidates_by_key.get(selected.canonical_key)
+        evidence.append(
+            {
+                "schema_version": 2,
+                "event": "final_selected",
+                "canonical_key": selected.canonical_key,
+                "selection_round": max(recorded_rounds, default=0) + 1,
+                "final_score": selected.final_score,
+                "selection_score": selected.selection_score,
+                "source": item.source if item else "",
+                "category": item.category if item else "",
+                "topic": item.topic if item else "",
+                "rendered": False,
+            }
+        )
+    return evidence
+
+
 def _build_github_projects_payload(github_ranked: list[dict]) -> list[dict]:
     return [
         {
@@ -829,12 +904,13 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     if use_new_pipeline:
         from app.classifiers.relevance_filter import build_relevance_filter
         from app.content.source_policy import build_source_policy_registry
-        from app.pipeline.selection import select_digest
+        from app.pipeline.selection import select_digest_with_topic_clustering
         from app.storage.ingestion_store import filter_unexpired_candidates
 
         candidates_used_historical = True
         relevance_rejected = []
         selection_result = None
+        cluster_events = []
 
         # 1. 构建 SourcePolicy registry
         feeds_raw = []
@@ -910,13 +986,31 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
 
         # 5. 主题分类 + 三阶段选材
         TopicClassifier().classify_batch(candidates)
-        selection_result = select_digest(candidates, policies, now, config.tz, top_n=10)
+        try:
+            selection_result, cluster_events = select_digest_with_topic_clustering(
+                candidates,
+                policies,
+                now,
+                config.tz,
+                top_n=10,
+                diversity_penalty_profile=config.selection_diversity_penalty_profile,
+                enabled=config.topic_cluster_enabled,
+                threshold=config.topic_cluster_similarity_threshold,
+                max_rounds=config.topic_cluster_max_rounds,
+            )
+        except RuntimeError as exc:
+            if str(exc) != "topic_cluster_non_convergent":
+                raise
+            errors = ["topic_cluster_non_convergent"]
+            _write_publish_status(_make_publish_status("failed", 0, False, errors, tz=config.tz))
+            return PublishResult("failed", 0, False, "markdown", "", errors)
         selected = selection_result.selected
     else:
         # ---- 旧路径（测试兼容）----
         candidates_used_historical = False
         relevance_rejected = []
         selection_result = None
+        cluster_events = []
         now = local_now(config.tz)
 
         candidates = ingestion_store.load_window_candidates(
@@ -1043,21 +1137,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     for item in selected:
         selected_counts_by_source[item.source] = selected_counts_by_source.get(item.source, 0) + 1
     metric_rows = _build_metric_rows(selected, now, config.tz)
-    selection_evidence = (
-        [
-            {
-                "canonical_key": e.canonical_key,
-                "phase": e.phase,
-                "final_score": e.final_score,
-                "diversity_penalty": e.diversity_penalty,
-                "selection_score": e.selection_score,
-                "soft_source_cap_exceeded": e.soft_source_cap_exceeded,
-            }
-            for e in selection_result.evidence
-        ]
-        if selection_result
-        else []
-    )
+    selection_evidence = _selection_evidence_payload(selection_result, cluster_events, candidates)
 
     errors: list[str] = []
     if use_new_pipeline and not candidates_used_historical:
@@ -1209,21 +1289,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
                     for r in github_ranked
                 ],
                 errors=errors,
-                selection_evidence=(
-                    [
-                        {
-                            "canonical_key": e.canonical_key,
-                            "phase": e.phase,
-                            "final_score": e.final_score,
-                            "diversity_penalty": e.diversity_penalty,
-                            "selection_score": e.selection_score,
-                            "soft_source_cap_exceeded": e.soft_source_cap_exceeded,
-                        }
-                        for e in selection_result.evidence
-                    ]
-                    if selection_result
-                    else []
-                ),
+                selection_evidence=selection_evidence,
                 relevance_rejections=relevance_rejected,
             )
         )

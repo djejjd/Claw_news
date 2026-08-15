@@ -9,9 +9,12 @@ source_counts 跨三阶段累计，历史候选不进 Phase 3。
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
+import unicodedata
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Literal
+from urllib.parse import unquote, urlparse
 
 from app.content.source_policy import SourcePolicy, source_selection_cap
 from app.content.time_policy import freshness_score, is_today
@@ -21,7 +24,10 @@ _CATEGORY_MINIMUMS = {"ai": 3, "tool": 2, "game": 2, "digital": 0}
 _CATEGORY_ORDER = ("ai", "tool", "game", "digital")
 
 # 单源多样性惩罚
-_PENALTY = {0: 0.0, 1: -1.0, 2: -2.0, 3: -3.5}
+_PENALTIES = {
+    "linear": {0: 0.0, 1: -1.0, 2: -2.0, 3: -3.5, 4: -5.0},
+    "exponential": {0: 0.0, 1: -1.0, 2: -3.0, 3: -6.0, 4: -10.0},
+}
 
 
 # ---- 数据类 ----
@@ -44,10 +50,36 @@ class SelectionEvidence:
 
 
 @dataclass(frozen=True)
+class TopicClusterRound:
+    """一次聚类重选的真实轮次结果，包含最终无排除的收敛轮。"""
+
+    selection_round: int
+    available_count: int
+    selected_before_count: int
+    excluded_count: int
+    cumulative_excluded_count: int
+    converged: bool
+
+
+@dataclass(frozen=True)
 class SelectionResult:
     selected: list[CandidateItem]
     evidence: list[SelectionEvidence]
     category_counts: dict[str, int]
+    cluster_rounds: tuple[TopicClusterRound, ...] = ()
+
+
+@dataclass(frozen=True)
+class TopicClusterEvent:
+    selection_round: int
+    winner_canonical_key: str
+    loser_canonical_key: str
+    title_similarity: float
+    url_similarity: float
+    trigger_edges: tuple[tuple[str, str, float, float], ...]
+    final_score: float
+    selection_score: float
+    round_evidence: tuple[SelectionEvidence, ...] = ()
 
 
 # ---- 评分 ----
@@ -77,13 +109,14 @@ def compute_final_score(
     return round(quality + freshness_score(age_hours), 1)
 
 
-def source_diversity_penalty(selected_count: int) -> float:
+def source_diversity_penalty(selected_count: int, profile: str = "linear") -> float:
     """已入选 count 条时该源后续候选的额外扣分。"""
+    if profile not in _PENALTIES:
+        raise ValueError("SELECTION_DIVERSITY_PENALTY_PROFILE must be linear or exponential")
     if selected_count <= 0:
         return 0.0
-    if selected_count >= 4:
-        return -5.0
-    return _PENALTY.get(selected_count, -5.0)
+    penalties = _PENALTIES[profile]
+    return penalties.get(selected_count, penalties[4])
 
 
 # ---- 选材 ----
@@ -95,8 +128,11 @@ def select_digest(
     now: datetime,
     tz_name: str = "Asia/Shanghai",
     top_n: int = 10,
+    diversity_penalty_profile: str = "linear",
 ) -> SelectionResult:
     """三阶段选材，返回 SelectionResult。"""
+    if diversity_penalty_profile not in _PENALTIES:
+        raise ValueError("SELECTION_DIVERSITY_PENALTY_PROFILE must be linear or exponential")
     # 按 URL 去重（先算分，保留高分）
     for it in items:
         policy = policies.get(it.source, SourcePolicy(source=it.source))
@@ -136,86 +172,59 @@ def select_digest(
         """通用贪心选材。per_category=True 时按分类顺序逐类选取。"""
         nonlocal selected, source_counts, evidence, seen_urls, category_counts
 
-        def can_add(item) -> bool:
-            policy = policies.get(item.source, SourcePolicy(source=item.source))
-            cap, hard_cap = source_selection_cap(policy)
-            return source_counts.get(item.source, 0) < cap or (allow_soft_cap and not hard_cap)
+        def scored_candidates(category: str | None = None):
+            scored = []
+            for it in pool:
+                if it.url in seen_urls or (category is not None and it.category != category):
+                    continue
+                n = source_counts.get(it.source, 0)
+                policy = policies.get(it.source, SourcePolicy(source=it.source))
+                cap, hard_cap = source_selection_cap(policy)
+                if n >= cap and (hard_cap or not allow_soft_cap):
+                    continue
+                pen = source_diversity_penalty(n, diversity_penalty_profile)
+                scored.append((it, it.final_score + pen, pen))
+            return sorted(scored, key=lambda x: (-x[1], -_pub_ts(x[0]), _ck(x[0])))
 
-        remaining = [it for it in pool if it.url not in seen_urls]
-        # 计算 selection_score
-        scored = []
-        for it in remaining:
-            n = source_counts.get(it.source, 0)
-            policy = policies.get(it.source, SourcePolicy(source=it.source))
-            cap, hard_cap = source_selection_cap(policy)
-            if n >= cap and (hard_cap or not allow_soft_cap):
-                continue
-            pen = source_diversity_penalty(n)
-            scored.append((it, it.final_score + pen, pen))
-        scored.sort(key=lambda x: (-x[1], -_pub_ts(x[0]), _ck(x[0])))
+        def add_item(it, sel_score, pen, phase_name: str) -> None:
+            cat = it.category if it.category in _CATEGORY_ORDER else "ai"
+            selected.append(it)
+            seen_urls.add(it.url)
+            src = it.source
+            policy = policies.get(src, SourcePolicy(source=src))
+            cap, _ = source_selection_cap(policy)
+            soft_cap_exceeded = allow_soft_cap and source_counts.get(src, 0) >= cap
+            source_counts[src] = source_counts.get(src, 0) + 1
+            category_counts[cat] += 1
+            ck = it.canonical_key or CandidateItem.make_canonical_key(it.url or "")
+            evidence.append(
+                SelectionEvidence(
+                    canonical_key=ck,
+                    phase=phase_name,
+                    final_score=it.final_score,
+                    diversity_penalty=pen,
+                    selection_score=sel_score,
+                    soft_source_cap_exceeded=soft_cap_exceeded,
+                )
+            )
 
         if per_category:
             # 逐类选取
             for cat in _CATEGORY_ORDER:
                 need = target_per_cat.get(cat, 0) if target_per_cat else 0
-                cat_items = [
-                    s for s in scored if s[0].category == cat and s[0].url not in seen_urls
-                ]
-                for it, sel_score, pen in cat_items:
-                    if len(selected) >= top_n:
+                while len(selected) < top_n and category_counts[cat] < need:
+                    candidates = scored_candidates(cat)
+                    if not candidates:
                         break
-                    if category_counts[cat] >= need:
-                        break
-                    if not can_add(it):
-                        continue
-                    selected.append(it)
-                    seen_urls.add(it.url)
-                    src = it.source
-                    policy = policies.get(src, SourcePolicy(source=src))
-                    cap, _ = source_selection_cap(policy)
-                    soft_cap_exceeded = allow_soft_cap and source_counts.get(src, 0) >= cap
-                    source_counts[src] = source_counts.get(src, 0) + 1
-                    category_counts[cat] += 1
-                    ck2 = it.canonical_key or CandidateItem.make_canonical_key(it.url or "")
-                    evidence.append(
-                        SelectionEvidence(
-                            canonical_key=ck2,
-                            phase=phase,
-                            final_score=it.final_score,
-                            diversity_penalty=pen,
-                            selection_score=sel_score,
-                            soft_source_cap_exceeded=soft_cap_exceeded,
-                        )
-                    )
+                    it, sel_score, pen = candidates[0]
+                    add_item(it, sel_score, pen, phase)
         else:
-            for it, sel_score, pen in scored:
-                if len(selected) >= top_n:
+            while len(selected) < top_n:
+                candidates = scored_candidates()
+                if not candidates:
                     break
-                if not can_add(it):
-                    continue
-                cat = it.category if it.category in _CATEGORY_ORDER else "ai"
-                need = target_per_cat.get(cat) if target_per_cat else None
-                if need is not None and category_counts[cat] >= need:
-                    continue
-                selected.append(it)
-                seen_urls.add(it.url)
-                src = it.source
-                policy = policies.get(src, SourcePolicy(source=src))
-                cap, _ = source_selection_cap(policy)
-                soft_cap_exceeded = allow_soft_cap and source_counts.get(src, 0) >= cap
-                source_counts[src] = source_counts.get(src, 0) + 1
-                category_counts[cat] += 1
-                ck = it.canonical_key or CandidateItem.make_canonical_key(it.url or "")
-                evidence.append(
-                    SelectionEvidence(
-                        canonical_key=ck,
-                        phase=phase,
-                        final_score=it.final_score,
-                        diversity_penalty=pen,
-                        selection_score=sel_score,
-                        soft_source_cap_exceeded=soft_cap_exceeded,
-                    )
-                )
+                it, sel_score, pen = candidates[0]
+                add_item(it, sel_score, pen, phase)
 
     # Phase 1: 今日保底（逐类选取，保证先满足 AI→工具→游戏 最低目标）
     _greedy_pick(today_items, "today_guarantee", _CATEGORY_MINIMUMS, per_category=True)
@@ -242,6 +251,169 @@ def select_digest(
         evidence=sorted(evidence, key=lambda e: (-e.final_score, e.canonical_key)),
         category_counts=category_counts,
     )
+
+
+def select_digest_with_topic_clustering(
+    items: list[CandidateItem],
+    policies: dict[str, SourcePolicy],
+    now: datetime,
+    tz_name: str = "Asia/Shanghai",
+    top_n: int = 10,
+    diversity_penalty_profile: str = "linear",
+    *,
+    enabled: bool = False,
+    threshold: float = 0.7,
+    max_rounds: int = 10,
+) -> tuple[SelectionResult, list[TopicClusterEvent]]:
+    """Select, exclude duplicate topic-cluster losers, and reselect to convergence."""
+    if not enabled:
+        return (
+            select_digest(items, policies, now, tz_name, top_n, diversity_penalty_profile),
+            [],
+        )
+    if not 0 < threshold <= 1 or max_rounds <= 0:
+        raise ValueError("topic cluster threshold and max rounds must be positive")
+
+    excluded: set[str] = set()
+    events: list[TopicClusterEvent] = []
+    rounds: list[TopicClusterRound] = []
+    for round_number in range(1, max_rounds + 1):
+        available = [item for item in items if _ck(item) not in excluded]
+        result = select_digest(available, policies, now, tz_name, top_n, diversity_penalty_profile)
+        evidence_by_key = {event.canonical_key: event for event in result.evidence}
+        edges = _topic_similarity_edges(result.selected, threshold)
+        if not edges:
+            rounds.append(
+                TopicClusterRound(
+                    selection_round=round_number,
+                    available_count=len(available),
+                    selected_before_count=len(result.selected),
+                    excluded_count=0,
+                    cumulative_excluded_count=len(excluded),
+                    converged=True,
+                )
+            )
+            return replace(result, cluster_rounds=tuple(rounds)), events
+        losers = set()
+        selected_by_key = {_ck(item): item for item in result.selected}
+        for component_keys in _components(edges):
+            component = [selected_by_key[key] for key in component_keys]
+            component_edges = tuple(
+                (_ck(left), _ck(right), title_similarity, url_similarity)
+                for left, right, title_similarity, url_similarity in edges
+                if _ck(left) in component_keys and _ck(right) in component_keys
+            )
+            winner = sorted(
+                component,
+                key=lambda item: (
+                    -evidence_by_key[_ck(item)].selection_score,
+                    -_pub_ts(item),
+                    _ck(item),
+                ),
+            )[0]
+            for item in component:
+                if item is not winner and _ck(item) not in losers:
+                    losers.add(_ck(item))
+                    direct_edge = next(
+                        (
+                            edge
+                            for edge in component_edges
+                            if _ck(item) in edge[:2] and _ck(winner) in edge[:2]
+                        ),
+                        component_edges[0],
+                    )
+                    events.append(
+                        TopicClusterEvent(
+                            round_number,
+                            _ck(winner),
+                            _ck(item),
+                            direct_edge[2],
+                            direct_edge[3],
+                            component_edges,
+                            item.final_score,
+                            evidence_by_key[_ck(item)].selection_score,
+                            tuple(result.evidence),
+                        )
+                    )
+        if not losers:
+            rounds.append(
+                TopicClusterRound(
+                    selection_round=round_number,
+                    available_count=len(available),
+                    selected_before_count=len(result.selected),
+                    excluded_count=0,
+                    cumulative_excluded_count=len(excluded),
+                    converged=True,
+                )
+            )
+            return replace(result, cluster_rounds=tuple(rounds)), events
+        excluded.update(losers)
+        rounds.append(
+            TopicClusterRound(
+                selection_round=round_number,
+                available_count=len(available),
+                selected_before_count=len(result.selected),
+                excluded_count=len(losers),
+                cumulative_excluded_count=len(excluded),
+                converged=False,
+            )
+        )
+    raise RuntimeError("topic_cluster_non_convergent")
+
+
+def _topic_similarity_edges(items: list[CandidateItem], threshold: float):
+    edges = []
+    for index, left in enumerate(items):
+        if not left.topic or left.topic.startswith("general_"):
+            continue
+        for right in items[index + 1 :]:
+            if left.category != right.category or left.topic != right.topic:
+                continue
+            title_similarity = _jaccard(_tokens(left.title), _tokens(right.title))
+            url_similarity = _jaccard(_url_tokens(left.url), _url_tokens(right.url))
+            if title_similarity >= threshold or (
+                title_similarity >= 0.35 and url_similarity >= threshold
+            ):
+                edges.append((left, right, title_similarity, url_similarity))
+    return edges
+
+
+def _components(edges):
+    graph = {}
+    for left, right, *_ in edges:
+        left_key, right_key = _ck(left), _ck(right)
+        graph.setdefault(left_key, set()).add(right_key)
+        graph.setdefault(right_key, set()).add(left_key)
+    result = []
+    while graph:
+        start = min(graph)
+        stack, component = [start], set()
+        while stack:
+            item = stack.pop()
+            if item in component:
+                continue
+            component.add(item)
+            stack.extend(reversed(sorted(graph.get(item, set()))))
+        for item in sorted(component):
+            graph.pop(item, None)
+        result.append(component)
+    return sorted(result, key=lambda component: min(component))
+
+
+def _tokens(value: str) -> set[str]:
+    normalized = unicodedata.normalize("NFKC", value or "").casefold()
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    for chunk in re.findall(r"[\u4e00-\u9fff]+", normalized):
+        tokens.update(chunk[index : index + 2] for index in range(max(len(chunk) - 1, 0)))
+    return tokens
+
+
+def _url_tokens(url: str) -> set[str]:
+    return _tokens(unquote(urlparse(url).path).replace("/", " "))
+
+
+def _jaccard(left: set[str], right: set[str]) -> float:
+    return len(left & right) / len(left | right) if left and right else 0.0
 
 
 # ---- 排序辅助 ----
