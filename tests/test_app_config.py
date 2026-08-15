@@ -101,6 +101,28 @@ class TestDefaults:
         with pytest.raises(ValueError, match="SOURCE_FAILURE_DEGRADED_THRESHOLD"):
             load_config()
 
+    def test_publication_is_disabled_by_default(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.delenv("PUBLICATION_ENABLED", raising=False)
+        monkeypatch.delenv("PUBLICATION_DATABASE_URL", raising=False)
+
+        config = load_config()
+
+        assert config.publication_enabled is False
+        assert config.publication_database_url is None
+
+    def test_enabled_publication_requires_database_url(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.setenv("PUBLICATION_ENABLED", "1")
+        monkeypatch.delenv("PUBLICATION_DATABASE_URL", raising=False)
+
+        with pytest.raises(ValueError, match="PUBLICATION_DATABASE_URL"):
+            load_config()
+
 
 class TestNewsRssUrlsParsing:
     def test_parses_single_url(self, monkeypatch):

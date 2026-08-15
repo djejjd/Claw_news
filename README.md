@@ -120,6 +120,8 @@ cp .env.example .env
 | `NEWS_RSS_URLS` | Legacy | Historical URL-only RSS config; formal AI ingest uses `AI_RSS_*` below |
 | `HF_PROXY` | No | HuggingFace collector proxy URL, mainly for restricted network environments |
 | `HF_OPTIONAL` | No | `1` means HuggingFace failures are recorded as skipped instead of failed |
+| `PUBLICATION_ENABLED` | No | `1` enables the website publication store; default `0` preserves the current JSON-only mode |
+| `PUBLICATION_DATABASE_URL` | Required when publication is enabled | PostgreSQL SQLAlchemy URL; run `alembic upgrade head` before enabling |
 | `AI_RSS_MODE` | No | `append` (default) keeps built-ins; `replace` uses only `AI_RSS_FEEDS` |
 | `AI_RSS_FEEDS` | No | Comma-separated `source|url` AI RSS feeds, e.g. `openai_blog|https://openai.com/news/rss.xml` |
 | `PIP_INDEX_URL` | Build only | Optional primary PyPI index for `docker compose build`, useful on slow overseas links |

@@ -59,6 +59,8 @@ class AppConfig:
     feishu_app_id: str | None = None
     feishu_app_secret: str | None = None
     feishu_chat_id: str | None = None
+    publication_enabled: bool = False
+    publication_database_url: str | None = None
 
     def __repr__(self) -> str:
         masked = self.llm_api_key[:7] + "***" if len(self.llm_api_key) > 7 else "***"
@@ -125,6 +127,11 @@ def load_config() -> AppConfig:
     if feishu_chat_id and not (feishu_app_id and feishu_app_secret):
         raise ValueError("FEISHU_CHAT_ID requires FEISHU_APP_ID and FEISHU_APP_SECRET")
 
+    publication_enabled = _env("PUBLICATION_ENABLED", dotenv).lower() in {"1", "true", "yes", "on"}
+    publication_database_url = _env("PUBLICATION_DATABASE_URL", dotenv) or None
+    if publication_enabled and not publication_database_url:
+        raise ValueError("PUBLICATION_DATABASE_URL is required when PUBLICATION_ENABLED is enabled")
+
     return AppConfig(
         llm_api_key=required["LLM_API_KEY"],
         llm_base_url=required["LLM_BASE_URL"],
@@ -139,4 +146,6 @@ def load_config() -> AppConfig:
         feishu_app_id=feishu_app_id,
         feishu_app_secret=feishu_app_secret,
         feishu_chat_id=feishu_chat_id,
+        publication_enabled=publication_enabled,
+        publication_database_url=publication_database_url,
     )

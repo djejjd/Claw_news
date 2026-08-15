@@ -172,6 +172,54 @@ class TestHealthEndpoint:
         assert data["status"] == "healthy"
         assert "github" not in data["sources"]
 
+    def test_health_degrades_when_publication_is_pending(self):
+        """发布库待重试必须是可观察的降级状态。"""
+        from fastapi.testclient import TestClient
+
+        main_module = _load_app_module()
+        with (
+            patch.object(main_module, "agent", _make_mock_agent()),
+            patch.object(main_module, "scheduler", MagicMock()),
+            patch.object(main_module, "IngestStatusStore") as mock_store,
+        ):
+            mock_store.return_value.load_status.return_value = {
+                "last_ingest_at": "2099-05-18T08:00:00",
+                "last_item_count": 3,
+                "successful_sources": ["rss"],
+                "failed_sources": [],
+                "skipped_sources": [],
+                "publication": {"status": "pending", "error": "write: OperationalError"},
+            }
+
+            response = TestClient(main_module.app).get("/health")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "degraded"
+
+    def test_health_degrades_when_publication_database_is_unreachable(self):
+        """启用网站发布时，数据库连接失败必须直接可见。"""
+        from fastapi.testclient import TestClient
+
+        main_module = _load_app_module()
+        publisher = MagicMock()
+        publisher.store.healthcheck.side_effect = OSError("connection refused")
+
+        with (
+            patch.object(main_module, "agent", _make_mock_agent()),
+            patch.object(main_module, "scheduler", MagicMock()),
+            patch.object(
+                main_module,
+                "config",
+                SimpleNamespace(publication_enabled=True, tz="Asia/Shanghai"),
+            ),
+            patch("app.publication.publisher.Publisher.from_config", return_value=publisher),
+        ):
+            response = TestClient(main_module.app).get("/health")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "degraded"
+        assert response.json()["publication"]["status"] == "unhealthy"
+
     def test_health_exposes_structured_degraded_source(self):
         from fastapi.testclient import TestClient
 

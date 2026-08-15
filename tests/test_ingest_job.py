@@ -59,6 +59,64 @@ async def test_run_ingest_records_failed_sources_when_collector_raises():
 
 
 @pytest.mark.asyncio
+async def test_run_ingest_replays_article_outbox_without_new_candidates():
+    """发布库恢复后，即使本轮没有候选也要重放待发布文章。"""
+    from app.scheduler.jobs import run_ingest
+
+    empty_collector = MagicMock()
+    empty_collector.collect = AsyncMock(return_value=[])
+    publisher = MagicMock()
+    retry_store = MagicMock()
+
+    with (
+        patch("collectors.rss_sources.RssCollector", return_value=empty_collector),
+        patch("collectors.huggingface.HfDailyPapersCollector", return_value=empty_collector),
+        patch("collectors.taptap.TapTapCollector", return_value=empty_collector),
+        patch("collectors.github.GitHubCollector.collect", new=AsyncMock(return_value=[])),
+        patch("app.scheduler.jobs.IngestionStore"),
+        patch("app.scheduler.jobs.GitHubStore"),
+        patch("app.scheduler.jobs.IngestStatusStore"),
+        patch("app.publication.publisher.Publisher.from_config", return_value=publisher),
+        patch("app.publication.retry_store.PublicationRetryStore", return_value=retry_store),
+    ):
+        await run_ingest(publication_config=object())
+
+    retry_store.replay_articles.assert_called_once_with(publisher)
+    retry_store.replay_digests.assert_called_once_with(publisher)
+
+
+@pytest.mark.asyncio
+async def test_run_ingest_defers_digest_replay_when_article_replay_fails():
+    """文章批次未恢复前，不能提前发布依赖文章的日报。"""
+    from app.scheduler.jobs import run_ingest
+
+    empty_collector = MagicMock()
+    empty_collector.collect = AsyncMock(return_value=[])
+    publisher = MagicMock()
+    retry_store = MagicMock()
+    retry_store.replay_articles.side_effect = RuntimeError("database unavailable")
+
+    with (
+        patch("collectors.rss_sources.RssCollector", return_value=empty_collector),
+        patch("collectors.huggingface.HfDailyPapersCollector", return_value=empty_collector),
+        patch("collectors.taptap.TapTapCollector", return_value=empty_collector),
+        patch("collectors.github.GitHubCollector.collect", new=AsyncMock(return_value=[])),
+        patch("app.scheduler.jobs.IngestionStore"),
+        patch("app.scheduler.jobs.GitHubStore"),
+        patch("app.scheduler.jobs.IngestStatusStore") as status_store,
+        patch("app.publication.publisher.Publisher.from_config", return_value=publisher),
+        patch("app.publication.retry_store.PublicationRetryStore", return_value=retry_store),
+    ):
+        await run_ingest(publication_config=object())
+
+    retry_store.replay_digests.assert_not_called()
+    assert (
+        status_store.return_value.write_status.call_args.args[0]["publication"]["status"]
+        == "pending"
+    )
+
+
+@pytest.mark.asyncio
 async def test_run_ingest_skips_optional_huggingface_failures(monkeypatch):
     from app.scheduler.jobs import run_ingest
 

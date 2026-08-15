@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -23,13 +24,18 @@ from app.storage.source_state_store import SourceStateStore
 from collectors.base import hotitem_to_candidate
 
 logger = logging.getLogger(__name__)
+_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 
 # ------------------------------------------------------------------
 # Ingest: high-frequency candidate collection (every 30 min)
 # ------------------------------------------------------------------
 
 
-async def run_ingest(tz: str = "Asia/Shanghai", failure_degraded_threshold: int = 3):
+async def run_ingest(
+    tz: str = "Asia/Shanghai",
+    failure_degraded_threshold: int = 3,
+    publication_config=None,
+):
     """Run all AI-relevant collectors, normalize to CandidateItem, write to Ingestion Store.
 
     Each collector is wrapped independently — one failure never
@@ -208,6 +214,84 @@ async def run_ingest(tz: str = "Asia/Shanghai", failure_degraded_threshold: int 
     }
     IngestStatusStore().write_status(status_payload)
 
+    if publication_config is not None:
+        try:
+            from app.classifiers.content_category_classifier import (
+                ContentCategoryClassifier,
+                dynamic_sources_from_feed_config,
+            )
+            from app.classifiers.relevance_filter import build_relevance_filter
+            from app.content.source_policy import build_source_policy_registry
+            from app.publication.locking import publication_write_lock
+            from app.publication.publisher import Publisher
+            from app.publication.retry_store import PublicationRetryStore
+            from collectors.ai_rss import load_effective_feed_configuration
+
+            async with publication_write_lock:
+                publisher = Publisher.from_config(publication_config)
+                if publisher is not None:
+                    retry_store = PublicationRetryStore(_DATA_DIR)
+                    article_replay_succeeded = True
+                    try:
+                        retry_store.replay_articles(publisher)
+                    except Exception as exc:
+                        logger.exception("Publication article replay failed")
+                        article_replay_succeeded = False
+                        status_payload["publication"] = {
+                            "status": "pending",
+                            "error": f"replay: {type(exc).__name__}",
+                        }
+                    if article_replay_succeeded:
+                        try:
+                            retry_store.replay_digests(publisher)
+                        except Exception as exc:
+                            logger.exception("Publication digest replay failed")
+                            status_payload["publication"] = {
+                                "status": "pending",
+                                "error": f"digest_replay: {type(exc).__name__}",
+                            }
+                    if not all_items:
+                        IngestStatusStore().write_status(status_payload)
+                        return {"item_count": 0, "status": "no_items"}
+                    feed_configuration = load_effective_feed_configuration() or {"feeds": {}}
+                    policy_inputs = []
+                    for category in ("ai", "tool", "game", "digital"):
+                        policy_inputs.extend(
+                            {**feed, "category": category}
+                            for feed in feed_configuration.get("feeds", {}).get(category, [])
+                            if isinstance(feed, dict)
+                        )
+                    policy_inputs.extend(
+                        {**policy, "source": policy.get("source", source)}
+                        for source, policy in feed_configuration.get("source_policies", {}).items()
+                        if isinstance(policy, dict)
+                    )
+                    ContentCategoryClassifier().classify_batch(
+                        all_items,
+                        dynamic_sources=dynamic_sources_from_feed_config(feed_configuration),
+                    )
+                    publishable_items, _ = build_relevance_filter(
+                        feed_configuration
+                    ).evaluate_batch(all_items, build_source_policy_registry(policy_inputs))
+                    try:
+                        publisher.publish_candidates(publishable_items, feed_configuration)
+                    except Exception as exc:
+                        retry_store.enqueue_articles(publishable_items, feed_configuration)
+                        logger.exception("Publication article write queued for retry")
+                        status_payload["publication"] = {
+                            "status": "pending",
+                            "error": f"write: {type(exc).__name__}",
+                        }
+        except Exception as exc:
+            logger.exception("Publication article write failed")
+            status_payload["publication"] = {
+                "status": "failed",
+                "error": f"outbox: {type(exc).__name__}",
+            }
+            IngestStatusStore().write_status(status_payload)
+        else:
+            IngestStatusStore().write_status(status_payload)
+
     if all_items or source_failures:
         result = store.append_or_merge(all_items, source_failures=source_failures)
         return result
@@ -215,9 +299,13 @@ async def run_ingest(tz: str = "Asia/Shanghai", failure_degraded_threshold: int 
     return {"item_count": 0, "status": "no_items"}
 
 
-async def run_ingest_with_cleanup(tz: str = "Asia/Shanghai", failure_degraded_threshold: int = 3):
+async def run_ingest_with_cleanup(
+    tz: str = "Asia/Shanghai",
+    failure_degraded_threshold: int = 3,
+    publication_config=None,
+):
     """Ingest + expire stale candidates beyond 7 days."""
-    await run_ingest(tz, failure_degraded_threshold)
+    await run_ingest(tz, failure_degraded_threshold, publication_config)
     store = IngestionStore()
     store.prune_expired(keep_days=7)
 
@@ -228,7 +316,7 @@ async def run_ingest_with_cleanup(tz: str = "Asia/Shanghai", failure_degraded_th
 
 
 def create_scheduler(
-    agent, tz: str = "Asia/Shanghai", failure_degraded_threshold: int = 3
+    agent, tz: str = "Asia/Shanghai", failure_degraded_threshold: int = 3, publication_config=None
 ) -> AsyncIOScheduler:
     """Create and return a scheduler with news pipeline jobs registered.
 
@@ -251,7 +339,7 @@ def create_scheduler(
         "interval",
         minutes=30,
         id="ingest_30m",
-        args=[tz, failure_degraded_threshold],
+        args=[tz, failure_degraded_threshold, publication_config],
         max_instances=1,
         coalesce=True,
     )
