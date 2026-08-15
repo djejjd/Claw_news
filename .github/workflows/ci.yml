@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -20,3 +22,14 @@ jobs:
       - run: ruff check .
       - run: pytest -v
       - run: bash scripts/check-public-boundary.sh
+      - name: Verify task gate
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+          TASK_ARGS=()
+          while IFS= read -r task_path; do
+            TASK_ARGS+=(--task "$task_path")
+          done < <(python scripts/task_gate.py tasks-from-pr --body-file "$RUNNER_TEMP/pr-body.md")
+          python scripts/task_gate.py ci "${TASK_ARGS[@]}" --base "origin/${{ github.base_ref }}"

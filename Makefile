@@ -1,4 +1,4 @@
-.PHONY: install test lint format check-public check-config run-morning run-evening dry-run clean clean-data
+.PHONY: install test lint format check-public check-config task-gate task-commit-check install-hooks run-morning run-evening dry-run clean clean-data
 
 install:
 	python3 -m venv venv
@@ -18,6 +18,17 @@ format:
 
 check-config:
 	./venv/bin/python -c 'from app.config import load_config; print(load_config())'
+
+task-gate:
+	@[ -n "$(TASK)" ] || (echo "用法：make task-gate TASK=docs/计划/.../T*.md" && exit 1)
+	./venv/bin/python scripts/task_gate.py begin --task "$(TASK)"
+
+task-commit-check:
+	@[ -n "$(TASK)" ] || (echo "用法：make task-commit-check TASK=docs/计划/.../T*.md" && exit 1)
+	./venv/bin/python scripts/task_gate.py commit --task "$(TASK)"
+
+install-hooks:
+	git config core.hooksPath .githooks
 
 run-morning:
 	./venv/bin/python main.py --period morning
