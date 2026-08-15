@@ -7,10 +7,20 @@ from datetime import datetime
 from pathlib import Path
 
 from app.content.source_policy import build_source_policy_registry
-from app.pipeline.selection import select_digest, select_digest_with_topic_clustering
+from app.pipeline.selection import (
+    reselect_digest_after_llm_relevance,
+    select_digest,
+    select_digest_with_topic_clustering,
+)
 from app.storage.ingestion_store import IngestionStore, filter_unexpired_candidates
 from collectors.ai_rss import load_effective_feed_configuration
 from infra.storage.state_store import StateStore
+
+
+def _candidate_key(item) -> str:
+    from app.pipeline.candidate import CandidateItem
+
+    return item.canonical_key or CandidateItem.make_canonical_key(item.url or "")
 
 
 def run_replay(
@@ -21,6 +31,8 @@ def run_replay(
     topic_cluster_enabled: bool = False,
     topic_cluster_similarity_threshold: float = 0.7,
     topic_cluster_max_rounds: int = 10,
+    llm_relevance_scores: dict[str, float] | None = None,
+    llm_relevance_threshold: float = 0.5,
 ) -> dict:
     """只读回放：读取历史候选，模拟过期过滤→相关性→选材，返回分布统计。
 
@@ -118,6 +130,131 @@ def run_replay(
         threshold=topic_cluster_similarity_threshold,
         max_rounds=topic_cluster_max_rounds,
     )
+    llm_relevance_events: list[dict] = []
+    if llm_relevance_scores is not None:
+        from app.tools.llm import validate_relevance_scores
+
+        initial_selected = result.selected
+        candidates_by_key = {_candidate_key(item): item for item in candidates}
+        initial_evidence_by_key = {evidence.canonical_key: evidence for evidence in result.evidence}
+
+        def event_payload(event: str, item, evidence, selection_round: int, **extra) -> dict:
+            return {
+                "schema_version": 2,
+                "event": event,
+                "canonical_key": _candidate_key(item),
+                "selection_round": selection_round,
+                "final_score": evidence.final_score
+                if evidence
+                else getattr(item, "final_score", None),
+                "selection_score": evidence.selection_score if evidence else None,
+                "source": item.source,
+                "category": item.category,
+                "topic": item.topic,
+                **extra,
+            }
+
+        scored_items = [
+            {"url": item.url, "relevance": llm_relevance_scores.get(item.url)}
+            for item in initial_selected
+        ]
+        scores = validate_relevance_scores(scored_items)
+        rejected_keys = {
+            _candidate_key(item)
+            for item in initial_selected
+            if scores[item.url] < llm_relevance_threshold
+        }
+        if rejected_keys:
+            result, rerun_cluster_events, backfills = reselect_digest_after_llm_relevance(
+                candidates,
+                policies,
+                now,
+                excluded_canonical_keys=rejected_keys,
+                initially_scored_keys={_candidate_key(item) for item in initial_selected},
+                top_n=10,
+                diversity_penalty_profile=diversity_penalty_profile,
+                topic_cluster_enabled=topic_cluster_enabled,
+                topic_cluster_threshold=topic_cluster_similarity_threshold,
+                topic_cluster_max_rounds=topic_cluster_max_rounds,
+            )
+            final_evidence_by_key = {
+                evidence.canonical_key: evidence for evidence in result.evidence
+            }
+            reselection_final_round = (
+                max((event.selection_round for event in rerun_cluster_events), default=0) + 1
+            )
+            llm_relevance_events = (
+                [
+                    event_payload(
+                        "temporary_selected",
+                        item,
+                        initial_evidence_by_key.get(_candidate_key(item)),
+                        1,
+                    )
+                    for item in initial_selected
+                ]
+                + [
+                    event_payload(
+                        "llm_relevance_rejected",
+                        item,
+                        initial_evidence_by_key.get(_candidate_key(item)),
+                        2,
+                        relevance=scores[item.url],
+                        threshold=llm_relevance_threshold,
+                    )
+                    for item in initial_selected
+                    if _candidate_key(item) in rejected_keys
+                ]
+                + [
+                    {
+                        "schema_version": 2,
+                        "event": "topic_cluster_excluded",
+                        "canonical_key": event.loser_canonical_key,
+                        "selection_round": event.selection_round,
+                        "selection_stage": "llm_reselection",
+                        "final_score": event.final_score,
+                        "selection_score": event.selection_score,
+                        "source": candidates_by_key[event.loser_canonical_key].source,
+                        "category": candidates_by_key[event.loser_canonical_key].category,
+                        "topic": candidates_by_key[event.loser_canonical_key].topic,
+                        "component_winner_canonical_key": event.winner_canonical_key,
+                        "trigger_edges": [
+                            {
+                                "left": left,
+                                "right": right,
+                                "title_similarity": title,
+                                "url_similarity": url,
+                            }
+                            for left, right, title, url in event.trigger_edges
+                        ],
+                        "title_similarity": event.title_similarity,
+                        "url_similarity": event.url_similarity,
+                        "tokenizer_version": "nfkc-casefold-v1",
+                    }
+                    for event in rerun_cluster_events
+                ]
+                + [
+                    event_payload(
+                        "llm_relevance_backfill",
+                        candidates_by_key[backfill["canonical_key"]],
+                        final_evidence_by_key.get(backfill["canonical_key"]),
+                        reselection_final_round,
+                        relevance=None,
+                        relevance_source="not_scored_backfill",
+                    )
+                    for backfill in backfills
+                ]
+                + [
+                    event_payload(
+                        "final_selected",
+                        item,
+                        final_evidence_by_key.get(_candidate_key(item)),
+                        reselection_final_round + 1,
+                        rendered=True,
+                    )
+                    for item in result.selected
+                ]
+            )
 
     # 7. 统计
     source_dist = dict(Counter(it.source for it in result.selected))
@@ -165,6 +302,7 @@ def run_replay(
             }
             for event in cluster_events
         ],
+        "llm_relevance_events": llm_relevance_events,
         "eligible_count": eligible_count,
         "selected_count": len(result.selected),
         "source_distribution": source_dist,

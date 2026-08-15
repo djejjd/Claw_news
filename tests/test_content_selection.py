@@ -272,6 +272,39 @@ def test_topic_cluster_disabled_matches_plain_selection():
     assert events == []
 
 
+def test_llm_relevance_reselection_excludes_low_initial_item_and_marks_unscored_backfill():
+    from app.pipeline.selection import reselect_digest_after_llm_relevance
+
+    initial = _make_item(url="https://initial.test/low", source="initial", category="ai")
+    replacement = _make_item(
+        url="https://replacement.test/high", source="replacement", category="ai"
+    )
+    policies = {
+        "initial": SourcePolicy("initial", quality_weight=5.0),
+        "replacement": SourcePolicy("replacement", quality_weight=4.0),
+    }
+
+    result, cluster_events, events = reselect_digest_after_llm_relevance(
+        [initial, replacement],
+        policies,
+        _NOW,
+        excluded_canonical_keys={initial.canonical_key},
+        initially_scored_keys={initial.canonical_key},
+        top_n=1,
+    )
+
+    assert [item.canonical_key for item in result.selected] == [replacement.canonical_key]
+    assert cluster_events == []
+    assert events == [
+        {
+            "event": "llm_relevance_backfill",
+            "canonical_key": replacement.canonical_key,
+            "relevance": None,
+            "relevance_source": "not_scored_backfill",
+        }
+    ]
+
+
 @pytest.mark.skip(reason="CG-P3-02-FOLLOWUP-01：等待真实候选池的人工标注样本")
 def test_topic_cluster_annotation_calibration_gate():
     """标注集必须覆盖 200 对样本及四类内容，并满足误差门槛。"""

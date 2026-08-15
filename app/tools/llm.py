@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 
 import httpx
 
@@ -30,7 +31,8 @@ _SYSTEM_PROMPT = (
       "url": "原文链接",
       "core_summary": "该新闻的核心内容，不超过25个字",
       "importance": "高/中/低",
-      "trend": "该新闻反映的行业趋势"
+      "trend": "该新闻反映的行业趋势",
+      "relevance": 0.0
     }
   ],
   "daily_judgement": "用一句话总结今天四类新闻的整体态势",
@@ -51,6 +53,7 @@ _SYSTEM_PROMPT = (
 - headline_items 必须逐条保留输入 URL，顺序与输入一致
 - core_summary 必须控制在 25 个字以内
 - trend 控制在 10 个字以内
+- relevance 必须是 0 到 1 的数值，表示该新闻与本日报主题的相关性
 - github_projects 中的 description_cn 必须翻译为简洁的中文"""
 )
 
@@ -121,10 +124,26 @@ def _complete_headline_items(result: dict, items: list[dict]) -> dict:
                 "core_summary": generated.get("core_summary") or item.get("summary", ""),
                 "importance": generated.get("importance") or "中",
                 "trend": generated.get("trend") or "行业动态",
+                "relevance": generated.get("relevance"),
             }
         )
     result["headline_items"] = completed
     return result
+
+
+def validate_relevance_scores(headline_items: list[dict]) -> dict[str, float]:
+    """严格验证 LLM 对初选项逐 URL 返回的 relevance。"""
+    scores: dict[str, float] = {}
+    for item in headline_items:
+        url = item.get("url", "")
+        relevance = item.get("relevance")
+        if isinstance(relevance, bool) or not isinstance(relevance, (int, float)):
+            raise ValueError(f"invalid LLM relevance for {url}: must be numeric")
+        score = float(relevance)
+        if not math.isfinite(score) or not 0 <= score <= 1:
+            raise ValueError(f"invalid LLM relevance for {url}: must be in [0, 1]")
+        scores[url] = score
+    return scores
 
 
 # ---------------------------------------------------------------------------

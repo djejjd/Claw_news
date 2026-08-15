@@ -290,6 +290,46 @@ def test_replay_reports_selected_diversity_penalty_profile(tmp_path, monkeypatch
     assert result["diversity_penalty_profile"] == "exponential"
 
 
+def test_replay_relevance_audit_uses_shared_event_contract(tmp_path, monkeypatch):
+    """回放的相关性事件必须与 digest/pending 使用同一审计语义。"""
+    from app.tools.content_replay import run_replay
+
+    _seed_replay_fixture(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    result = run_replay(
+        data_dir="data",
+        at=_FIXED_AT,
+        llm_relevance_scores={
+            "https://ai1.test": 0.2,
+            "https://t1.test": 0.9,
+            "https://g1.test": 0.9,
+        },
+    )
+
+    events = result["llm_relevance_events"]
+    names = [event["event"] for event in events]
+    assert names[:4] == [
+        "temporary_selected",
+        "temporary_selected",
+        "temporary_selected",
+        "llm_relevance_rejected",
+    ]
+    assert names[-2:] == ["final_selected", "final_selected"]
+    rejected = events[3]
+    assert rejected["schema_version"] == 2
+    assert rejected["canonical_key"] == "ai1"
+    assert rejected["selection_round"] == 2
+    assert rejected["source"] == "qbitai"
+    assert rejected["category"] == "ai"
+    assert rejected["topic"] == "application_case"
+    assert rejected["final_score"] == 6.5
+    assert rejected["selection_score"] == 6.5
+    assert rejected["relevance"] == 0.2
+    assert rejected["threshold"] == 0.5
+    assert all(event["schema_version"] == 2 for event in events)
+
+
 def test_replay_cluster_round_counts_exclude_prior_losers(tmp_path, monkeypatch):
     from app.pipeline.selection import SelectionResult, TopicClusterRound
     from app.tools.content_replay import run_replay

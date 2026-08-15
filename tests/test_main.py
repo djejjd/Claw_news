@@ -420,6 +420,312 @@ class TestTopicClusterPersistence:
         mock_feishu.assert_not_called()
         assert not (tmp_path / "pending_deliveries").exists()
 
+
+class TestLlmRelevancePipeline:
+    @pytest.mark.asyncio
+    async def test_invalid_relevance_fails_after_one_llm_call_before_delivery(self, tmp_path: Path):
+        """启用复核时，缺失 relevance 必须失败且不能进入投递。"""
+        from app.pipeline.news_pipeline import run_pipeline
+
+        config = _make_config(llm_relevance_enabled=True)
+        candidate = _make_candidate(
+            source="source-a",
+            url="https://source-a.example/article",
+            published_at="2026-05-18T08:00:00+08:00",
+        )
+        llm_result = {
+            "headline_items": [
+                {
+                    "title": candidate.title,
+                    "url": candidate.url,
+                    "core_summary": "摘要",
+                    "importance": "中",
+                    "trend": "趋势",
+                }
+            ],
+            "daily_judgement": "判断",
+        }
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch(
+                "collectors.ai_rss.load_effective_feed_configuration",
+                return_value=_new_pipeline_feed_config(),
+            ),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_ingestion,
+            patch("app.pipeline.news_pipeline.IngestStatusStore") as mock_status,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics,
+            patch("app.pipeline.news_pipeline.GitHubStore") as mock_github,
+            patch("app.pipeline.news_pipeline.TopicClassifier"),
+            patch("app.classifiers.content_category_classifier.ContentCategoryClassifier"),
+            patch("app.classifiers.relevance_filter.build_relevance_filter") as mock_filter,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)
+            ) as mock_summarize,
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_wecom,
+        ):
+            mock_ingestion.return_value.load_recent_candidates.return_value = [candidate]
+            mock_status.return_value.load_status.return_value = {
+                "failed_sources": [],
+                "last_ingest_at": "2026-05-18T08:00:00+08:00",
+            }
+            mock_metrics.return_value.write_selection_eligible_counts.return_value = 1
+            mock_github.return_value.load_latest_snapshot.return_value = []
+            mock_filter.return_value.evaluate_batch.return_value = ([candidate], [])
+
+            result = await run_pipeline(_make_ctx(), config)
+
+        assert result.status == "failed"
+        assert result.errors[0].startswith("llm_relevance_invalid:")
+        mock_summarize.assert_awaited_once()
+        mock_wecom.assert_not_called()
+        status = json.loads((tmp_path / "publish_status.json").read_text())
+        assert status["status"] == "failed"
+
+    @pytest.mark.asyncio
+    async def test_low_relevance_reselects_from_full_pool_without_second_llm_call(
+        self, tmp_path: Path
+    ):
+        """第 11 个候选在低相关初选项被淘汰后补位，且不再请求 LLM。"""
+        from app.pipeline.news_pipeline import run_pipeline
+
+        low_url = "https://source-a.example/low"
+        initial = [
+            _make_candidate(
+                title=f"初选 {index}",
+                url=low_url if index == 0 else f"https://initial-{index}.example/article",
+                source=f"initial-{index}",
+                published_at="2026-05-18T08:00:00+08:00",
+            )
+            for index in range(10)
+        ]
+        for index, candidate in enumerate(initial):
+            candidate.source_weight = 20 - index
+        replacement = _make_candidate(
+            title="未评分补位",
+            url="https://replacement.example/article",
+            source="replacement",
+            published_at="2026-05-18T08:00:00+08:00",
+        )
+        replacement.source_weight = 1
+
+        async def summarize_once(items, **_kwargs):
+            return {
+                "headline_items": [
+                    {
+                        "title": item["title"],
+                        "url": item["link"],
+                        "core_summary": "LLM 摘要",
+                        "importance": "中",
+                        "trend": "趋势",
+                        "relevance": 0.2 if item["link"] == low_url else 0.9,
+                    }
+                    for item in items
+                ],
+                "daily_judgement": "初选判断",
+            }
+
+        config = _make_config(llm_relevance_enabled=True)
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch(
+                "collectors.ai_rss.load_effective_feed_configuration",
+                return_value=_new_pipeline_feed_config(),
+            ),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_ingestion,
+            patch("app.pipeline.news_pipeline.IngestStatusStore") as mock_status,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics,
+            patch("app.pipeline.news_pipeline.GitHubStore") as mock_github,
+            patch("app.pipeline.news_pipeline.TopicClassifier"),
+            patch("app.classifiers.content_category_classifier.ContentCategoryClassifier"),
+            patch("app.classifiers.relevance_filter.build_relevance_filter") as mock_filter,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news",
+                new=AsyncMock(side_effect=summarize_once),
+            ) as mock_summarize,
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_wecom,
+        ):
+            candidates = initial + [replacement]
+            mock_ingestion.return_value.load_recent_candidates.return_value = candidates
+            mock_status.return_value.load_status.return_value = {
+                "failed_sources": [],
+                "last_ingest_at": "2026-05-18T08:00:00+08:00",
+            }
+            mock_metrics.return_value.write_selection_eligible_counts.return_value = 10
+            mock_github.return_value.load_latest_snapshot.return_value = []
+            mock_filter.return_value.evaluate_batch.return_value = (candidates, [])
+            mock_wecom.return_value.push_single_markdown = AsyncMock(
+                return_value=_make_push_result()
+            )
+
+            result = await run_pipeline(_make_ctx(), config)
+
+        assert result.status == "ok"
+        assert result.selected_count == 10
+        mock_summarize.assert_awaited_once()
+        digest = json.loads((tmp_path / "2026-05-18" / "ai_digest.json").read_text())
+        assert low_url not in digest["published_urls"]
+        backfill = next(item for item in digest["headline_items"] if item["url"] == replacement.url)
+        assert backfill["relevance"] is None
+        assert backfill["relevance_source"] == "not_scored_backfill"
+        assert digest["daily_judgement"] == "今日精选已完成相关性复核"
+        assert digest["daily_judgement_source"] == "final_selection_fallback"
+
+    @pytest.mark.asyncio
+    async def test_insufficient_candidates_after_relevance_rejection_are_degraded(
+        self, tmp_path: Path
+    ):
+        """低相关项淘汰后候选不足仍正常投递，且给出结构化降级原因。"""
+        from app.pipeline.news_pipeline import run_pipeline
+
+        candidate = _make_candidate(
+            source="source-a",
+            url="https://source-a.example/low",
+            published_at="2026-05-18T08:00:00+08:00",
+        )
+        llm_result = {
+            "headline_items": [
+                {
+                    "title": candidate.title,
+                    "url": candidate.url,
+                    "core_summary": "摘要",
+                    "importance": "中",
+                    "trend": "趋势",
+                    "relevance": 0.2,
+                }
+            ],
+            "daily_judgement": "初选判断",
+        }
+        config = _make_config(llm_relevance_enabled=True)
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch(
+                "collectors.ai_rss.load_effective_feed_configuration",
+                return_value=_new_pipeline_feed_config(),
+            ),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_ingestion,
+            patch("app.pipeline.news_pipeline.IngestStatusStore") as mock_status,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics,
+            patch("app.pipeline.news_pipeline.GitHubStore") as mock_github,
+            patch("app.pipeline.news_pipeline.TopicClassifier"),
+            patch("app.classifiers.content_category_classifier.ContentCategoryClassifier"),
+            patch("app.classifiers.relevance_filter.build_relevance_filter") as mock_filter,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)
+            ) as mock_summarize,
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_wecom,
+        ):
+            mock_ingestion.return_value.load_recent_candidates.return_value = [candidate]
+            mock_status.return_value.load_status.return_value = {
+                "failed_sources": [],
+                "last_ingest_at": "2026-05-18T08:00:00+08:00",
+            }
+            mock_metrics.return_value.write_selection_eligible_counts.return_value = 1
+            mock_github.return_value.load_latest_snapshot.return_value = []
+            mock_filter.return_value.evaluate_batch.return_value = ([candidate], [])
+            mock_wecom.return_value.push_single_markdown = AsyncMock(
+                return_value=_make_push_result()
+            )
+
+            result = await run_pipeline(_make_ctx(), config)
+
+        assert result.status == "degraded"
+        assert result.pushed is True
+        assert result.selected_count == 0
+        mock_summarize.assert_awaited_once()
+        mock_wecom.return_value.push_single_markdown.assert_awaited_once()
+        digest = json.loads((tmp_path / "2026-05-18" / "ai_digest.json").read_text())
+        status = json.loads((tmp_path / "publish_status.json").read_text())
+        assert digest["degradation_reasons"] == ["llm_relevance_insufficient_candidates"]
+        assert status["degradation_reasons"] == digest["degradation_reasons"]
+
+    @pytest.mark.asyncio
+    async def test_pending_recovery_preserves_relevance_finalization_without_recalling_llm(
+        self, tmp_path: Path
+    ):
+        """pending 恢复必须复用首轮终选审计，不能重新调用 LLM。"""
+        from app.delivery.store import PendingDeliveryStore
+        from app.pipeline.news_pipeline import run_pipeline
+
+        candidate = _make_candidate(
+            source="source-a",
+            url="https://source-a.example/low",
+            published_at="2026-05-18T08:00:00+08:00",
+        )
+        llm_result = {
+            "headline_items": [
+                {
+                    "title": candidate.title,
+                    "url": candidate.url,
+                    "core_summary": "摘要",
+                    "importance": "中",
+                    "trend": "趋势",
+                    "relevance": 0.2,
+                }
+            ],
+            "daily_judgement": "初选判断",
+        }
+        config = _make_config(
+            llm_relevance_enabled=True,
+            telegram_bot_token="bot",
+            telegram_chat_id="chat",
+        )
+        with (
+            patch("app.pipeline.news_pipeline._DATA_DIR", tmp_path),
+            patch(
+                "collectors.ai_rss.load_effective_feed_configuration",
+                return_value=_new_pipeline_feed_config(),
+            ),
+            patch("app.pipeline.news_pipeline.IngestionStore") as mock_ingestion,
+            patch("app.pipeline.news_pipeline.IngestStatusStore") as mock_status,
+            patch("app.pipeline.news_pipeline.SourceMetricsStore") as mock_metrics,
+            patch("app.pipeline.news_pipeline.GitHubStore") as mock_github,
+            patch("app.pipeline.news_pipeline.GitHubExposureStore"),
+            patch("app.pipeline.news_pipeline.TopicClassifier"),
+            patch("app.classifiers.content_category_classifier.ContentCategoryClassifier"),
+            patch("app.classifiers.relevance_filter.build_relevance_filter") as mock_filter,
+            patch(
+                "app.pipeline.news_pipeline.summarize_news", new=AsyncMock(return_value=llm_result)
+            ) as mock_summarize,
+            patch("app.pipeline.news_pipeline.WeComPusher") as mock_wecom,
+            patch("app.pipeline.news_pipeline.TelegramPusher") as mock_telegram,
+        ):
+            mock_ingestion.return_value.load_recent_candidates.return_value = [candidate]
+            mock_status.return_value.load_status.return_value = {
+                "failed_sources": [],
+                "last_ingest_at": "2026-05-18T08:00:00+08:00",
+            }
+            mock_metrics.return_value.write_selection_eligible_counts.return_value = 1
+            mock_github.return_value.load_latest_snapshot.return_value = []
+            mock_filter.return_value.evaluate_batch.return_value = ([candidate], [])
+            mock_wecom.return_value.push_single_markdown = AsyncMock(
+                return_value=_make_push_result()
+            )
+            mock_telegram.return_value.push_messages = AsyncMock(
+                side_effect=[RuntimeError("telegram down"), None]
+            )
+
+            initial_result = await run_pipeline(_make_ctx(), config)
+            pending = PendingDeliveryStore(tmp_path).load("2026-05-18", "morning")
+            assert pending is not None
+            initial_finalization = pending["finalization"]
+            initial_status = json.loads((tmp_path / "publish_status.json").read_text())
+            assert initial_status["degradation_reasons"] == [
+                "llm_relevance_insufficient_candidates"
+            ]
+
+            recovered_result = await run_pipeline(_make_ctx(), config)
+
+        assert initial_result.status == "degraded"
+        assert recovered_result.status == "degraded"
+        mock_summarize.assert_awaited_once()
+        digest = json.loads((tmp_path / "2026-05-18" / "ai_digest.json").read_text())
+        for field in (
+            "selection_evidence",
+            "degradation_reasons",
+            "daily_judgement_source",
+        ):
+            assert digest[field] == initial_finalization[field]
+
     @pytest.mark.asyncio
     async def test_pipeline_uses_top_ten_selection_limit(self, tmp_path: Path):
         from app.pipeline.news_pipeline import run_pipeline

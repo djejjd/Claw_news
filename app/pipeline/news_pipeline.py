@@ -22,7 +22,7 @@ from app.storage.github_store import GitHubStore
 from app.storage.ingest_status_store import IngestStatusStore
 from app.storage.ingestion_store import IngestionStore
 from app.storage.source_metrics_store import SourceMetricsStore
-from app.tools.llm import summarize_news
+from app.tools.llm import summarize_news, validate_relevance_scores
 from app.tools.summary_result import DigestPayload, PublishResult, SummaryItem, SummaryResult
 from infra.storage.state_store import StateStore
 from pusher.feishu import FeishuError, FeishuPusher
@@ -39,6 +39,13 @@ _TOPIC_LABELS = {
     "infrastructure": "工程",
     "application_case": "产品",
 }
+
+
+def _candidate_key(candidate) -> str:
+    """返回候选的稳定 key，兼容尚未落盘归一化的输入。"""
+    from app.pipeline.candidate import CandidateItem
+
+    return candidate.canonical_key or CandidateItem.make_canonical_key(candidate.url or "")
 
 
 def _display_category_for(candidate) -> str:
@@ -72,7 +79,7 @@ def _match_selected_candidate(selected: list, headline_item: dict):
         target_key = CandidateItem.make_canonical_key(url)
         if target_key:
             for candidate in selected:
-                if getattr(candidate, "canonical_key", "") == target_key:
+                if _candidate_key(candidate) == target_key:
                     return candidate
 
     # 3. exact title match（最低优先级，最后手段）
@@ -140,10 +147,12 @@ def _make_channel_payload(
 def _build_headline_items(selected: list, llm_result: dict) -> tuple[list[SummaryItem], list[dict]]:
     summary_items: list[SummaryItem] = []
     payload_items: list[dict] = []
+    matched_keys: set[str] = set()
     for it in llm_result["headline_items"]:
         matched = _match_selected_candidate(selected, it)
         if not matched:
             continue
+        matched_keys.add(_candidate_key(matched))
         summary_items.append(
             SummaryItem(
                 title=it["title"],
@@ -168,6 +177,39 @@ def _build_headline_items(selected: list, llm_result: dict) -> tuple[list[Summar
                 "topic_label": _topic_label_for(matched) if matched else None,
                 "topic_confidence": getattr(matched, "topic_confidence", None) if matched else None,
                 "final_score": getattr(matched, "final_score", None) if matched else None,
+                "relevance": it.get("relevance"),
+                "relevance_source": "llm" if it.get("relevance") is not None else None,
+            }
+        )
+    for matched in selected:
+        if _candidate_key(matched) in matched_keys:
+            continue
+        summary_items.append(
+            SummaryItem(
+                title=matched.title,
+                url=matched.url,
+                core_summary=matched.summary,
+                importance="中",
+                trend="行业动态",
+                source=matched.source,
+                display_category=_display_category_for(matched),
+                topic_label=_topic_label_for(matched),
+            )
+        )
+        payload_items.append(
+            {
+                "title": matched.title,
+                "url": matched.url,
+                "core_summary": matched.summary,
+                "importance": "中",
+                "trend": "行业动态",
+                "source": matched.source,
+                "display_category": _display_category_for(matched),
+                "topic_label": _topic_label_for(matched),
+                "topic_confidence": getattr(matched, "topic_confidence", None),
+                "final_score": getattr(matched, "final_score", None),
+                "relevance": None,
+                "relevance_source": "not_scored_backfill",
             }
         )
     return summary_items, payload_items
@@ -200,6 +242,12 @@ def _selection_evidence_payload(
     selection_result,
     cluster_events: list,
     candidates: list,
+    *,
+    initial_selection_result=None,
+    relevance_scores: dict[str, float] | None = None,
+    relevance_threshold: float | None = None,
+    relevance_backfills: list[dict] | None = None,
+    reselection_cluster_events: list | None = None,
 ) -> list[dict]:
     from app.pipeline.candidate import CandidateItem
 
@@ -208,6 +256,43 @@ def _selection_evidence_payload(
         item.canonical_key or CandidateItem.make_canonical_key(item.url): item
         for item in candidates
     }
+    llm_rejections: list[dict] = []
+    reselection_final_round = (
+        max((event.selection_round for event in reselection_cluster_events or []), default=0) + 1
+    )
+    if initial_selection_result is not None and relevance_scores is not None:
+        for selected in initial_selection_result.evidence:
+            item = candidates_by_key.get(selected.canonical_key)
+            evidence.append(
+                {
+                    "schema_version": 2,
+                    "event": "temporary_selected",
+                    "canonical_key": selected.canonical_key,
+                    "selection_round": 1,
+                    "final_score": selected.final_score,
+                    "selection_score": selected.selection_score,
+                    "source": item.source if item else "",
+                    "category": item.category if item else "",
+                    "topic": item.topic if item else "",
+                }
+            )
+            relevance = relevance_scores.get(item.url) if item else None
+            if relevance is not None and relevance < relevance_threshold:
+                llm_rejections.append(
+                    {
+                        "schema_version": 2,
+                        "event": "llm_relevance_rejected",
+                        "canonical_key": selected.canonical_key,
+                        "selection_round": 2,
+                        "final_score": selected.final_score,
+                        "selection_score": selected.selection_score,
+                        "source": item.source if item else "",
+                        "category": item.category if item else "",
+                        "topic": item.topic if item else "",
+                        "relevance": relevance,
+                        "threshold": relevance_threshold,
+                    }
+                )
     recorded_rounds: set[int] = set()
     for event in sorted(
         cluster_events, key=lambda item: (item.selection_round, item.loser_canonical_key)
@@ -252,6 +337,32 @@ def _selection_evidence_payload(
                 "tokenizer_version": "nfkc-casefold-v1",
             }
         )
+    evidence.extend(llm_rejections)
+    for event in reselection_cluster_events or []:
+        item = candidates_by_key.get(event.loser_canonical_key)
+        evidence.append(
+            {
+                "schema_version": 2,
+                "event": "topic_cluster_excluded",
+                "rejection_reason": "topic_cluster_similarity",
+                "canonical_key": event.loser_canonical_key,
+                "selection_round": event.selection_round,
+                "selection_stage": "llm_reselection",
+                "final_score": event.final_score,
+                "selection_score": event.selection_score,
+                "source": item.source if item else "",
+                "category": item.category if item else "",
+                "topic": item.topic if item else "",
+                "component_winner_canonical_key": event.winner_canonical_key,
+                "trigger_edges": [
+                    {"left": left, "right": right, "title_similarity": title, "url_similarity": url}
+                    for left, right, title, url in event.trigger_edges
+                ],
+                "title_similarity": event.title_similarity,
+                "url_similarity": event.url_similarity,
+                "tokenizer_version": "nfkc-casefold-v1",
+            }
+        )
     for selected in selection_result.evidence if selection_result else []:
         item = candidates_by_key.get(selected.canonical_key)
         evidence.append(
@@ -259,14 +370,45 @@ def _selection_evidence_payload(
                 "schema_version": 2,
                 "event": "final_selected",
                 "canonical_key": selected.canonical_key,
-                "selection_round": max(recorded_rounds, default=0) + 1,
+                "selection_round": (
+                    reselection_final_round + 1
+                    if relevance_scores is not None
+                    else max(recorded_rounds, default=0) + 1
+                ),
                 "final_score": selected.final_score,
                 "selection_score": selected.selection_score,
                 "source": item.source if item else "",
                 "category": item.category if item else "",
                 "topic": item.topic if item else "",
-                "rendered": False,
+                "rendered": True,
             }
+        )
+    for backfill in relevance_backfills or []:
+        item = candidates_by_key.get(backfill["canonical_key"])
+        evidence.insert(
+            len(evidence) - len(selection_result.evidence if selection_result else []),
+            {
+                "schema_version": 2,
+                "event": "llm_relevance_backfill",
+                "canonical_key": backfill["canonical_key"],
+                "selection_round": reselection_final_round,
+                "final_score": getattr(item, "final_score", None),
+                "selection_score": next(
+                    (
+                        selected.selection_score
+                        for selected in selection_result.evidence
+                        if selected.canonical_key == backfill["canonical_key"]
+                    ),
+                    None,
+                )
+                if selection_result
+                else None,
+                "source": item.source if item else "",
+                "category": item.category if item else "",
+                "topic": item.topic if item else "",
+                "relevance": None,
+                "relevance_source": "not_scored_backfill",
+            },
         )
     return evidence
 
@@ -307,6 +449,8 @@ def _build_pending_payload(
     relevance_rejected: list[dict],
     selected_counts_by_source: dict[str, int],
     metric_rows: list[dict],
+    degradation_reasons: list[str] | None = None,
+    daily_judgement_source: str = "initial_selection_llm",
 ) -> dict:
     date = ctx.time_window_start[:10]
     delivery_id = make_delivery_id(date, ctx.period, markdown)
@@ -343,6 +487,8 @@ def _build_pending_payload(
             "relevance_rejections": relevance_rejected,
             "selected_counts_by_source": selected_counts_by_source,
             "metric_rows": metric_rows,
+            "degradation_reasons": degradation_reasons or [],
+            "daily_judgement_source": daily_judgement_source,
         },
     }
 
@@ -368,6 +514,8 @@ def _build_publish_payload_from_pending(
         errors=errors,
         selection_evidence=finalization["selection_evidence"],
         relevance_rejections=finalization["relevance_rejections"],
+        degradation_reasons=finalization.get("degradation_reasons", []),
+        daily_judgement_source=finalization.get("daily_judgement_source", "initial_selection_llm"),
     )
 
 
@@ -428,19 +576,6 @@ def _finalize_delivery(
         )
     except Exception:
         errors.append("publish_metrics_write_failed")
-
-    try:
-        written_sources = metrics_store.write_selected_counts(
-            finalization["selected_counts_by_source"]
-        )
-        if written_sources < len(finalization["selected_counts_by_source"]):
-            logger.warning(
-                "部分来源没有可回写的采集指标记录: written=%s expected=%s",
-                written_sources,
-                len(finalization["selected_counts_by_source"]),
-            )
-    except Exception:
-        errors.append("source_metrics_write_failed")
 
     try:
         state_store.merge_pushed_urls(set(finalization["published_urls"]))
@@ -519,6 +654,7 @@ async def _resume_pending_delivery(
 
     messages = pending_payload["messages"]
     finalization = pending_payload["finalization"]
+    degradation_reasons = finalization.get("degradation_reasons", [])
     errors: list[str] = []
     selected_count = len(finalization["published_urls"])
     summary_preview = make_preview(messages.get("wecom_markdown", ""))
@@ -579,6 +715,7 @@ async def _resume_pending_delivery(
                 selected_count,
                 False,
                 errors,
+                degradation_reasons=degradation_reasons,
                 summary_count=len(pending_payload["finalization"]["headline_items"]),
                 final_count=0,
                 tz=getattr(config, "tz", "Asia/Shanghai"),
@@ -600,6 +737,7 @@ async def _resume_pending_delivery(
                 selected_count,
                 True,
                 errors,
+                degradation_reasons=degradation_reasons,
                 summary_count=len(pending_payload["finalization"]["headline_items"]),
                 final_count=len(pending_payload["finalization"]["headline_items"]),
                 tz=getattr(config, "tz", "Asia/Shanghai"),
@@ -623,13 +761,14 @@ async def _resume_pending_delivery(
         tz=getattr(config, "tz", "Asia/Shanghai"),
     )
     errors.extend(final_errors)
-    status = "ok" if not errors else "degraded"
+    status = "ok" if not errors and not degradation_reasons else "degraded"
     _write_publish_status(
         _make_publish_status(
             status,
             selected_count,
             True,
             errors,
+            degradation_reasons=degradation_reasons,
             summary_count=len(pending_payload["finalization"]["headline_items"]),
             final_count=len(pending_payload["finalization"]["headline_items"]),
             tz=getattr(config, "tz", "Asia/Shanghai"),
@@ -666,10 +805,13 @@ async def _deliver_with_pending(
     relevance_rejected: list[dict],
     selected_counts_by_source: dict[str, int],
     metric_rows: list[dict],
+    degradation_reasons: list[str] | None = None,
+    daily_judgement_source: str = "initial_selection_llm",
     state_store: StateStore,
     metrics_store: SourceMetricsStore,
     exposure_store,
 ) -> PublishResult:
+    degradation_reasons = degradation_reasons or []
     pending_store = _pending_store()
     pending_payload = _build_pending_payload(
         ctx=ctx,
@@ -689,6 +831,8 @@ async def _deliver_with_pending(
         relevance_rejected=relevance_rejected,
         selected_counts_by_source=selected_counts_by_source,
         metric_rows=metric_rows,
+        degradation_reasons=degradation_reasons,
+        daily_judgement_source=daily_judgement_source,
     )
     try:
         pending_store.save(ctx.time_window_start[:10], ctx.period, pending_payload)
@@ -778,6 +922,7 @@ async def _deliver_with_pending(
                 selected_count,
                 bool(wecom_ok or telegram_ok or feishu_ok),
                 errors,
+                degradation_reasons=degradation_reasons,
                 summary_count=len(headline_payload),
                 final_count=len(headline_payload),
                 tz=getattr(config, "tz", "Asia/Shanghai"),
@@ -799,6 +944,7 @@ async def _deliver_with_pending(
                 selected_count,
                 True,
                 errors,
+                degradation_reasons=degradation_reasons,
                 summary_count=len(headline_payload),
                 final_count=len(headline_payload),
                 tz=getattr(config, "tz", "Asia/Shanghai"),
@@ -822,13 +968,14 @@ async def _deliver_with_pending(
         tz=getattr(config, "tz", "Asia/Shanghai"),
     )
     errors.extend(final_errors)
-    status = "ok" if not errors else "degraded"
+    status = "ok" if not errors and not degradation_reasons else "degraded"
     _write_publish_status(
         _make_publish_status(
             status,
             selected_count,
             True,
             errors,
+            degradation_reasons=degradation_reasons,
             summary_count=len(headline_payload),
             final_count=len(headline_payload),
             tz=getattr(config, "tz", "Asia/Shanghai"),
@@ -904,7 +1051,10 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     if use_new_pipeline:
         from app.classifiers.relevance_filter import build_relevance_filter
         from app.content.source_policy import build_source_policy_registry
-        from app.pipeline.selection import select_digest_with_topic_clustering
+        from app.pipeline.selection import (
+            reselect_digest_after_llm_relevance,
+            select_digest_with_topic_clustering,
+        )
         from app.storage.ingestion_store import filter_unexpired_candidates
 
         candidates_used_historical = True
@@ -1005,6 +1155,7 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             _write_publish_status(_make_publish_status("failed", 0, False, errors, tz=config.tz))
             return PublishResult("failed", 0, False, "markdown", "", errors)
         selected = selection_result.selected
+        initial_selection_result = selection_result
     else:
         # ---- 旧路径（测试兼容）----
         candidates_used_historical = False
@@ -1036,6 +1187,25 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
 
         TopicClassifier().classify_batch(candidates)
         selected = Merger(top_n=10).merge(candidates, use_new_scoring=True)
+        initial_selection_result = None
+
+    initial_counts_by_source: dict[str, int] = {}
+    for item in selected:
+        initial_counts_by_source[item.source] = initial_counts_by_source.get(item.source, 0) + 1
+    try:
+        run_started_at = ingest_status_snapshot.get("last_ingest_at")
+        written_sources = metrics_store.write_selection_eligible_counts(
+            initial_counts_by_source,
+            run_started_at=run_started_at if isinstance(run_started_at, str) else None,
+        )
+        if written_sources < len(initial_counts_by_source):
+            logger.warning(
+                "部分来源没有可回写的采集指标记录: written=%s expected=%s",
+                written_sources,
+                len(initial_counts_by_source),
+            )
+    except Exception:
+        logger.exception("L2 初选指标回写失败")
 
     # 6. LLM 摘要（含 GitHub 项目中文翻译）
     items_for_llm = [
@@ -1089,11 +1259,67 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             errors=[f"llm_parse: {llm_result['_parse_error']}"],
         )
 
+    relevance_scores: dict[str, float] | None = None
+    relevance_backfills: list[dict] = []
+    reselection_cluster_events: list = []
+    degradation_reasons: list[str] = []
+    daily_judgement = llm_result["daily_judgement"]
+    daily_judgement_source = "initial_selection_llm"
+    if getattr(config, "llm_relevance_enabled", False) is True:
+        if not use_new_pipeline or initial_selection_result is None:
+            error = "llm_relevance_requires_selection_pipeline"
+            _write_publish_status(
+                _make_publish_status("failed", len(selected), False, [error], tz=config.tz)
+            )
+            return PublishResult("failed", len(selected), False, "markdown", "", [error])
+        try:
+            relevance_scores = validate_relevance_scores(llm_result["headline_items"])
+        except ValueError as exc:
+            error = f"llm_relevance_invalid: {exc}"
+            _write_publish_status(
+                _make_publish_status("failed", len(selected), False, [error], tz=config.tz)
+            )
+            return PublishResult("failed", len(selected), False, "markdown", "", [error])
+        low_relevance_keys = {
+            _candidate_key(item)
+            for item in initial_selection_result.selected
+            if relevance_scores[item.url] < config.llm_relevance_threshold
+        }
+        if low_relevance_keys:
+            try:
+                selection_result, reselection_cluster_events, relevance_backfills = (
+                    reselect_digest_after_llm_relevance(
+                        candidates,
+                        policies,
+                        now,
+                        excluded_canonical_keys=low_relevance_keys,
+                        initially_scored_keys={
+                            _candidate_key(item) for item in initial_selection_result.selected
+                        },
+                        tz_name=config.tz,
+                        top_n=10,
+                        diversity_penalty_profile=config.selection_diversity_penalty_profile,
+                        topic_cluster_enabled=config.topic_cluster_enabled,
+                        topic_cluster_threshold=config.topic_cluster_similarity_threshold,
+                        topic_cluster_max_rounds=config.topic_cluster_max_rounds,
+                    )
+                )
+            except RuntimeError as exc:
+                error = str(exc)
+                _write_publish_status(
+                    _make_publish_status("failed", len(selected), False, [error], tz=config.tz)
+                )
+                return PublishResult("failed", len(selected), False, "markdown", "", [error])
+            selected = selection_result.selected
+            daily_judgement = "今日精选已完成相关性复核"
+            daily_judgement_source = "final_selection_fallback"
+            if len(selected) < 10:
+                degradation_reasons.append("llm_relevance_insufficient_candidates")
     # 5. 构建 SummaryResult
     headline_items, headline_payload = _build_headline_items(selected, llm_result)
     summary = SummaryResult(
         headline_items=headline_items,
-        daily_judgement=llm_result["daily_judgement"],
+        daily_judgement=daily_judgement,
         github_projects_cn=llm_result.get("github_projects", []),
     )
 
@@ -1132,12 +1358,21 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     source_failures = _collect_source_failures(ingest_status_snapshot)
     selected_count = len(selected)
     published_urls = [it.url for it in selected]
-    published_keys_list = [it.canonical_key for it in selected]
+    published_keys_list = [_candidate_key(it) for it in selected]
     selected_counts_by_source: dict[str, int] = {}
     for item in selected:
         selected_counts_by_source[item.source] = selected_counts_by_source.get(item.source, 0) + 1
     metric_rows = _build_metric_rows(selected, now, config.tz)
-    selection_evidence = _selection_evidence_payload(selection_result, cluster_events, candidates)
+    selection_evidence = _selection_evidence_payload(
+        selection_result,
+        cluster_events,
+        candidates,
+        initial_selection_result=initial_selection_result,
+        relevance_scores=relevance_scores,
+        relevance_threshold=getattr(config, "llm_relevance_threshold", None),
+        relevance_backfills=relevance_backfills,
+        reselection_cluster_events=reselection_cluster_events,
+    )
 
     errors: list[str] = []
     if use_new_pipeline and not candidates_used_historical:
@@ -1162,6 +1397,8 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
             relevance_rejected=relevance_rejected,
             selected_counts_by_source=selected_counts_by_source,
             metric_rows=metric_rows,
+            degradation_reasons=degradation_reasons,
+            daily_judgement_source=daily_judgement_source,
             state_store=state_store,
             metrics_store=metrics_store,
             exposure_store=GitHubExposureStore(),
@@ -1226,23 +1463,6 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
     except Exception:
         errors.append("publish_metrics_write_failed")
 
-    # 状态持久化
-    published_keys_list = [it.canonical_key for it in selected]
-    selected_counts_by_source: dict[str, int] = {}
-    for item in selected:
-        selected_counts_by_source[item.source] = selected_counts_by_source.get(item.source, 0) + 1
-
-    try:
-        written_sources = metrics_store.write_selected_counts(selected_counts_by_source)
-        if written_sources < len(selected_counts_by_source):
-            logger.warning(
-                "部分来源没有可回写的采集指标记录: written=%s expected=%s",
-                written_sources,
-                len(selected_counts_by_source),
-            )
-    except Exception:
-        errors.append("source_metrics_write_failed")
-
     try:
         state_store.merge_pushed_urls(set(published_urls))
         state_store.merge_published_keys(published_keys_list)
@@ -1252,25 +1472,8 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
                 period=ctx.period,
                 published_at=local_now(config.tz).isoformat(),
                 trigger_mode=ctx.trigger_mode,
-                headline_items=[
-                    {
-                        "title": it["title"],
-                        "url": it["url"],
-                        "core_summary": it["core_summary"],
-                        "importance": it["importance"],
-                        "trend": it["trend"],
-                        "source": matched.source if matched else "",
-                        "display_category": _display_category_for(matched) if matched else "AI",
-                        "topic_label": _topic_label_for(matched) if matched else None,
-                        "topic_confidence": getattr(matched, "topic_confidence", None)
-                        if matched
-                        else None,
-                        "final_score": getattr(matched, "final_score", None) if matched else None,
-                    }
-                    for it in llm_result["headline_items"]
-                    for matched in [_match_selected_candidate(selected, it)]
-                ],
-                daily_judgement=llm_result["daily_judgement"],
+                headline_items=headline_payload,
+                daily_judgement=summary.daily_judgement,
                 source_failures=source_failures,
                 published_urls=published_urls,
                 published_keys=published_keys_list,
@@ -1291,25 +1494,29 @@ async def run_pipeline(ctx: RunContext, config) -> PublishResult:
                 errors=errors,
                 selection_evidence=selection_evidence,
                 relevance_rejections=relevance_rejected,
+                degradation_reasons=degradation_reasons,
+                daily_judgement_source=daily_judgement_source,
             )
         )
     except Exception:
         errors.append("state_write_failed")
 
     publish_ok = len(errors) == 0
+    publish_status = "ok" if publish_ok and not degradation_reasons else "degraded"
     _write_publish_status(
         _make_publish_status(
-            "ok" if publish_ok else "degraded",
+            publish_status,
             len(selected),
             True,
             errors,
+            degradation_reasons=degradation_reasons,
             summary_count=len(headline_payload),
             final_count=len(summary.headline_items),
             tz=config.tz,
         )
     )
     return PublishResult(
-        status="ok" if publish_ok else "degraded",
+        status=publish_status,
         selected_count=len(selected),
         pushed=True,
         message_type="markdown",
@@ -1326,6 +1533,7 @@ def _make_publish_status(
     *,
     summary_count: int | None = None,
     final_count: int | None = None,
+    degradation_reasons: list[str] | None = None,
     tz: str = "Asia/Shanghai",
 ):
     summary_count = selected_count if summary_count is None else summary_count
@@ -1337,6 +1545,7 @@ def _make_publish_status(
         "final_count": final_count,
         "pushed": pushed,
         "errors": errors,
+        "degradation_reasons": degradation_reasons or [],
         "recorded_at": local_now(tz).isoformat(),
     }
 

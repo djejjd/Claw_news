@@ -43,6 +43,24 @@ class SourceMetricsStore:
                 updated += 1
         return updated
 
+    def write_selection_eligible_counts(
+        self,
+        eligible_counts: dict[str, int],
+        *,
+        run_started_at: str | None = None,
+    ) -> int:
+        """回写本轮 L2 初选数，不以最终发布结果影响采集调节。"""
+        updated = 0
+        for source, eligible_count in eligible_counts.items():
+            latest = self._find_latest_metric_row(source, run_started_at=run_started_at)
+            if latest is None:
+                continue
+            path, rows, row_index = latest
+            rows[row_index]["selection_eligible_count"] = eligible_count
+            self._write_rows(path, rows)
+            updated += 1
+        return updated
+
     def write_selected_count(self, source: str, selected_count: int) -> bool:
         latest = self._find_latest_metric_row(source)
         if latest is None:
@@ -50,13 +68,16 @@ class SourceMetricsStore:
 
         path, rows, row_index = latest
         rows[row_index]["selected_count"] = selected_count
+        self._write_rows(path, rows)
+        return True
 
+    @staticmethod
+    def _write_rows(path: Path, rows: list[dict]) -> None:
         tmp_path = path.with_name(path.name + ".tmp")
         with open(tmp_path, "w", encoding="utf-8") as f:
             for row in rows:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
         tmp_path.replace(path)
-        return True
 
     def aggregate_recent(self, source: str, limit: int = 24) -> dict:
         rows = self._load_all_for_source(source)
@@ -66,6 +87,9 @@ class SourceMetricsStore:
         raw_fetched_count = sum(row.get("raw_fetched_count", 0) for row in recent)
         accepted_count = sum(row.get("accepted_count", 0) for row in recent)
         selected_count = sum(row.get("selected_count", 0) for row in recent)
+        selection_eligible_count = sum(
+            row.get("selection_eligible_count", row.get("selected_count", 0)) for row in recent
+        )
 
         return {
             "source": source,
@@ -76,7 +100,9 @@ class SourceMetricsStore:
             "effective_new_rate": (accepted_count / raw_fetched_count)
             if raw_fetched_count
             else 0.0,
-            "selection_rate": (selected_count / accepted_count) if accepted_count else 0.0,
+            "selection_rate": (selection_eligible_count / accepted_count)
+            if accepted_count
+            else 0.0,
         }
 
     def _load_all_for_source(self, source: str) -> list[dict]:
@@ -100,7 +126,9 @@ class SourceMetricsStore:
                         rows.append(payload)
         return rows
 
-    def _find_latest_metric_row(self, source: str) -> tuple[Path, list[dict], int] | None:
+    def _find_latest_metric_row(
+        self, source: str, *, run_started_at: str | None = None
+    ) -> tuple[Path, list[dict], int] | None:
         if not self.metrics_dir.exists():
             return None
 
@@ -127,9 +155,11 @@ class SourceMetricsStore:
             for idx, row in enumerate(rows):
                 if row.get("source") != source:
                     continue
-                run_started_at = row.get("run_started_at", "")
+                if run_started_at is not None and row.get("run_started_at") != run_started_at:
+                    continue
+                row_run_started_at = row.get("run_started_at", "")
                 try:
-                    started_at = datetime.fromisoformat(run_started_at)
+                    started_at = datetime.fromisoformat(row_run_started_at)
                 except ValueError:
                     continue
                 if latest_started_at is None or started_at > latest_started_at:

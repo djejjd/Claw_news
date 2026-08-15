@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -68,6 +69,8 @@ class AppConfig:
     topic_cluster_enabled: bool = False
     topic_cluster_similarity_threshold: float = 0.7
     topic_cluster_max_rounds: int = 10
+    llm_relevance_enabled: bool = False
+    llm_relevance_threshold: float = 0.5
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
     telegram_proxy: str | None = None
@@ -140,6 +143,14 @@ def load_config() -> AppConfig:
         raise ValueError("TOPIC_CLUSTER_MAX_ROUNDS must be positive") from exc
     if topic_cluster_max_rounds <= 0:
         raise ValueError("TOPIC_CLUSTER_MAX_ROUNDS must be positive")
+    llm_relevance_enabled = _bool_env("LLM_RELEVANCE_ENABLED", dotenv)
+    relevance_threshold_raw = _env("LLM_RELEVANCE_THRESHOLD", dotenv)
+    try:
+        llm_relevance_threshold = float(relevance_threshold_raw or "0.5")
+    except ValueError as exc:
+        raise ValueError("LLM_RELEVANCE_THRESHOLD must be in (0, 1]") from exc
+    if not math.isfinite(llm_relevance_threshold) or not 0 < llm_relevance_threshold <= 1:
+        raise ValueError("LLM_RELEVANCE_THRESHOLD must be in (0, 1]")
     telegram_bot_token = _env("TELEGRAM_BOT_TOKEN", dotenv) or None
     telegram_chat_id = _env("TELEGRAM_CHAT_ID", dotenv) or None
     telegram_proxy = _env("TELEGRAM_PROXY", dotenv) or None
@@ -170,6 +181,8 @@ def load_config() -> AppConfig:
         topic_cluster_enabled=topic_cluster_enabled,
         topic_cluster_similarity_threshold=topic_cluster_similarity_threshold,
         topic_cluster_max_rounds=topic_cluster_max_rounds,
+        llm_relevance_enabled=llm_relevance_enabled,
+        llm_relevance_threshold=llm_relevance_threshold,
         telegram_bot_token=telegram_bot_token,
         telegram_chat_id=telegram_chat_id,
         telegram_proxy=telegram_proxy,

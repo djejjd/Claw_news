@@ -153,6 +153,35 @@ class TestDefaults:
         with pytest.raises(ValueError, match=message):
             load_config()
 
+    @pytest.mark.parametrize(
+        ("name", "value", "message"),
+        [
+            ("LLM_RELEVANCE_ENABLED", "enabled", "must be 0 or 1"),
+            ("LLM_RELEVANCE_THRESHOLD", "0", "must be in"),
+            ("LLM_RELEVANCE_THRESHOLD", "1.1", "must be in"),
+        ],
+    )
+    def test_llm_relevance_invalid_config_is_rejected(self, monkeypatch, name, value, message):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.setenv(name, value)
+
+        with pytest.raises(ValueError, match=message):
+            load_config()
+
+    def test_llm_relevance_defaults_are_disabled(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
+        monkeypatch.delenv("LLM_RELEVANCE_ENABLED", raising=False)
+        monkeypatch.delenv("LLM_RELEVANCE_THRESHOLD", raising=False)
+
+        config = load_config()
+
+        assert config.llm_relevance_enabled is False
+        assert config.llm_relevance_threshold == 0.5
+
 
 class TestNewsRssUrlsParsing:
     def test_parses_single_url(self, monkeypatch):

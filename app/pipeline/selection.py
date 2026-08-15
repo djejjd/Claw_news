@@ -361,6 +361,46 @@ def select_digest_with_topic_clustering(
     raise RuntimeError("topic_cluster_non_convergent")
 
 
+def reselect_digest_after_llm_relevance(
+    items: list[CandidateItem],
+    policies: dict[str, SourcePolicy],
+    now: datetime,
+    *,
+    excluded_canonical_keys: set[str],
+    initially_scored_keys: set[str],
+    tz_name: str = "Asia/Shanghai",
+    top_n: int = 10,
+    diversity_penalty_profile: str = "linear",
+    topic_cluster_enabled: bool = False,
+    topic_cluster_threshold: float = 0.7,
+    topic_cluster_max_rounds: int = 10,
+) -> tuple[SelectionResult, list[TopicClusterEvent], list[dict]]:
+    """移除低相关初选项后，按完整既有约束从候选池重新选材。"""
+    available = [item for item in items if _ck(item) not in excluded_canonical_keys]
+    result, cluster_events = select_digest_with_topic_clustering(
+        available,
+        policies,
+        now,
+        tz_name,
+        top_n,
+        diversity_penalty_profile,
+        enabled=topic_cluster_enabled,
+        threshold=topic_cluster_threshold,
+        max_rounds=topic_cluster_max_rounds,
+    )
+    backfills = [
+        {
+            "event": "llm_relevance_backfill",
+            "canonical_key": _ck(item),
+            "relevance": None,
+            "relevance_source": "not_scored_backfill",
+        }
+        for item in result.selected
+        if _ck(item) not in initially_scored_keys
+    ]
+    return result, cluster_events, backfills
+
+
 def _topic_similarity_edges(items: list[CandidateItem], threshold: float):
     edges = []
     for index, left in enumerate(items):
