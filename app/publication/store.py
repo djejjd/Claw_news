@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import create_engine, select, text
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import create_engine, func, select, text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from app.category_policy import normalize_category
 from app.pipeline.candidate import CandidateItem
@@ -16,6 +18,15 @@ from app.publication.models import (
     Source,
     SourceFeed,
 )
+from app.publication.public_api import (
+    ArticlePage,
+    ArticlePublic,
+    DigestItemPublic,
+    DigestPublic,
+    GitHubProjectPublic,
+    PublicationUnavailableError,
+    SourcePublic,
+)
 
 
 def _as_utc(value: str | datetime | None) -> datetime | None:
@@ -25,6 +36,42 @@ def _as_utc(value: str | datetime | None) -> datetime | None:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _local_day_bounds(day: date, tz: str) -> tuple[datetime, datetime]:
+    """将 API 的当地自然日转换为数据库使用的 UTC 半开区间。"""
+    local_zone = ZoneInfo(tz)
+    start = datetime.combine(day, time.min, tzinfo=local_zone)
+    end = datetime.combine(day.fromordinal(day.toordinal() + 1), time.min, tzinfo=local_zone)
+    return start.astimezone(timezone.utc), end.astimezone(timezone.utc)
+
+
+def _as_iso(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat()
+
+
+def _public_source(source: Source) -> SourcePublic:
+    return SourcePublic(
+        name=source.name,
+        display_name=source.display_name,
+        site_url=source.site_url,
+    )
+
+
+def _public_article(article: Article) -> ArticlePublic:
+    return ArticlePublic(
+        id=article.id,
+        title=article.title,
+        original_url=article.original_url,
+        category=article.category,
+        topic=article.topic,
+        summary=article.source_summary or "",
+        published_at=_as_iso(article.published_at) if article.published_at else None,
+        fetched_at=_as_iso(article.fetched_at),
+        source=_public_source(article.source),
+    )
 
 
 class PublicationStore:
@@ -40,6 +87,135 @@ class PublicationStore:
     def healthcheck(self) -> None:
         with self.engine.connect() as connection:
             connection.execute(text("SELECT 1"))
+
+    def list_public_articles(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+        tz: str,
+        page: int,
+        page_size: int,
+        source_name: str | None = None,
+    ) -> ArticlePage:
+        """返回按当地采集日筛选、且只含已发布内容的稳定分页结果。"""
+        start_at, _ = _local_day_bounds(start_date, tz)
+        _, end_at = _local_day_bounds(end_date, tz)
+        filters = [
+            Article.visibility == "published",
+            Article.fetched_at >= start_at,
+            Article.fetched_at < end_at,
+        ]
+        if source_name is not None:
+            filters.append(Source.name == source_name)
+
+        try:
+            with self._sessions() as session:
+                total = session.scalar(
+                    select(func.count(Article.id)).join(Article.source).where(*filters)
+                )
+                articles = session.scalars(
+                    select(Article)
+                    .join(Article.source)
+                    .options(selectinload(Article.source))
+                    .where(*filters)
+                    .order_by(
+                        func.coalesce(Article.published_at, Article.fetched_at).desc(),
+                        Article.id.asc(),
+                    )
+                    .offset((page - 1) * page_size)
+                    .limit(page_size)
+                ).all()
+                return ArticlePage(
+                    items=[_public_article(article) for article in articles],
+                    page=page,
+                    page_size=page_size,
+                    total=total or 0,
+                )
+        except SQLAlchemyError as exc:
+            # 对外仅暴露稳定错误码，连接信息只允许由路由侧按异常类型记录。
+            raise PublicationUnavailableError() from exc
+
+    def list_public_sources(
+        self, *, start_date: date, end_date: date, tz: str
+    ) -> list[SourcePublic]:
+        """返回窗口内仍关联公开文章的来源，不以来源启用状态过滤历史内容。"""
+        start_at, _ = _local_day_bounds(start_date, tz)
+        _, end_at = _local_day_bounds(end_date, tz)
+        try:
+            with self._sessions() as session:
+                sources = session.scalars(
+                    select(Source)
+                    .join(Source.articles)
+                    .where(
+                        Article.visibility == "published",
+                        Article.fetched_at >= start_at,
+                        Article.fetched_at < end_at,
+                    )
+                    .distinct()
+                    .order_by(Source.display_name.asc(), Source.name.asc())
+                ).all()
+                return [_public_source(source) for source in sources]
+        except SQLAlchemyError as exc:
+            raise PublicationUnavailableError() from exc
+
+    def get_public_digest(self, digest_date: date, *, local_today: date) -> DigestPublic | None:
+        """读取保留窗口内的公开日报；关联文章不可公开时整份日报均不可见。"""
+        window_start = local_today - timedelta(days=9)
+        try:
+            with self._sessions() as session:
+                digest = session.scalar(
+                    select(Digest)
+                    .options(
+                        selectinload(Digest.items)
+                        .selectinload(DigestItem.article)
+                        .selectinload(Article.source),
+                        selectinload(Digest.github_projects),
+                    )
+                    .where(
+                        Digest.digest_date == digest_date,
+                        Digest.digest_date >= window_start,
+                        Digest.digest_date <= local_today,
+                        Digest.status == "published",
+                        ~Digest.items.any(
+                            DigestItem.article.has(Article.visibility != "published")
+                        ),
+                    )
+                    .order_by(Digest.version.desc())
+                )
+                if digest is None or any(
+                    item.article.visibility != "published" for item in digest.items
+                ):
+                    return None
+                return DigestPublic(
+                    date=digest.digest_date.isoformat(),
+                    version=digest.version,
+                    published_at=_as_iso(digest.published_at),
+                    daily_judgement=digest.daily_judgement,
+                    items=[
+                        DigestItemPublic(
+                            position=item.position,
+                            core_summary=item.core_summary,
+                            importance=item.importance,
+                            trend=item.trend,
+                            topic_label=item.topic_label,
+                            article=_public_article(item.article),
+                        )
+                        for item in sorted(digest.items, key=lambda item: item.position)
+                    ],
+                    github_projects=[
+                        GitHubProjectPublic(
+                            position=project.position,
+                            full_name=project.full_name,
+                            recommendation=project.recommendation,
+                        )
+                        for project in sorted(
+                            digest.github_projects, key=lambda project: project.position
+                        )
+                    ],
+                )
+        except SQLAlchemyError as exc:
+            raise PublicationUnavailableError() from exc
 
     def digest_exists(self, digest_date: str, version: int = 1) -> bool:
         """返回指定自然日的发布版本是否已成为内容定版。"""
