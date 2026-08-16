@@ -558,6 +558,81 @@ class TestPublicSourcesEndpoint:
         }
 
 
+class TestPublicApiContractRegression:
+    def test_all_public_endpoints_share_visibility_window_and_read_only_contract(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        from app.publication.models import Article
+
+        main_module = _load_app_module()
+        store = _public_digest_store(tmp_path)
+        store.publish_articles(
+            [
+                CandidateItem(
+                    title="第二来源文章",
+                    url="https://example.test/other",
+                    summary="第二来源摘要",
+                    source="other",
+                    category="tool",
+                    published_at="2026-08-16T10:00:00+00:00",
+                    fetched_at="2026-08-16T10:01:00+00:00",
+                    canonical_key="example.test/other",
+                ),
+                CandidateItem(
+                    title="隐藏文章",
+                    url="https://example.test/hidden",
+                    summary="不应公开",
+                    source="hidden",
+                    category="ai",
+                    published_at="2026-08-16T11:00:00+00:00",
+                    fetched_at="2026-08-16T11:01:00+00:00",
+                    canonical_key="example.test/hidden",
+                ),
+            ]
+        )
+        with store._sessions.begin() as session:
+            session.query(Article).filter_by(canonical_key="example.test/hidden").update(
+                {"visibility": "hidden"}
+            )
+        config = SimpleNamespace(
+            publication_enabled=True,
+            publication_database_url=str(store.engine.url),
+            tz="UTC",
+        )
+        before = (store.count_articles(), store.count_digests(), store.count_digest_items())
+        status_store = IngestStatusStore(tmp_path)
+        status_store.write_status({"last_ingest_at": "2026-08-16T08:00:00"})
+        status_before = status_store.path.read_bytes()
+
+        with (
+            patch.object(main_module.app.state, "config", config),
+            patch.object(main_module, "IngestStatusStore", return_value=status_store),
+            patch("app.publication.routes.local_now", return_value=datetime(2026, 8, 16)),
+            patch("app.storage.ingest_status_store.IngestStatusStore.write_status") as write_status,
+            patch("app.storage.ingestion_store.IngestionStore.append_or_merge") as append_or_merge,
+            patch("app.tools.llm.summarize_news", new_callable=AsyncMock) as summarize_news,
+            patch("pusher.wecom.WeComPusher.push", new_callable=AsyncMock) as push,
+        ):
+            client = TestClient(main_module.app)
+            digest = client.get("/api/public/digests")
+            articles = client.get("/api/public/articles?page_size=20")
+            sources = client.get("/api/public/sources")
+
+        assert digest.status_code == 200
+        assert [item["title"] for item in articles.json()["items"]] == ["第二来源文章", "日报文章"]
+        assert [source["name"] for source in sources.json()] == ["example", "other"]
+        assert all("visibility" not in item for item in articles.json()["items"])
+        assert all(
+            "hidden" not in response.content.decode() for response in (digest, articles, sources)
+        )
+        assert status_store.path.read_bytes() == status_before
+        write_status.assert_not_called()
+        append_or_merge.assert_not_called()
+        summarize_news.assert_not_awaited()
+        push.assert_not_awaited()
+        assert (store.count_articles(), store.count_digests(), store.count_digest_items()) == before
+
+
 class TestRunNewsEndpoint:
     def test_run_news_triggers_agent(self):
         """POST /run/news calls the shared agent so publish locking is reused."""
