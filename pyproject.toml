@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "claw-news"
-version = "0.2.1"
+version = "1.1.0"
 description = "Daily hot-news aggregation and WeCom push"
 requires-python = ">=3.11"
 readme = "README.md"
