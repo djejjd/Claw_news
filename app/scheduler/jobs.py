@@ -304,10 +304,38 @@ async def run_ingest_with_cleanup(
     failure_degraded_threshold: int = 3,
     publication_config=None,
 ):
-    """Ingest + expire stale candidates beyond 7 days."""
-    await run_ingest(tz, failure_degraded_threshold, publication_config)
-    store = IngestionStore()
-    store.prune_expired(keep_days=7)
+    """高频采集结束后分别清理候选池和发布库，二者故障互不掩盖。"""
+    try:
+        return await run_ingest(tz, failure_degraded_threshold, publication_config)
+    finally:
+        try:
+            IngestionStore().prune_expired(keep_days=7)
+        except Exception:
+            # 候选池与发布库保留策略相互独立，前者失败时仍要尝试后者。
+            logger.exception("Candidate cleanup failed")
+        if publication_config is not None:
+            try:
+                from app.content.clock import local_now
+                from app.publication.publisher import Publisher
+
+                publisher = Publisher.from_config(publication_config)
+                if publisher is not None:
+                    publisher.store.cleanup_expired_publication(
+                        local_today=local_now(tz).date(), tz=tz
+                    )
+            except Exception as exc:
+                # 清理失败只反映发布库降级，不能改变已完成的采集结果或投递路径。
+                logger.exception("Publication cleanup failed")
+                try:
+                    status_payload = IngestStatusStore().load_status()
+                    status_payload["publication"] = {
+                        "status": "degraded",
+                        "error": f"cleanup: {type(exc).__name__}",
+                    }
+                    IngestStatusStore().write_status(status_payload)
+                except Exception:
+                    # 降级状态持久化只是可观测性增强，不能覆盖采集的原始结果或异常。
+                    logger.exception("Publication cleanup degradation status write failed")
 
 
 # ------------------------------------------------------------------

@@ -175,6 +175,104 @@ def test_public_articles_only_return_whitelisted_published_content(store):
     assert "visibility" not in payload
 
 
+def test_cleanup_expired_publication_preserves_retained_digest_references_and_is_idempotent(store):
+    store.publish_articles(
+        [
+            _candidate(
+                canonical_key="old-unreferenced",
+                title="Old unreferenced",
+                fetched_at="2026-08-05T12:00:00+00:00",
+            ),
+            _candidate(
+                canonical_key="old-retained",
+                title="Old retained",
+                fetched_at="2026-08-05T12:00:00+00:00",
+            ),
+            _candidate(
+                canonical_key="current", title="Current", fetched_at="2026-08-16T12:00:00+00:00"
+            ),
+        ]
+    )
+    store.publish_digest(
+        digest_date="2026-08-05",
+        version=1,
+        published_at=datetime(2026, 8, 5, tzinfo=timezone.utc),
+        daily_judgement="old",
+        items=[
+            {
+                "canonical_key": "old-unreferenced",
+                "position": 1,
+                "core_summary": "old",
+                "importance": "low",
+                "trend": "flat",
+            }
+        ],
+        github_projects=[{"full_name": "old/project", "recommendation": "old"}],
+    )
+    store.publish_digest(
+        digest_date="2026-08-16",
+        version=1,
+        published_at=datetime(2026, 8, 16, tzinfo=timezone.utc),
+        daily_judgement="current",
+        items=[
+            {
+                "canonical_key": "old-retained",
+                "position": 1,
+                "core_summary": "kept",
+                "importance": "high",
+                "trend": "up",
+            }
+        ],
+        github_projects=[],
+    )
+
+    result = store.cleanup_expired_publication(local_today=date(2026, 8, 16), tz="UTC")
+
+    assert result.marked_expired_article_ids
+    assert result.deleted_digest_items == 1
+    assert result.deleted_github_projects == 1
+    assert result.deleted_digests == 1
+    assert result.deleted_article_ids == result.marked_expired_article_ids
+    with pytest.raises(LookupError, match="old-unreferenced"):
+        store.get_article("old-unreferenced")
+    assert store.get_article("old-retained").visibility == "published"
+    assert store.count_digests() == 1
+    assert (
+        store.cleanup_expired_publication(local_today=date(2026, 8, 16), tz="UTC").deleted_digests
+        == 0
+    )
+
+
+def test_cleanup_expired_publication_uses_exact_ten_day_boundary(store):
+    store.publish_articles(
+        [
+            _candidate(
+                canonical_key="eleventh-day",
+                title="Eleventh day",
+                fetched_at="2026-08-06T12:00:00+00:00",
+            ),
+            _candidate(
+                canonical_key="tenth-day",
+                title="Tenth day",
+                fetched_at="2026-08-07T12:00:00+00:00",
+            ),
+        ]
+    )
+
+    first = store.cleanup_expired_publication(local_today=date(2026, 8, 16), tz="UTC")
+
+    assert len(first.marked_expired_article_ids) == 1
+    with pytest.raises(LookupError, match="eleventh-day"):
+        store.get_article("eleventh-day")
+    assert store.get_article("tenth-day").visibility == "published"
+
+    second = store.cleanup_expired_publication(local_today=date(2026, 8, 17), tz="UTC")
+
+    assert len(second.marked_expired_article_ids) == 1
+    with pytest.raises(LookupError, match="tenth-day"):
+        store.get_article("tenth-day")
+
+
 def test_public_article_query_uses_local_day_boundary_and_stable_id_order(store):
     shanghai = ZoneInfo("Asia/Shanghai")
     local_day = date(2026, 8, 16)

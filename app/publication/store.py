@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import create_engine, func, select, text
+from sqlalchemy import create_engine, delete, func, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 
@@ -72,6 +73,17 @@ def _public_article(article: Article) -> ArticlePublic:
         fetched_at=_as_iso(article.fetched_at),
         source=_public_source(article.source),
     )
+
+
+@dataclass(frozen=True)
+class PublicationCleanupResult:
+    """发布库清理的阶段性结果，用于调度审计和状态序列测试。"""
+
+    marked_expired_article_ids: tuple[int, ...]
+    deleted_digest_items: int
+    deleted_github_projects: int
+    deleted_digests: int
+    deleted_article_ids: tuple[int, ...]
 
 
 class PublicationStore:
@@ -156,6 +168,72 @@ class PublicationStore:
                     .order_by(Source.display_name.asc(), Source.name.asc())
                 ).all()
                 return [_public_source(source) for source in sources]
+        except SQLAlchemyError as exc:
+            raise PublicationUnavailableError() from exc
+
+    def cleanup_expired_publication(
+        self, *, local_today: date, tz: str
+    ) -> PublicationCleanupResult:
+        """在单一事务内清理窗口外日报，避免保留日报出现悬空关联。"""
+        window_start = local_today - timedelta(days=9)
+        cutoff, _ = _local_day_bounds(window_start, tz)
+        try:
+            with self._sessions.begin() as session:
+                expired_digest_ids = list(
+                    session.scalars(select(Digest.id).where(Digest.digest_date < window_start))
+                )
+                retained_digest_ids = select(Digest.id).where(
+                    Digest.digest_date >= window_start,
+                    Digest.digest_date <= local_today,
+                )
+                expired_article_ids = list(
+                    session.scalars(
+                        select(Article.id).where(
+                            Article.fetched_at < cutoff,
+                            ~Article.digest_items.any(
+                                DigestItem.digest_id.in_(retained_digest_ids)
+                            ),
+                        )
+                    )
+                )
+                if expired_article_ids:
+                    session.execute(
+                        update(Article)
+                        .where(Article.id.in_(expired_article_ids))
+                        .values(visibility="expired")
+                    )
+                if expired_digest_ids:
+                    deleted_projects = (
+                        session.execute(
+                            delete(DigestGitHubProject).where(
+                                DigestGitHubProject.digest_id.in_(expired_digest_ids)
+                            )
+                        ).rowcount
+                        or 0
+                    )
+                    deleted_items = (
+                        session.execute(
+                            delete(DigestItem).where(DigestItem.digest_id.in_(expired_digest_ids))
+                        ).rowcount
+                        or 0
+                    )
+                    deleted_digests = (
+                        session.execute(
+                            delete(Digest).where(Digest.id.in_(expired_digest_ids))
+                        ).rowcount
+                        or 0
+                    )
+                else:
+                    deleted_projects = deleted_items = deleted_digests = 0
+                if expired_article_ids:
+                    session.execute(delete(Article).where(Article.id.in_(expired_article_ids)))
+                return PublicationCleanupResult(
+                    marked_expired_article_ids=tuple(expired_article_ids),
+                    deleted_digest_items=deleted_items,
+                    deleted_github_projects=deleted_projects,
+                    deleted_digests=deleted_digests,
+                    deleted_article_ids=tuple(expired_article_ids),
+                )
         except SQLAlchemyError as exc:
             raise PublicationUnavailableError() from exc
 
