@@ -1,7 +1,7 @@
 # T2 日报 API
 
 ---
-状态: draft
+状态: review_pending
 最后更新: 2026-08-16
 关联:
   - ../v1.1.0-公共内容API.md
@@ -16,9 +16,12 @@
 | 任务编号 | `v1.1.0-T2` |
 | 依赖任务 | `v1.1.0-T1` 已完成并通过主审核 |
 | 允许并行 | 无；与 T3/T4 共享公共路由模块，按 T2 → T3 → T4 顺序实现 |
-| 预计修改文件 | 公共 API 路由模块、`app/main.py`、`tests/test_app_api.py`、日报 API 测试 |
-| 不得修改文件 | `app/publication/models.py`、迁移、`app/scheduler/jobs.py`、采集/选材/投递模块、前端工程 |
-| 完成状态 | blocked：等待 T1 完成并通过主审核 |
+| 允许修改路径 | `app/publication/routes.py`, `app/main.py`, `tests/test_public_api.py`, `tests/test_app_api.py`, `docs/计划/网站/v1.1.0/T2-日报API.md` |
+| 禁止修改路径 | `app/publication/store.py`, `app/publication/public_api.py`, `app/publication/models.py`, `alembic/**`, `app/scheduler/jobs.py`, `collectors/**`, `aggregator/**`, `pusher/**`, `infra/**`, `frontend/**` |
+| 启动审查结论 | `approved`（2026-08-16：独立启动审查确认 T1 依赖、日报契约、路由拆分、测试矩阵与文件边界均满足实施条件） |
+| 主审核结论 | `approved`（2026-08-16：独立主审核确认日报契约、错误脱敏、公开字段、时区和读取无副作用均符合设计；整改反向测试已复核） |
+| 任务提交 | `pending` |
+| 完成状态 | review_pending：实现、检查与主审核完成，等待任务级提交 |
 | 设计基线 | 《公共内容 API 设计》：`610c77cfc927f10564d973c9af4d37c4b38cdf58` |
 
 ## 接口变更表
@@ -53,7 +56,7 @@
 
 ## 5. 修改范围
 
-1. 在公共路由模块增加日报端点和请求校验。
+1. 新增 `app/publication/routes.py`，增加日报端点和请求校验。
 2. 在 `app/main.py` 注册公共路由，不改变既有 `/`、`/health`、`/run/news` 行为。
 3. 增加 FastAPI 到 SQLite 的日报端到端测试和异常测试。
 
@@ -73,8 +76,8 @@
 
 ## 8. 实施步骤
 
-1. 编写端点契约测试，确认尚未注册时失败。
-2. 注册最小路由并调用 T1 查询接口。
+1. 在 `tests/test_public_api.py` 与 `tests/test_app_api.py` 编写端点契约测试，确认路由未注册时失败。
+2. 在 `app/publication/routes.py` 注册最小路由，并由 `app/main.py` 挂载后调用 T1 查询接口。
 3. 实现日期校验和统一错误转换。
 4. 运行精确测试、完整 diff 检查并提交主审核。
 
@@ -92,6 +95,13 @@
 make lint
 ./venv/bin/ruff format --check .
 ```
+
+### 实施检查记录
+
+- `./venv/bin/pytest tests/test_public_api.py tests/test_app_api.py -v`：30 passed；
+- `make test`：680 passed、1 skipped（既有人工标注校准门禁）；
+- `make lint` 与 `./venv/bin/ruff format --check .`：通过；
+- `make task-gate TASK=docs/计划/网站/v1.1.0/T2-日报API.md`：实现前通过；实现完成后转入本审核状态。
 
 ## 11. 交付前自检
 

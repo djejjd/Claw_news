@@ -4,12 +4,16 @@ import asyncio
 import importlib
 import sys
 import types
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from app.pipeline.candidate import CandidateItem
+from app.publication.store import PublicationStore
+from app.storage.ingest_status_store import IngestStatusStore
 
 _REAL_PATH_EXISTS = Path.exists
 
@@ -77,6 +81,43 @@ def _load_app_module():
 
     with patch.dict(sys.modules, {"apscheduler.schedulers.asyncio": scheduler_module}):
         return importlib.import_module("app.main")
+
+
+def _public_digest_store(tmp_path) -> PublicationStore:
+    store = PublicationStore(f"sqlite:///{tmp_path / 'publication.db'}")
+    store.create_schema()
+    store.publish_articles(
+        [
+            CandidateItem(
+                title="日报文章",
+                url="https://example.test/digest",
+                summary="来源摘要",
+                source="example",
+                category="ai",
+                published_at="2026-08-16T08:00:00+00:00",
+                fetched_at="2026-08-16T08:01:00+00:00",
+                canonical_key="example.test/digest",
+            )
+        ]
+    )
+    store.publish_digest(
+        digest_date="2026-08-16",
+        version=1,
+        published_at=datetime(2026, 8, 16, 9, tzinfo=timezone.utc),
+        daily_judgement="今日判断",
+        items=[
+            {
+                "canonical_key": "example.test/digest",
+                "position": 1,
+                "core_summary": "核心摘要",
+                "importance": "high",
+                "trend": "up",
+                "topic_label": "AI",
+            }
+        ],
+        github_projects=[{"full_name": "example/project", "recommendation": "推荐理由"}],
+    )
+    return store
 
 
 # ---------------------------------------------------------------------------
@@ -312,6 +353,152 @@ class TestHealthEndpoint:
 
         assert data["version"] == main_module.APP_VERSION
         assert main_module.app.version == main_module.APP_VERSION
+
+
+class TestPublicDigestEndpoint:
+    def test_digest_returns_the_default_local_day_with_public_fields_only(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        main_module = _load_app_module()
+        store = _public_digest_store(tmp_path)
+        config = SimpleNamespace(
+            publication_enabled=True,
+            publication_database_url=str(store.engine.url),
+            tz="UTC",
+        )
+
+        with (
+            patch.object(main_module.app.state, "config", config),
+            patch("app.publication.routes.local_now", return_value=datetime(2026, 8, 16)),
+        ):
+            response = TestClient(main_module.app).get("/api/public/digests")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "date": "2026-08-16",
+            "version": 1,
+            "published_at": "2026-08-16T09:00:00+00:00",
+            "daily_judgement": "今日判断",
+            "items": [
+                {
+                    "position": 1,
+                    "core_summary": "核心摘要",
+                    "importance": "high",
+                    "trend": "up",
+                    "topic_label": "AI",
+                    "article": {
+                        "id": 1,
+                        "title": "日报文章",
+                        "original_url": "https://example.test/digest",
+                        "category": "ai",
+                        "topic": None,
+                        "summary": "来源摘要",
+                        "published_at": "2026-08-16T08:00:00+00:00",
+                        "fetched_at": "2026-08-16T08:01:00+00:00",
+                        "source": {
+                            "name": "example",
+                            "display_name": "example",
+                            "site_url": None,
+                        },
+                    },
+                }
+            ],
+            "github_projects": [
+                {
+                    "position": 1,
+                    "full_name": "example/project",
+                    "recommendation": "推荐理由",
+                }
+            ],
+        }
+
+    @pytest.mark.parametrize("value", ["20260816", "2026-08-32"])
+    def test_digest_rejects_invalid_date_with_the_public_error_contract(self, value):
+        from fastapi.testclient import TestClient
+
+        main_module = _load_app_module()
+
+        response = TestClient(main_module.app).get(f"/api/public/digests?date={value}")
+
+        assert response.status_code == 422
+        assert response.json() == {"detail": {"code": "invalid_request", "message": "请求参数无效"}}
+
+    def test_digest_returns_not_found_for_an_absent_date(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        main_module = _load_app_module()
+        store = _public_digest_store(tmp_path)
+        config = SimpleNamespace(
+            publication_enabled=True,
+            publication_database_url=str(store.engine.url),
+            tz="UTC",
+        )
+
+        with patch.object(main_module.app.state, "config", config):
+            response = TestClient(main_module.app).get("/api/public/digests?date=2026-08-15")
+
+        assert response.status_code == 404
+        assert response.json() == {
+            "detail": {"code": "digest_not_found", "message": "指定日期不存在已发布日报"}
+        }
+
+    def test_digest_hides_unavailable_database_details(self):
+        from fastapi.testclient import TestClient
+
+        main_module = _load_app_module()
+        config = SimpleNamespace(
+            publication_enabled=True,
+            publication_database_url="not-a-database-url",
+            tz="UTC",
+        )
+
+        with patch.object(main_module.app.state, "config", config):
+            response = TestClient(main_module.app).get("/api/public/digests?date=2026-08-16")
+
+        assert response.status_code == 503
+        assert response.json() == {
+            "detail": {"code": "publication_unavailable", "message": "公共内容服务暂不可用"}
+        }
+
+    def test_digest_request_has_no_pipeline_or_persistence_side_effects(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        main_module = _load_app_module()
+        store = _public_digest_store(tmp_path)
+        config = SimpleNamespace(
+            publication_enabled=True,
+            publication_database_url=str(store.engine.url),
+            tz="UTC",
+        )
+        before_tables = (store.count_articles(), store.count_digests(), store.count_digest_items())
+        status_store = IngestStatusStore(tmp_path)
+        status_store.write_status({"last_ingest_at": "2026-08-16T08:00:00"})
+        status_path = status_store.path
+        before_status = status_path.read_bytes()
+
+        with (
+            patch.object(main_module.app.state, "config", config),
+            patch.object(main_module, "IngestStatusStore", return_value=status_store),
+            patch.object(main_module.agent, "run_once", new_callable=AsyncMock) as run_once,
+            patch("app.storage.ingest_status_store.IngestStatusStore.write_status") as write_status,
+            patch("app.storage.ingestion_store.IngestionStore.append_or_merge") as append_or_merge,
+            patch("app.tools.llm.summarize_news", new_callable=AsyncMock) as summarize_news,
+            patch("pusher.wecom.WeComPusher.push", new_callable=AsyncMock) as push,
+        ):
+            response = TestClient(main_module.app).get("/api/public/digests?date=2026-08-16")
+
+        assert response.status_code == 200
+        assert (
+            store.count_articles(),
+            store.count_digests(),
+            store.count_digest_items(),
+        ) == before_tables
+        assert status_path.read_bytes() == before_status
+        run_once.assert_not_awaited()
+        write_status.assert_not_called()
+        append_or_merge.assert_not_called()
+        summarize_news.assert_not_awaited()
+        push.assert_not_awaited()
 
 
 class TestRunNewsEndpoint:
