@@ -1,7 +1,7 @@
 # T2 日报 API
 
 ---
-状态: review_pending
+状态: completed
 最后更新: 2026-08-16
 关联:
   - ../v1.1.0-公共内容API.md
@@ -20,8 +20,8 @@
 | 禁止修改路径 | `app/publication/store.py`, `app/publication/public_api.py`, `app/publication/models.py`, `alembic/**`, `app/scheduler/jobs.py`, `collectors/**`, `aggregator/**`, `pusher/**`, `infra/**`, `frontend/**` |
 | 启动审查结论 | `approved`（2026-08-16：独立启动审查确认 T1 依赖、日报契约、路由拆分、测试矩阵与文件边界均满足实施条件） |
 | 主审核结论 | `approved`（2026-08-16：独立主审核确认日报契约、错误脱敏、公开字段、时区和读取无副作用均符合设计；整改反向测试已复核） |
-| 任务提交 | `pending` |
-| 完成状态 | review_pending：实现、检查与主审核完成，等待任务级提交 |
+| 任务提交 | `8de4b1bc84b59ab1d76ebd0bf585b7b0379e61f7` |
+| 完成状态 | completed：实现提交、检查与主审核均已完成 |
 | 设计基线 | 《公共内容 API 设计》：`610c77cfc927f10564d973c9af4d37c4b38cdf58` |
 
 ## 接口变更表
