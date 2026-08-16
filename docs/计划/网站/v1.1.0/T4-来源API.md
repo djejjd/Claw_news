@@ -1,7 +1,7 @@
 # T4 来源 API
 
 ---
-状态: review_pending
+状态: completed
 最后更新: 2026-08-16
 关联:
   - ../v1.1.0-公共内容API.md
@@ -21,8 +21,8 @@
 | 禁止修改路径 | `app/main.py`, `app/publication/public_api.py`, `app/publication/models.py`, `app/scheduler/**`, `collectors/**`, `aggregator/**`, `pusher/**`, `infra/**`, `alembic/**`, `frontend/**` |
 | 启动审查结论 | `approved`（2026-08-16：独立启动审查复核已批准公共内容 API 设计与可解析基线；T1/T3 均已完成且主审核通过；T4 十二段、接口契约、精确允许/禁止路径、测试矩阵和隔离分支均满足启用条件；当前无并行文件冲突。） |
 | 主审核结论 | `approved`（2026-08-16：独立主审核复核完整 diff 与 56 项精确测试；来源可见性、十日窗口、字段隔离、排序、无写入副作用和故障脱敏均符合已批准设计。） |
-| 任务提交 | `pending` |
-| 完成状态 | review_pending：实现与检查完成，等待独立主审核。 |
+| 任务提交 | `61b762df51bca449be2bb3542cda8e7b86b94821` |
+| 完成状态 | completed：实现已通过独立主审核并完成任务级提交与关闭记录。 |
 | 设计基线 | 《公共内容 API 设计》：`610c77cfc927f10564d973c9af4d37c4b38cdf58` |
 
 ## 接口变更表
