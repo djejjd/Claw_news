@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from app.agents.news_agent import NewsAgent
 from app.config import load_config
 from app.content.clock import local_now
+from app.publication.routes import router as public_router
 from app.scheduler.jobs import create_scheduler
 from app.storage.ingest_status_store import IngestStatusStore
 
@@ -48,6 +49,8 @@ app = FastAPI(
     version=APP_VERSION,
     lifespan=lifespan,
 )
+app.state.config = config
+app.include_router(public_router)
 
 
 @app.get("/")

@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -805,3 +805,90 @@ async def test_run_ingest_cleanup_prunes_at_7_days():
         await run_ingest_with_cleanup()
 
     mock_store.prune_expired.assert_called_once_with(keep_days=7)
+
+
+@pytest.mark.asyncio
+async def test_run_ingest_cleanup_runs_publication_cleanup_in_finally_and_degrades_on_failure():
+    from app.scheduler.jobs import run_ingest_with_cleanup
+
+    publisher = MagicMock()
+    publisher.store.cleanup_expired_publication.side_effect = RuntimeError("database unavailable")
+    status_store = MagicMock()
+    status_store.load_status.return_value = {"publication": {"status": "healthy"}}
+
+    with (
+        patch("app.scheduler.jobs.run_ingest", new=AsyncMock(return_value={"item_count": 1})),
+        patch("app.scheduler.jobs.IngestionStore") as store_cls,
+        patch("app.scheduler.jobs.IngestStatusStore", return_value=status_store),
+        patch("app.publication.publisher.Publisher.from_config", return_value=publisher),
+    ):
+        result = await run_ingest_with_cleanup(tz="UTC", publication_config=object())
+
+    assert result == {"item_count": 1}
+    store_cls.return_value.prune_expired.assert_called_once_with(keep_days=7)
+    publisher.store.cleanup_expired_publication.assert_called_once_with(local_today=ANY, tz="UTC")
+    assert status_store.write_status.call_args.args[0]["publication"]["status"] == "degraded"
+
+
+@pytest.mark.asyncio
+async def test_run_ingest_cleanup_attempts_publication_cleanup_after_candidate_cleanup_failure():
+    from app.scheduler.jobs import run_ingest_with_cleanup
+
+    publisher = MagicMock()
+    with (
+        patch("app.scheduler.jobs.run_ingest", new=AsyncMock(return_value={"item_count": 1})),
+        patch("app.scheduler.jobs.IngestionStore") as store_cls,
+        patch("app.publication.publisher.Publisher.from_config", return_value=publisher),
+    ):
+        store_cls.return_value.prune_expired.side_effect = RuntimeError("candidate cleanup failed")
+        result = await run_ingest_with_cleanup(tz="UTC", publication_config=object())
+
+    assert result == {"item_count": 1}
+    publisher.store.cleanup_expired_publication.assert_called_once_with(local_today=ANY, tz="UTC")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failing_method", ["load_status", "write_status"])
+async def test_run_ingest_cleanup_ignores_degradation_status_write_failure(failing_method):
+    from app.scheduler.jobs import run_ingest_with_cleanup
+
+    publisher = MagicMock()
+    publisher.store.cleanup_expired_publication.side_effect = RuntimeError("database unavailable")
+    status_store = MagicMock()
+    status_store.load_status.return_value = {"publication": {"status": "healthy"}}
+    getattr(status_store, failing_method).side_effect = OSError("status unavailable")
+
+    with (
+        patch("app.scheduler.jobs.run_ingest", new=AsyncMock(return_value={"item_count": 1})),
+        patch("app.scheduler.jobs.IngestionStore"),
+        patch("app.scheduler.jobs.IngestStatusStore", return_value=status_store),
+        patch("app.publication.publisher.Publisher.from_config", return_value=publisher),
+    ):
+        result = await run_ingest_with_cleanup(tz="UTC", publication_config=object())
+
+    assert result == {"item_count": 1}
+    publisher.store.cleanup_expired_publication.assert_called_once_with(local_today=ANY, tz="UTC")
+    if failing_method == "load_status":
+        status_store.write_status.assert_not_called()
+    else:
+        status_store.write_status.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_run_ingest_cleanup_still_runs_when_ingest_raises():
+    from app.scheduler.jobs import run_ingest_with_cleanup
+
+    publisher = MagicMock()
+    with (
+        patch(
+            "app.scheduler.jobs.run_ingest",
+            new=AsyncMock(side_effect=RuntimeError("ingest failed")),
+        ),
+        patch("app.scheduler.jobs.IngestionStore") as store_cls,
+        patch("app.publication.publisher.Publisher.from_config", return_value=publisher),
+        pytest.raises(RuntimeError, match="ingest failed"),
+    ):
+        await run_ingest_with_cleanup(tz="UTC", publication_config=object())
+
+    store_cls.return_value.prune_expired.assert_called_once_with(keep_days=7)
+    publisher.store.cleanup_expired_publication.assert_called_once_with(local_today=ANY, tz="UTC")

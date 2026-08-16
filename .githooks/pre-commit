@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+: "${TASK_PATH:?提交任务必须设置 TASK_PATH，例如 TASK_PATH=docs/计划/网站/v1.1.0/T2-日报API.md git commit ...}"
+./venv/bin/python scripts/task_gate.py commit --task "$TASK_PATH"

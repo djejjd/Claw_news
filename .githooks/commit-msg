@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+: "${TASK_PATH:?提交任务必须设置 TASK_PATH，例如 TASK_PATH=docs/计划/网站/v1.1.0/T2-日报API.md git commit ...}"
+task_id=$(TASK_PATH="$TASK_PATH" ./venv/bin/python -c 'import os; from pathlib import Path; from scripts.task_gate import parse_task; print(parse_task(Path(os.environ["TASK_PATH"])).task_id)')
+grep -qx "Task: $task_id" "$1" || {
+  echo "提交说明必须包含独立一行：Task: $task_id" >&2
+  exit 1
+}
