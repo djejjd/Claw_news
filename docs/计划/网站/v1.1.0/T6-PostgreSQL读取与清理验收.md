@@ -1,7 +1,7 @@
 # T6 PostgreSQL 读取与清理验收
 
 ---
-状态: review_pending
+状态: completed
 最后更新: 2026-08-16
 关联:
   - ../v1.1.0-公共内容API.md
@@ -25,8 +25,8 @@
 | 禁止修改路径 | `app/**`, `alembic/**`, `tests/**`, `collectors/**`, `aggregator/**`, `pusher/**`, `infra/**`, `frontend/**`, `pyproject.toml`, `CHANGELOG.md`, `Dockerfile`, `docker-compose.yml` |
 | 启动审查结论 | `approved`（2026-08-16：独立启动审查复核已批准设计基线、T1-T5 completed/approved 依赖、固定数据矩阵、故障隔离到达条件、允许/禁止路径、非 main 分支与工作区范围；无并行冲突，准许启用 T6。） |
 | 主审核结论 | `approved`（2026-08-16：独立主审核复核隔离 PostgreSQL 迁移、三端点、两轮清理计数、五类调度故障隔离、临时脚本无真实采集/仓库状态写入，以及版本计划状态同步；无阻断问题。） |
-| 任务提交 | `pending` |
-| 完成状态 | review_pending：隔离 PostgreSQL 验证、指定回归与质量检查已完成，等待独立主审核。 |
+| 任务提交 | `bd37e506a667699303efd48b135690ed8472d695` |
+| 完成状态 | completed：隔离 PostgreSQL 验证、指定回归与质量检查及独立主审核均已完成。 |
 | 设计基线 | 《公共内容 API 设计》：`610c77cfc927f10564d973c9af4d37c4b38cdf58` |
 
 ## 接口变更表
@@ -153,7 +153,7 @@ make lint
 - [x] 记录不含密码或连接串；
 - [x] 每个端点、两轮清理和失败隔离均有实际证据；
 - [x] 故障隔离脚本已证明不触发真实 collector，且没有读写仓库 `data/`；
-- [ ] 待办和版本状态与验证结果一致（等待主审核批准后关闭）。
+- [x] 待办和版本状态已与验证结果同步并关闭。
 
 ## 12. 交付格式
 
