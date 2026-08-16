@@ -16,6 +16,7 @@ from app.publication.public_api import (
     InvalidRequestError,
     PublicApiError,
     PublicationUnavailableError,
+    SourcePublic,
     public_api_error_response,
 )
 from app.publication.store import PublicationStore
@@ -122,4 +123,25 @@ async def get_articles(
         return _error_response(error)
     except Exception as exc:
         logger.warning("Public article query failed: %s", type(exc).__name__)
+        return _error_response(PublicationUnavailableError())
+
+
+@router.get("/sources", response_model=list[SourcePublic])
+async def get_sources(request: Request):
+    """返回十天公开窗口内有已发布文章的来源摘要。"""
+    config = request.app.state.config
+    local_today = local_now(config.tz).date()
+
+    try:
+        if not config.publication_enabled or not config.publication_database_url:
+            raise PublicationUnavailableError()
+        return PublicationStore(config.publication_database_url).list_public_sources(
+            start_date=local_today - timedelta(days=9),
+            end_date=local_today,
+            tz=config.tz,
+        )
+    except PublicApiError as error:
+        return _error_response(error)
+    except Exception as exc:
+        logger.warning("Public source query failed: %s", type(exc).__name__)
         return _error_response(PublicationUnavailableError())

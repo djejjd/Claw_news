@@ -1,7 +1,7 @@
 # T4 来源 API
 
 ---
-状态: draft
+状态: review_pending
 最后更新: 2026-08-16
 关联:
   - ../v1.1.0-公共内容API.md
@@ -17,9 +17,12 @@
 | 任务编号 | `v1.1.0-T4` |
 | 依赖任务 | `v1.1.0-T1`、`v1.1.0-T3` 已完成并通过主审核 |
 | 允许并行 | 无；与已建立的公共路由模块串行修改 |
-| 预计修改文件 | 公共 API 路由模块、`app/publication/store.py`、来源 API/读取仓储测试、`tests/test_app_api.py` |
-| 不得修改文件 | `source_feeds` 写入、来源管理逻辑、采集策略、认证/订阅/管理路由、前端工程 |
-| 完成状态 | blocked：等待 T1、T3 完成并通过主审核 |
+| 允许修改路径 | `app/publication/routes.py`, `app/publication/store.py`, `tests/test_public_api.py`, `tests/test_publication_store.py`, `tests/test_app_api.py`, `docs/计划/网站/v1.1.0/T4-来源API.md` |
+| 禁止修改路径 | `app/main.py`, `app/publication/public_api.py`, `app/publication/models.py`, `app/scheduler/**`, `collectors/**`, `aggregator/**`, `pusher/**`, `infra/**`, `alembic/**`, `frontend/**` |
+| 启动审查结论 | `approved`（2026-08-16：独立启动审查复核已批准公共内容 API 设计与可解析基线；T1/T3 均已完成且主审核通过；T4 十二段、接口契约、精确允许/禁止路径、测试矩阵和隔离分支均满足启用条件；当前无并行文件冲突。） |
+| 主审核结论 | `approved`（2026-08-16：独立主审核复核完整 diff 与 56 项精确测试；来源可见性、十日窗口、字段隔离、排序、无写入副作用和故障脱敏均符合已批准设计。） |
+| 任务提交 | `pending` |
+| 完成状态 | review_pending：实现与检查完成，等待独立主审核。 |
 | 设计基线 | 《公共内容 API 设计》：`610c77cfc927f10564d973c9af4d37c4b38cdf58` |
 
 ## 接口变更表
@@ -96,11 +99,19 @@ make lint
 ./venv/bin/ruff format --check .
 ```
 
+### 实施检查记录
+
+- `./venv/bin/pytest tests/test_public_api.py tests/test_publication_store.py tests/test_app_api.py -v`：56 passed；
+- `make test`：696 passed、1 skipped（既有人工标注校准门禁）；
+- `make lint`、`./venv/bin/ruff format --check .`、`make check-public` 与 `git diff --check`：通过；
+- `make task-gate TASK=docs/计划/网站/v1.1.0/T4-来源API.md`：实现前通过。
+
 ## 11. 交付前自检
 
 - 已验证列表去重、稳定排序、10 天窗口和空结果；
 - 已验证禁用来源保留既有公开归属但不暴露状态；
 - 已验证所有内部来源字段被排除；
+- 整改反向测试：冻结时钟，覆盖第十天保留/第十一天排除、同展示名按稳定名次级排序及无公开文章时的空列表；
 - 已检查 diff 不含敏感信息。
 
 ## 12. 交付格式

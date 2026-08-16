@@ -501,6 +501,63 @@ class TestPublicDigestEndpoint:
         push.assert_not_awaited()
 
 
+class TestPublicSourcesEndpoint:
+    def test_sources_return_public_fields_from_the_main_app(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        main_module = _load_app_module()
+        store = _public_digest_store(tmp_path)
+        store.publish_sources(
+            [
+                {
+                    "name": "example",
+                    "display_name": "示例来源",
+                    "default_category": "ai",
+                    "site_url": "https://example.test",
+                    "is_enabled": False,
+                }
+            ]
+        )
+        config = SimpleNamespace(
+            publication_enabled=True,
+            publication_database_url=str(store.engine.url),
+            tz="UTC",
+        )
+
+        with (
+            patch.object(main_module.app.state, "config", config),
+            patch("app.publication.routes.local_now", return_value=datetime(2026, 8, 16)),
+        ):
+            response = TestClient(main_module.app).get("/api/public/sources")
+
+        assert response.status_code == 200
+        assert response.json() == [
+            {
+                "name": "example",
+                "display_name": "示例来源",
+                "site_url": "https://example.test",
+            }
+        ]
+
+    def test_sources_hide_unavailable_database_details(self):
+        from fastapi.testclient import TestClient
+
+        main_module = _load_app_module()
+        config = SimpleNamespace(
+            publication_enabled=True,
+            publication_database_url="not-a-database-url",
+            tz="UTC",
+        )
+
+        with patch.object(main_module.app.state, "config", config):
+            response = TestClient(main_module.app).get("/api/public/sources")
+
+        assert response.status_code == 503
+        assert response.json() == {
+            "detail": {"code": "publication_unavailable", "message": "公共内容服务暂不可用"}
+        }
+
+
 class TestRunNewsEndpoint:
     def test_run_news_triggers_agent(self):
         """POST /run/news calls the shared agent so publish locking is reused."""

@@ -1,3 +1,6 @@
+from datetime import datetime
+from unittest.mock import patch
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -113,3 +116,136 @@ def test_public_articles_reject_invalid_parameters(query, tmp_path):
 
     assert response.status_code == 422
     assert response.json() == {"detail": {"code": "invalid_request", "message": "请求参数无效"}}
+
+
+def test_public_sources_are_windowed_deduplicated_and_whitelisted(tmp_path):
+    client, store = _articles_client(tmp_path)
+    store.publish_sources(
+        [
+            {
+                "name": "example",
+                "display_name": "Zeta 来源",
+                "default_category": "ai",
+                "site_url": "https://example.test",
+                "is_enabled": False,
+                "include_in_new_user_defaults": True,
+                "feeds": [
+                    {
+                        "url": "https://example.test/private-feed",
+                        "collector_type": "rss",
+                        "strategy": {"token": "internal"},
+                    }
+                ],
+            },
+            {
+                "name": "other",
+                "display_name": "Alpha 来源",
+                "default_category": "ai",
+                "site_url": None,
+            },
+            {
+                "name": "empty",
+                "display_name": "Empty 来源",
+                "default_category": "ai",
+                "site_url": "https://empty.example.test",
+            },
+            {
+                "name": "same-a",
+                "display_name": "Same 来源",
+                "default_category": "ai",
+                "site_url": None,
+            },
+            {
+                "name": "same-b",
+                "display_name": "Same 来源",
+                "default_category": "ai",
+                "site_url": None,
+            },
+            {
+                "name": "expired-window",
+                "display_name": "过期来源",
+                "default_category": "ai",
+                "site_url": None,
+            },
+        ]
+    )
+    store.publish_articles(
+        [
+            CandidateItem(
+                title="第十天文章",
+                url="https://example.test/tenth-day",
+                summary="公开摘要",
+                source="same-a",
+                category="ai",
+                fetched_at="2026-08-07T12:00:00+00:00",
+                canonical_key="example/tenth-day",
+            ),
+            CandidateItem(
+                title="同名来源文章",
+                url="https://example.test/same-name",
+                summary="公开摘要",
+                source="same-b",
+                category="ai",
+                fetched_at="2026-08-16T12:00:00+00:00",
+                canonical_key="example/same-name",
+            ),
+            CandidateItem(
+                title="第十一天文章",
+                url="https://example.test/expired-window",
+                summary="公开摘要",
+                source="expired-window",
+                category="ai",
+                fetched_at="2026-08-06T12:00:00+00:00",
+                canonical_key="example/expired-window",
+            ),
+        ]
+    )
+    before = (store.count_articles(), store.count_digests(), store.count_digest_items())
+
+    with patch("app.publication.routes.local_now", return_value=datetime(2026, 8, 16)):
+        response = client.get("/api/public/sources")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {"name": "other", "display_name": "Alpha 来源", "site_url": None},
+        {"name": "same-a", "display_name": "Same 来源", "site_url": None},
+        {"name": "same-b", "display_name": "Same 来源", "site_url": None},
+        {
+            "name": "example",
+            "display_name": "Zeta 来源",
+            "site_url": "https://example.test",
+        },
+    ]
+    assert (store.count_articles(), store.count_digests(), store.count_digest_items()) == before
+
+
+def test_public_sources_return_empty_list_when_no_published_articles(tmp_path):
+    store = PublicationStore(f"sqlite:///{tmp_path / 'publication.db'}")
+    store.create_schema()
+    store.publish_sources(
+        [
+            {
+                "name": "empty",
+                "display_name": "Empty 来源",
+                "default_category": "ai",
+                "site_url": "https://empty.example.test",
+            }
+        ]
+    )
+    app = FastAPI()
+    app.state.config = type(
+        "Config",
+        (),
+        {
+            "publication_enabled": True,
+            "publication_database_url": str(store.engine.url),
+            "tz": "UTC",
+        },
+    )()
+    app.include_router(router)
+
+    with patch("app.publication.routes.local_now", return_value=datetime(2026, 8, 16)):
+        response = TestClient(app).get("/api/public/sources")
+
+    assert response.status_code == 200
+    assert response.json() == []
