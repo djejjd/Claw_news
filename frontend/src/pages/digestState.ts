@@ -3,6 +3,28 @@ import { computed, ref } from "vue";
 import { PublicApiError } from "../api/client";
 import { getCurrentDigest, type DigestPublic } from "../api/digest";
 
+export function displayImportance(value: string): string {
+  if (value === "high") return "重点";
+  if (value === "medium") return "关注";
+  if (value === "low") return "速览";
+  return value;
+}
+
+export function displayTrend(value: string): string {
+  if (value === "up") return "上升";
+  if (value === "steady") return "平稳";
+  if (value === "down") return "回落";
+  return value;
+}
+
+export function displayCategory(value: string): string {
+  if (value === "ai") return "人工智能";
+  if (value === "tool") return "工具";
+  if (value === "game") return "游戏";
+  if (value === "digital") return "数码";
+  return value;
+}
+
 export function useDigestState() {
   const digest = ref<DigestPublic | null>(null);
   const error = ref<PublicApiError | null>(null);

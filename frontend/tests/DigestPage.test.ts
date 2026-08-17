@@ -83,9 +83,15 @@ describe("DigestPage", () => {
 
     expect(wrapper.get("h1").text()).toContain("2026-08-17");
     expect(wrapper.text()).toContain(digest.daily_judgement);
+    expect(wrapper.text()).toContain("重点");
+    expect(wrapper.text()).toContain("平稳");
     expect(wrapper.findAll("article h2").map((heading) => heading.text())).toEqual([
       "第一篇文章",
       "第二篇文章",
+    ]);
+    expect(wrapper.findAll(".item-position").map((position) => position.text().trim())).toEqual([
+      "01",
+      "02",
     ]);
     expect(wrapper.text()).not.toContain("第二篇公开摘要");
     expect(wrapper.findAll('[data-testid="github-project"]').map((item) => item.text())).toEqual([
@@ -138,5 +144,17 @@ describe("DigestPage", () => {
 
     expect(wrapper.text()).toContain("第二篇文章");
     expect(wrapper.find("article a").exists()).toBe(false);
+  });
+
+  it("keeps the tenth item as a two-digit rank", async () => {
+    mockedGetCurrentDigest.mockResolvedValue({
+      ...digest,
+      items: [{ ...digest.items[0], position: 10 }],
+    });
+
+    const wrapper = mount(DigestPage);
+    await flushPromises();
+
+    expect(wrapper.get(".item-position").text().trim()).toBe("10");
   });
 });

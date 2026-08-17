@@ -2,7 +2,12 @@
 import { onMounted } from "vue";
 
 import ExternalArticleLink from "../components/ExternalArticleLink.vue";
-import { useDigestState } from "./digestState";
+import {
+  displayCategory,
+  displayImportance,
+  displayTrend,
+  useDigestState,
+} from "./digestState";
 
 const { digest, error, failureMessage, isLoading, loadDigest, sortedItems, sortedProjects } =
   useDigestState();
@@ -54,13 +59,18 @@ onMounted(loadDigest);
     class="digest-page"
   >
     <header class="digest-heading">
-      <p class="page-kicker">
-        公共日报
-      </p>
-      <h1>{{ digest.date }}</h1>
-      <p class="daily-judgement">
-        {{ digest.daily_judgement }}
-      </p>
+      <div>
+        <p class="page-kicker">
+          Claw News / 公共日报
+        </p>
+        <h1>{{ digest.date }}</h1>
+      </div>
+      <div class="daily-journal">
+        <p>今日判断</p>
+        <p class="daily-judgement">
+          {{ digest.daily_judgement }}
+        </p>
+      </div>
     </header>
 
     <ol class="digest-list">
@@ -70,11 +80,14 @@ onMounted(loadDigest);
       >
         <article class="digest-item">
           <p class="item-position">
-            {{ item.position }}
+            {{ String(item.position).padStart(2, "0") }}
           </p>
           <div>
             <p class="item-meta">
-              {{ item.article.source.display_name }} · {{ item.article.category }}
+              {{ item.article.source.display_name }}
+              <span>
+                {{ displayCategory(item.article.category) }}
+              </span>
             </p>
             <h2>
               <ExternalArticleLink :url="item.article.original_url">
@@ -91,8 +104,8 @@ onMounted(loadDigest);
               {{ item.article.summary }}
             </p>
             <dl class="item-details">
-              <div><dt>重要性</dt><dd>{{ item.importance }}</dd></div>
-              <div><dt>趋势</dt><dd>{{ item.trend }}</dd></div>
+              <div><dt>重要性</dt><dd>{{ displayImportance(item.importance) }}</dd></div>
+              <div><dt>趋势</dt><dd>{{ displayTrend(item.trend) }}</dd></div>
               <div v-if="item.topic_label">
                 <dt>主题</dt><dd>{{ item.topic_label }}</dd>
               </div>

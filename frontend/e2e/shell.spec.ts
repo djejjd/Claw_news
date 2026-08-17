@@ -28,6 +28,17 @@ test("keeps the public digest readable on a narrow viewport", async ({ page }) =
   await expect(page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).resolves.toBe(true);
 });
 
+test("wraps a long unbroken article title on a narrow viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+
+  await page.getByRole("link", { name: "测试公共文章" }).evaluate((link) => {
+    link.textContent = "a".repeat(300);
+  });
+
+  await expect(page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).resolves.toBe(true);
+});
+
 test("reaches the seeded public router through the Vite API proxy", async ({ request }) => {
   const response = await request.get("/api/public/articles");
 
