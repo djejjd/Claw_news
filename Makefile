@@ -1,4 +1,4 @@
-.PHONY: install test lint format check-public check-config task-gate task-commit-check install-hooks run-morning run-evening dry-run clean clean-data
+.PHONY: install test lint format check-public check-config task-gate task-commit-check install-hooks run-morning run-evening dry-run clean clean-data frontend-check frontend-e2e
 
 install:
 	python3 -m venv venv
@@ -26,6 +26,12 @@ task-gate:
 task-commit-check:
 	@[ -n "$(TASK)" ] || (echo "用法：make task-commit-check TASK=docs/计划/.../T*.md" && exit 1)
 	./venv/bin/python scripts/task_gate.py commit --task "$(TASK)"
+
+frontend-check:
+	cd frontend && npm run lint && npm run typecheck && npm run test && npm run build
+
+frontend-e2e:
+	cd frontend && npm run e2e
 
 install-hooks:
 	git config core.hooksPath .githooks
