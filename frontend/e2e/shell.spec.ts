@@ -8,6 +8,26 @@ test("renders the public shell and navigation", async ({ page }) => {
   await expect(page).toHaveURL(/\/articles$/);
 });
 
+test("renders the seeded public digest through the Vite API proxy", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.getByRole("heading", { level: 1, name: "2026-08-17" })).toBeVisible();
+  await expect(page.getByText("测试核心摘要")).toBeVisible();
+  const articleLink = page.getByRole("link", { name: "测试公共文章" });
+  await expect(articleLink).toHaveAttribute("href", "https://example.test/article");
+  await expect(articleLink).toHaveAttribute("target", "_blank");
+  await expect(articleLink).toHaveAttribute("rel", "noopener noreferrer");
+});
+
+test("keeps the public digest readable on a narrow viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+
+  await expect(page.getByRole("heading", { level: 1, name: "2026-08-17" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "测试公共文章" })).toBeVisible();
+  await expect(page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).resolves.toBe(true);
+});
+
 test("reaches the seeded public router through the Vite API proxy", async ({ request }) => {
   const response = await request.get("/api/public/articles");
 
