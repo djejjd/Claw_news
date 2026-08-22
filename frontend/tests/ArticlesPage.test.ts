@@ -45,6 +45,13 @@ describe("ArticlesPage", () => {
     mockedGetArticles.mockResolvedValue(page());
   });
 
+  it("shows a loading state while the article request is pending", () => {
+    mockedGetArticles.mockReturnValue(new Promise(() => {}));
+    const wrapper = mount(ArticlesPage);
+
+    expect(wrapper.get('[aria-live="polite"]').text()).toContain("正在加载新闻");
+  });
+
   it("renders public articles, source options and safe external links", async () => {
     const wrapper = mount(ArticlesPage);
     await flushPromises();

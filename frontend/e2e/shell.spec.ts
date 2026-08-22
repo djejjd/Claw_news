@@ -85,6 +85,24 @@ test("shows an empty state for an unknown source", async ({ page }) => {
   await expect(page.getByText("当前筛选条件下没有可浏览的公开新闻。")).toBeVisible();
 });
 
+test("keeps the public article stream readable on a narrow viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/articles");
+
+  await expect(page.getByRole("heading", { level: 1, name: "最近十天" })).toBeVisible();
+  await expect(page.getByText("测试公共文章")).toBeVisible();
+  await expect(page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).resolves.toBe(true);
+});
+
+test("shows a retryable article error when the public API fails", async ({ page }) => {
+  await page.route("**/api/public/articles**", (route) => route.abort("connectionfailed"));
+  await page.goto("/articles");
+
+  await expect(page.getByRole("heading", { level: 2, name: "新闻加载失败" })).toBeVisible();
+  await expect(page.getByText("网络连接不可用，请检查网络后重试。")).toBeVisible();
+  await expect(page.getByRole("button", { name: "重试" })).toBeVisible();
+});
+
 test("reports a browser network disconnect as a displayable public API error", async ({ page }) => {
   await page.route("**/api/public/articles", (route) => route.abort("connectionfailed"));
   await page.goto("/");
