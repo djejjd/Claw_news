@@ -143,6 +143,30 @@ def test_ci_rejects_current_pr_task_without_type(monkeypatch):
         ci([task], "origin/main")
 
 
+def test_ci_reads_non_ascii_changed_paths_without_git_quoting(monkeypatch):
+    task = TaskSpec(
+        path=Path("docs/计划/工程治理/v1.2.1/T1-任务门禁发布PR兼容性.md"),
+        task_id="v1.2.1-T1",
+        state="completed",
+        dependencies=(),
+        design_sha="0" * 40,
+        allowed_paths=("docs/计划/工程治理/v1.2.1/*.md",),
+        preflight="approved",
+        review="approved",
+        task_commit="a" * 40,
+        task_type="常规",
+    )
+    monkeypatch.setattr("scripts.task_gate.validate_design_baseline", lambda task: None)
+    monkeypatch.setattr("scripts.task_gate.validate_dependencies", lambda task: None)
+    monkeypatch.setattr("scripts.task_gate.validate_task_commit_in_pr", lambda task, base: None)
+    monkeypatch.setattr(
+        "scripts.task_gate._git_raw",
+        lambda *args: "docs/计划/工程治理/v1.2.1/T1-任务门禁发布PR兼容性.md\0",
+    )
+
+    ci([task], "origin/main")
+
+
 def test_parse_task_rejects_unknown_or_duplicate_task_type(tmp_path):
     from scripts.task_gate import parse_task
 

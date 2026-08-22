@@ -316,8 +316,8 @@ def ci(tasks: list[TaskSpec], base: str, mode: str = "常规任务") -> None:
         release_tasks = [task for task in tasks if task.task_type == "发布"]
         if len(release_tasks) != 1 or len(tasks) != 1:
             raise TaskGateError("发布 PR 必须且只能声明一个任务类型：发布的任务包")
-    output = _git("diff", "--name-only", f"{base}...HEAD")
-    changed_paths = [path for path in output.splitlines() if path]
+    output = _git_raw("diff", "--name-only", "-z", f"{base}...HEAD")
+    changed_paths = nul_paths(output)
     try:
         if mode == "发布 PR":
             validate_release_paths(tasks[0], changed_paths)
