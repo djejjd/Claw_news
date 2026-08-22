@@ -9,16 +9,16 @@ from scripts.task_gate import (
     ci,
     commit,
     expand_working_paths,
+    mode_from_pr,
     nul_paths,
     parse_task,
     porcelain_paths,
     tasks_from_pr,
-    mode_from_pr,
-    validate_release_paths,
     validate_closing_paths,
     validate_combined_paths,
     validate_dependencies,
     validate_paths,
+    validate_release_paths,
     validate_task_commit,
 )
 
@@ -65,15 +65,11 @@ def test_parse_task_reads_machine_checked_metadata(tmp_path):
 
 @pytest.mark.parametrize("mode", ["发布PR", "发布-PR", "未知模式"])
 def test_mode_from_pr_rejects_near_miss_values(mode):
-    from scripts.task_gate import mode_from_pr
-
     with pytest.raises(TaskGateError, match="门禁模式"):
         mode_from_pr(f"- 门禁模式：`{mode}`")
 
 
 def test_mode_from_pr_requires_one_explicit_value():
-    from scripts.task_gate import mode_from_pr
-
     assert mode_from_pr("- 门禁模式：`常规任务`") == "常规任务"
     with pytest.raises(TaskGateError, match="缺少"):
         mode_from_pr("- 任务包：`docs/T1.md`")
