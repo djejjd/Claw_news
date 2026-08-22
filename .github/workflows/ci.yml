@@ -18,6 +18,19 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -e ".[dev]"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: make frontend-check
+      - run: make frontend-e2e
+        env:
+          CLAW_NEWS_E2E_PYTHON: python
       - run: ruff format --check main.py app collectors aggregator infra pusher tests
       - run: ruff check .
       - run: pytest -v
