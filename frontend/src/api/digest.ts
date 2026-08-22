@@ -1,22 +1,6 @@
 import { fetchPublicJson } from "./client";
-
-export interface PublicSource {
-  name: string;
-  display_name: string;
-  site_url: string | null;
-}
-
-export interface PublicArticle {
-  id: number;
-  title: string;
-  original_url: string;
-  category: string;
-  topic: string | null;
-  summary: string;
-  published_at: string | null;
-  fetched_at: string;
-  source: PublicSource;
-}
+import type { PublicArticle } from "./articles";
+export type { PublicArticle, PublicSource } from "./articles";
 
 export interface DigestItem {
   position: number;

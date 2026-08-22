@@ -43,12 +43,46 @@ test("reaches the seeded public router through the Vite API proxy", async ({ req
   const response = await request.get("/api/public/articles");
 
   expect(response.ok()).toBeTruthy();
-  expect(await response.json()).toEqual({
-    items: [expect.objectContaining({ title: "测试公共文章" })],
-    page: 1,
-    page_size: 20,
-    total: 1,
+  const payload = await response.json();
+  expect(payload.page).toBe(1);
+  expect(payload.page_size).toBe(20);
+  expect(payload.total).toBe(1);
+  expect(payload.items).toEqual([expect.objectContaining({ title: "测试公共文章" })]);
+});
+
+test("browses the seeded articles with source filtering", async ({ page }) => {
+  await page.goto("/articles");
+
+  await expect(page.getByRole("heading", { level: 1, name: "最近十天" })).toBeVisible();
+  await expect(page.getByText("测试公共文章")).toBeVisible();
+
+  await page.getByLabel("按来源筛选").selectOption("test-source");
+  await expect(page).toHaveURL(/\/articles\?source=test-source$/);
+  await expect(page.getByText("测试公共文章")).toBeVisible();
+});
+
+test("moves between server pages and shows the current page in the URL", async ({ page }) => {
+  await page.route("**/api/public/articles**", async (route) => {
+    const requestUrl = new URL(route.request().url());
+    const currentPage = requestUrl.searchParams.get("page") || "1";
+    const item = currentPage === "2"
+      ? { id: 2, title: "第二页新闻", original_url: "https://example.test/two", category: "ai", topic: null, summary: "第二页摘要", published_at: "2026-08-17T09:00:00+00:00", fetched_at: "2026-08-17T09:01:00+00:00", source: { name: "test-source", display_name: "测试来源", site_url: "https://example.test" } }
+      : { id: 1, title: "第一页新闻", original_url: "https://example.test/one", category: "ai", topic: null, summary: "第一页摘要", published_at: "2026-08-17T10:00:00+00:00", fetched_at: "2026-08-17T10:01:00+00:00", source: { name: "test-source", display_name: "测试来源", site_url: "https://example.test" } };
+    await route.fulfill({ json: { items: [item], page: Number(currentPage), page_size: 1, total: 2 } });
   });
+  await page.goto("/articles");
+
+  await expect(page.getByText("第一页新闻")).toBeVisible();
+  await page.getByRole("button", { name: "下一页" }).click();
+  await expect(page).toHaveURL(/\/articles\?page=2$/);
+  await expect(page.getByText("第二页新闻")).toBeVisible();
+});
+
+test("shows an empty state for an unknown source", async ({ page }) => {
+  await page.goto("/articles?source=missing-source");
+
+  await expect(page.getByRole("heading", { level: 2, name: "暂无新闻" })).toBeVisible();
+  await expect(page.getByText("当前筛选条件下没有可浏览的公开新闻。")).toBeVisible();
 });
 
 test("reports a browser network disconnect as a displayable public API error", async ({ page }) => {

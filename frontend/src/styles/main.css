@@ -41,4 +41,21 @@ main { margin: 0 auto; max-width: 1160px; padding: 44px 24px 72px; }
 .page-state--error { color: #9a3030; }
 button { background: #0b826c; border: 1px solid #0b826c; color: #fff; cursor: pointer; font: inherit; font-weight: 700; padding: 10px 17px; }
 button:hover { background: #075d4e; }
+.page-heading { align-items: end; border-bottom: 2px solid #17252e; display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) 260px; padding-bottom: 26px; }
+.page-heading h1 { font-size: 44px; line-height: 1; margin: 0; }
+.page-intro { color: #53646a; font-size: 16px; line-height: 1.6; margin: 14px 0 0; }
+.source-filter { display: grid; gap: 8px; }
+.source-filter span { color: #53646a; font-size: 13px; font-weight: 700; }
+select { background: #fff; border: 1px solid #aebdbc; color: #17252e; font: inherit; min-height: 44px; padding: 8px 10px; width: 100%; }
+.inline-error { color: #9a3030; margin: 18px 0 0; }
+.text-button { background: transparent; border: 0; color: #9a3030; padding: 0 0 0 8px; text-decoration: underline; }
+.article-list { border-top: 1px solid #cbd4d4; list-style: none; margin: 34px 0 0; padding: 0; }
+.article-card { border-bottom: 1px solid #cbd4d4; padding: 24px 0 26px; }
+.article-card h2 { font-size: 25px; line-height: 1.3; margin: 8px 0 10px; }
+.article-card h2 a { color: #17252e; text-decoration-color: #64bca8; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+.article-topic { color: #0b826c; font-size: 14px; font-weight: 700; margin: 0 0 6px; }
+.item-meta time { color: #6a797d; font-variant-numeric: tabular-nums; }
+.pagination { align-items: center; display: flex; gap: 18px; justify-content: center; margin-top: 28px; }
+button:disabled { background: #c9d4d2; border-color: #c9d4d2; cursor: not-allowed; }
 @media (max-width: 767px) { .site-header { gap: 16px; padding: 0 18px; } nav a { padding: 22px 8px 18px; } main { padding: 30px 18px 50px; } .digest-heading { align-items: start; grid-template-columns: 1fr; } .digest-heading h1 { font-size: 36px; } .digest-item { gap: 12px; grid-template-columns: 40px minmax(0, 1fr); } .digest-item h2 { font-size: 23px; } .core-summary { font-size: 17px; } .github-projects { grid-template-columns: 1fr; } }
+@media (max-width: 767px) { .page-heading { align-items: start; grid-template-columns: 1fr; } .page-heading h1 { font-size: 36px; } .article-card h2 { font-size: 22px; } .pagination { justify-content: space-between; } }
