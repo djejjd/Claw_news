@@ -17,7 +17,7 @@
 | 任务类型 | `常规` |
 | 依赖任务 | `v0.2.2-T1` |
 | 允许并行 | 无；修改 CI 任务范围判定，其他门禁任务必须等待本任务完成 |
-| 设计基线 | `3a4402fadd9626727a0266f7bc0fcb8ca03d6520`（v1.2.1 方案批准基线） |
+| 设计基线 | `f0b98692408e476eeb1d2897f8503b3393478692`（v1.2.1 方案批准基线） |
 | 允许修改路径 | `scripts/task_gate.py`, `tests/test_task_gate.py`, `.github/workflows/ci.yml`, `.github/pull_request_template.md`, `docs/计划/工程治理/v1.2.1/T1-任务门禁发布PR兼容性.md`, `docs/计划/工程治理/v1.2.1-任务门禁发布兼容性.md`, `docs/规范/开发流程.md`, `docs/规范/提交与发布.md` |
 | 禁止修改路径 | `app/**`, `collectors/**`, `aggregator/**`, `infra/**`, `pusher/**`, `frontend/**`, `alembic/**`, `pyproject.toml`, `CHANGELOG.md`, `data/**`, `config.yaml`, `deploy/**`, `docker-compose.yml` |
 | 启动审查结论 | `pending` |
