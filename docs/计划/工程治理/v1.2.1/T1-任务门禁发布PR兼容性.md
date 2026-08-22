@@ -1,5 +1,5 @@
 ---
-状态: review_pending
+状态: completed
 最后更新: 2026-08-22
 关联:
   - ../v1.2.1-任务门禁发布兼容性.md
@@ -22,7 +22,7 @@
 | 禁止修改路径 | `app/**`, `collectors/**`, `aggregator/**`, `infra/**`, `pusher/**`, `frontend/**`, `alembic/**`, `pyproject.toml`, `CHANGELOG.md`, `data/**`, `config.yaml`, `deploy/**`, `docker-compose.yml` |
 | 启动审查结论 | `approved` |
 | 主审核结论 | `approved` |
-| 任务提交 | `pending` |
+| 任务提交 | `e7fa7432016ce9726a8656fb0557ebb30ee86f02` |
 
 ### 启动审查记录
 
