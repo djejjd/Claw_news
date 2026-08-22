@@ -27,6 +27,7 @@ class TaskSpec:
     preflight: str
     review: str
     task_commit: str
+    task_type: str | None = None
 
 
 _TABLE_ROW = re.compile(r"^\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|$", re.MULTILINE)
@@ -59,6 +60,15 @@ def parse_task(path: Path) -> TaskSpec:
     if state_match is None:
         raise TaskGateError(f"任务包缺少状态：{path}")
     metadata = _metadata(markdown)
+    task_type_rows = re.findall(r"^\|\s*任务类型\s*\|\s*(.*?)\s*\|$", markdown, re.MULTILINE)
+    if len(task_type_rows) > 1:
+        raise TaskGateError(f"任务类型重复：{path}")
+    task_type = None
+    if task_type_rows:
+        values = _codes(task_type_rows[0])
+        if len(values) != 1 or values[0] not in {"常规", "发布"}:
+            raise TaskGateError(f"任务类型未知或格式无效：{path}")
+        task_type = values[0]
     task_ids = _TASK_ID.findall(metadata.get("任务编号", ""))
     if len(task_ids) != 1:
         raise TaskGateError(f"任务包缺少唯一任务编号：{path}")
@@ -82,6 +92,7 @@ def parse_task(path: Path) -> TaskSpec:
         preflight=preflight,
         review=review,
         task_commit=task_commit,
+        task_type=task_type,
     )
 
 
@@ -161,6 +172,19 @@ def validate_closing_paths(task: TaskSpec, changed_paths: list[str]) -> None:
     ]
     if unexpected:
         raise TaskGateError(f"存在关闭记录范围外改动：{', '.join(unexpected)}")
+
+
+def validate_release_paths(task: TaskSpec, changed_paths: list[str]) -> None:
+    """发布任务只校验发布增量，避免重复要求历史功能任务的实现路径。"""
+    version_plan = task.path.parent.parent / f"{task.path.parent.name}-*.md"
+    allowed = (*task.allowed_paths, task.path.as_posix(), version_plan.as_posix())
+    unexpected = [
+        path
+        for path in changed_paths
+        if not any(fnmatch.fnmatch(path, pattern) for pattern in allowed)
+    ]
+    if unexpected:
+        raise TaskGateError(f"发布 PR 存在任务范围外改动：{', '.join(unexpected)}")
 
 
 def validate_design_baseline(task: TaskSpec) -> None:
@@ -270,7 +294,11 @@ def commit(task: TaskSpec) -> None:
         validate_paths(task, staged_paths())
 
 
-def ci(tasks: list[TaskSpec], base: str) -> None:
+def ci(tasks: list[TaskSpec], base: str, mode: str = "常规任务") -> None:
+    if mode not in {"常规任务", "发布 PR"}:
+        raise TaskGateError("门禁模式未知")
+    if not tasks:
+        raise TaskGateError("至少需要一个任务包")
     for task in tasks:
         validate_preflight(task)
         if task.state != "completed" or task.review != "approved":
@@ -280,10 +308,21 @@ def ci(tasks: list[TaskSpec], base: str) -> None:
         validate_design_baseline(task)
         validate_dependencies(task)
         validate_task_commit_in_pr(task, base)
+    if any(task.task_type is None for task in tasks):
+        raise TaskGateError("当前 PR 声明任务必须填写任务类型")
+    if mode == "常规任务" and any(task.task_type != "常规" for task in tasks):
+        raise TaskGateError("常规任务模式只能包含任务类型：常规")
+    if mode == "发布 PR":
+        release_tasks = [task for task in tasks if task.task_type == "发布"]
+        if len(release_tasks) != 1 or len(tasks) != 1:
+            raise TaskGateError("发布 PR 必须且只能声明一个任务类型：发布的任务包")
     output = _git("diff", "--name-only", f"{base}...HEAD")
     changed_paths = [path for path in output.splitlines() if path]
     try:
-        validate_combined_paths(tasks, changed_paths)
+        if mode == "发布 PR":
+            validate_release_paths(tasks[0], changed_paths)
+        else:
+            validate_combined_paths(tasks, changed_paths)
     except TaskGateError as error:
         raise TaskGateError(str(error).replace("存在任务", "PR 存在任务")) from error
 
@@ -299,6 +338,17 @@ def tasks_from_pr(body: str) -> tuple[str, ...]:
     return paths
 
 
+def mode_from_pr(body: str) -> str:
+    matches = re.findall(r"^-\s*门禁模式：\s*`([^`]+)`\s*$", body, re.MULTILINE)
+    if not matches:
+        raise TaskGateError("PR 描述缺少门禁模式")
+    if len(matches) != 1:
+        raise TaskGateError("门禁模式只能填写一次")
+    if matches[0] not in {"常规任务", "发布 PR"}:
+        raise TaskGateError("门禁模式未知")
+    return matches[0]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -307,12 +357,18 @@ def main() -> int:
         command.add_argument("--task", type=Path, action="append", required=True)
         if name == "ci":
             command.add_argument("--base", required=True)
+            command.add_argument("--mode", required=True, choices=("常规任务", "发布 PR"))
     pr_command = subparsers.add_parser("tasks-from-pr")
     pr_command.add_argument("--body-file", type=Path, required=True)
+    mode_command = subparsers.add_parser("mode-from-pr")
+    mode_command.add_argument("--body-file", type=Path, required=True)
     args = parser.parse_args()
     try:
         if args.command == "tasks-from-pr":
             print(*tasks_from_pr(args.body_file.read_text(encoding="utf-8")), sep="\n")
+            return 0
+        if args.command == "mode-from-pr":
+            print(mode_from_pr(args.body_file.read_text(encoding="utf-8")))
             return 0
         tasks = [parse_task(path) for path in args.task]
         if args.command == "begin":
@@ -326,7 +382,7 @@ def main() -> int:
             task = tasks[0]
             commit(task)
         else:
-            ci(tasks, args.base)
+            ci(tasks, args.base, args.mode)
         print(f"任务门禁通过：{', '.join(task.task_id for task in tasks)} ({args.command})")
         return 0
     except (OSError, TaskGateError) as error:

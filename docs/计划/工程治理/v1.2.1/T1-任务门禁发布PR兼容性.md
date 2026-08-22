@@ -1,5 +1,5 @@
 ---
-状态: ready
+状态: review_pending
 最后更新: 2026-08-22
 关联:
   - ../v1.2.1-任务门禁发布兼容性.md
@@ -20,9 +20,13 @@
 | 设计基线 | `f0b98692408e476eeb1d2897f8503b3393478692`（v1.2.1 方案批准基线） |
 | 允许修改路径 | `scripts/task_gate.py`, `tests/test_task_gate.py`, `.github/workflows/ci.yml`, `.github/pull_request_template.md`, `docs/计划/工程治理/v1.2.1/T1-任务门禁发布PR兼容性.md`, `docs/计划/工程治理/v1.2.1-任务门禁发布兼容性.md`, `docs/规范/开发流程.md`, `docs/规范/提交与发布.md` |
 | 禁止修改路径 | `app/**`, `collectors/**`, `aggregator/**`, `infra/**`, `pusher/**`, `frontend/**`, `alembic/**`, `pyproject.toml`, `CHANGELOG.md`, `data/**`, `config.yaml`, `deploy/**`, `docker-compose.yml` |
-| 启动审查结论 | `pending` |
-| 主审核结论 | `pending` |
+| 启动审查结论 | `approved` |
+| 主审核结论 | `approved` |
 | 任务提交 | `pending` |
+
+### 启动审查记录
+
+独立启动审查结论为 `approved`（2026-08-22）：v1.2.1 方案已 approved，设计基线 `f0b98692408e476eeb1d2897f8503b3393478692` 存在；依赖 `v0.2.2-T1` 已 completed 且主审核 approved；允许/禁止路径、非 `main` 分支和隔离 worktree 均通过。审查未修改实现、测试或 CI。
 
 ## 1. 背景
 

@@ -13,6 +13,8 @@ from scripts.task_gate import (
     parse_task,
     porcelain_paths,
     tasks_from_pr,
+    mode_from_pr,
+    validate_release_paths,
     validate_closing_paths,
     validate_combined_paths,
     validate_dependencies,
@@ -30,6 +32,7 @@ def _task_markdown(
     review="pending",
     task_commit="pending",
     allowed_paths="`app/example.py`, `tests/test_example.py`",
+    task_type="常规",
 ):
     return f"""---
 状态: {state}
@@ -38,6 +41,7 @@ def _task_markdown(
 | 项目 | 内容 |
 |---|---|
 | 任务编号 | `{task_id}` |
+| 任务类型 | `{task_type}` |
 | 依赖任务 | {dependencies} |
 | 设计基线 | `610c77cfc927f10564d973c9af4d37c4b38cdf58` |
 | 允许修改路径 | {allowed_paths} |
@@ -56,6 +60,105 @@ def test_parse_task_reads_machine_checked_metadata(tmp_path):
     assert task.task_id == "v1.1.0-T2"
     assert task.dependencies == ("v1.1.0-T1",)
     assert task.allowed_paths == ("app/example.py", "tests/test_example.py")
+    assert task.task_type == "常规"
+
+
+@pytest.mark.parametrize("mode", ["发布PR", "发布-PR", "未知模式"])
+def test_mode_from_pr_rejects_near_miss_values(mode):
+    from scripts.task_gate import mode_from_pr
+
+    with pytest.raises(TaskGateError, match="门禁模式"):
+        mode_from_pr(f"- 门禁模式：`{mode}`")
+
+
+def test_mode_from_pr_requires_one_explicit_value():
+    from scripts.task_gate import mode_from_pr
+
+    assert mode_from_pr("- 门禁模式：`常规任务`") == "常规任务"
+    with pytest.raises(TaskGateError, match="缺少"):
+        mode_from_pr("- 任务包：`docs/T1.md`")
+    with pytest.raises(TaskGateError, match="只能填写一次"):
+        mode_from_pr("- 门禁模式：`常规任务`\n- 门禁模式：`发布 PR`")
+
+
+def test_validate_release_paths_allows_release_increment_but_rejects_business_file():
+    task = TaskSpec(
+        path=Path("docs/计划/工程治理/v1.2.1/T1-任务门禁发布PR兼容性.md"),
+        task_id="v1.2.1-T1",
+        state="completed",
+        dependencies=(),
+        design_sha="0" * 40,
+        allowed_paths=("scripts/task_gate.py", "tests/test_task_gate.py"),
+        preflight="approved",
+        review="approved",
+        task_commit="a" * 40,
+        task_type="发布",
+    )
+    validate_release_paths(
+        task,
+        [
+            "scripts/task_gate.py",
+            "docs/计划/工程治理/v1.2.1/T1-任务门禁发布PR兼容性.md",
+            "docs/计划/工程治理/v1.2.1-任务门禁发布兼容性.md",
+        ],
+    )
+    with pytest.raises(TaskGateError, match="发布 PR"):
+        validate_release_paths(task, ["app/main.py"])
+
+
+def test_ci_rejects_mode_and_task_type_mismatch_before_path_check(monkeypatch):
+    task = TaskSpec(
+        path=Path("docs/计划/工程治理/v1.2.1/T1.md"),
+        task_id="v1.2.1-T1",
+        state="completed",
+        dependencies=(),
+        design_sha="0" * 40,
+        allowed_paths=("scripts/task_gate.py",),
+        preflight="approved",
+        review="approved",
+        task_commit="a" * 40,
+        task_type="常规",
+    )
+    monkeypatch.setattr("scripts.task_gate.validate_design_baseline", lambda task: None)
+    monkeypatch.setattr("scripts.task_gate.validate_dependencies", lambda task: None)
+    monkeypatch.setattr("scripts.task_gate.validate_task_commit_in_pr", lambda task, base: None)
+    monkeypatch.setattr("scripts.task_gate._git", lambda *args: "scripts/task_gate.py")
+
+    with pytest.raises(TaskGateError, match="发布 PR"):
+        ci([task], "origin/main", "发布 PR")
+
+
+def test_ci_rejects_current_pr_task_without_type(monkeypatch):
+    task = TaskSpec(
+        path=Path("docs/计划/工程治理/v1.2.1/T1.md"),
+        task_id="v1.2.1-T1",
+        state="completed",
+        dependencies=(),
+        design_sha="0" * 40,
+        allowed_paths=("scripts/task_gate.py",),
+        preflight="approved",
+        review="approved",
+        task_commit="a" * 40,
+    )
+    monkeypatch.setattr("scripts.task_gate.validate_design_baseline", lambda task: None)
+    monkeypatch.setattr("scripts.task_gate.validate_dependencies", lambda task: None)
+    monkeypatch.setattr("scripts.task_gate.validate_task_commit_in_pr", lambda task, base: None)
+    with pytest.raises(TaskGateError, match="任务类型"):
+        ci([task], "origin/main")
+
+
+def test_parse_task_rejects_unknown_or_duplicate_task_type(tmp_path):
+    from scripts.task_gate import parse_task
+
+    unknown = tmp_path / "unknown.md"
+    unknown.write_text(_task_markdown(task_type="其他"), encoding="utf-8")
+    with pytest.raises(TaskGateError, match="任务类型"):
+        parse_task(unknown)
+
+    duplicate = tmp_path / "duplicate.md"
+    duplicate.write_text(_task_markdown() + "| 任务类型 | `发布` |\n", encoding="utf-8")
+    with pytest.raises(TaskGateError, match="重复"):
+        parse_task(duplicate)
 
 
 def test_parse_task_rejects_task_without_explicit_file_boundary(tmp_path):

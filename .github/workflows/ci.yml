@@ -45,4 +45,5 @@ jobs:
           while IFS= read -r task_path; do
             TASK_ARGS+=(--task "$task_path")
           done < <(python scripts/task_gate.py tasks-from-pr --body-file "$RUNNER_TEMP/pr-body.md")
-          python scripts/task_gate.py ci "${TASK_ARGS[@]}" --base "origin/${{ github.base_ref }}"
+          GATE_MODE=$(python scripts/task_gate.py mode-from-pr --body-file "$RUNNER_TEMP/pr-body.md")
+          python scripts/task_gate.py ci "${TASK_ARGS[@]}" --mode "$GATE_MODE" --base "origin/${{ github.base_ref }}"
